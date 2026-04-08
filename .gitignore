@@ -1,0 +1,17 @@
+.env
+odoo.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+node_modules/
+frontend/dist/
+
+# Generados / local
+dashboard_payload.json
+*.log
+.DS_Store
+Thumbs.db
+
+# Copias locales de asistentes (muy pesadas; no son la app)
+.claude/

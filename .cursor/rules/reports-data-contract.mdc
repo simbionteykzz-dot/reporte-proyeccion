@@ -1,0 +1,26 @@
+---
+description: Contrato de datos para reportes Odoo (filtros, métricas y salidas)
+globs: "**/*.{py,ts,tsx,js,jsx,html}"
+alwaysApply: false
+---
+
+# Reports Data Contract
+
+## Definición mínima antes de codificar
+- Fuente(s) Odoo: modelo(s) y campo(s) exactos.
+- Filtros: `year`, `months`, `weeks` y rango efectivo final.
+- Regla de exclusión: anulados, sin talla, sin color, etc.
+- Métricas: fórmula explícita y unidad (uds, moneda, porcentaje).
+
+## Convenciones
+- API devuelve números listos para UI (sin ambigüedad de tipos).
+- Separar `total_qty` de `unknown_size_qty` cuando aplique.
+- Mantener salida estable: `by_size`, `by_color`, `matrix_rows`, `size_order`.
+
+## Consistencia obligatoria
+- `total_qty == sum(by_size.qty)`.
+- `sum(by_size.qty) == sum(matrix_rows.by_size[*])`.
+- Gráficos y tabla deben usar el mismo payload (no recalcular con reglas distintas).
+
+## Versionado
+- Si cambia contrato de respuesta, versionar endpoint o documentar migración.

@@ -1,0 +1,23 @@
+---
+description: Activar y priorizar skills migradas desde .claude para frontend, arquitectura, UI/UX, testing y prompting
+alwaysApply: true
+---
+
+# Claude Skills Activadas
+
+## Regla de uso
+- Considerar primero las skills en `.cursor/skills` cuando la tarea coincida con su dominio.
+- Si hay una task de UI/UX, usar `ui-ux-pro-max` y combinar con `ui-ux-designer`.
+- Si hay task de React/Next, usar `react-best-practices` y `react-ui-patterns`.
+- Si hay task fullstack, usar `senior-fullstack` o `senior-frontend`/`senior-backend` según alcance.
+- Si hay testing de web app local, usar `webapp-testing`.
+- Si la tarea es arquitectura, usar `senior-architect`.
+
+## Agentes recomendados (mapeo)
+- `backend-architect`, `frontend-developer`, `fullstack-developer`, `ui-ux-designer`
+- `data-engineer`, `data-scientist`, `database-optimization`, `error-detective`
+- `javascript-pro`, `nextjs-architecture-expert`, `react-performance-optimization`, `react-performance-optimizer`, `sql-pro`
+
+## Criterio
+- No duplicar lógica entre skills; seleccionar 1 skill principal + 1 skill de soporte.
+- Mantener trazabilidad: mencionar skill y agente usados en el cierre técnico.

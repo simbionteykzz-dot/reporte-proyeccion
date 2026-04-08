@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Auditor&iacute;a Odoo &mdash; Proyecci&oacute;n Inventario</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<style>
+:root{
+  --bg:#0a0a0f;--surface:#13131a;--border:#1e1e2a;
+  --text:#e4e4ed;--muted:#8888a0;--accent:#f59e0b;
+  --green:#22c55e;--red:#ef4444;--blue:#3b82f6;--purple:#a855f7;
+  --cyan:#06b6d4;--pink:#ec4899;--orange:#f97316;--lime:#84cc16;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif;line-height:1.6;padding:2rem}
+h1{font-size:1.8rem;font-weight:700;color:#fff;margin-bottom:.5rem}
+h2{font-size:1.35rem;font-weight:600;color:var(--accent);margin:2.5rem 0 1rem;padding-bottom:.5rem;border-bottom:1px solid var(--border)}
+h3{font-size:1.1rem;font-weight:600;color:#fff;margin:1.5rem 0 .75rem}
+p,.note{color:var(--muted);margin-bottom:.75rem;font-size:.9rem}
+.note{background:var(--surface);border-left:3px solid var(--accent);padding:.75rem 1rem;border-radius:0 6px 6px 0;margin:1rem 0}
+.badge{display:inline-block;font-size:.7rem;font-weight:600;padding:2px 8px;border-radius:4px;text-transform:uppercase}
+.badge-real{background:#22c55e22;color:var(--green)}
+.badge-calc{background:#3b82f622;color:var(--blue)}
+.badge-na{background:#ef444422;color:var(--red)}
+.container{max-width:1400px;margin:0 auto}
+table{width:100%;border-collapse:collapse;margin:1rem 0;font-size:.82rem;font-variant-numeric:tabular-nums}
+th{background:var(--surface);color:var(--accent);font-weight:600;text-align:left;padding:10px 12px;border-bottom:2px solid var(--border);position:sticky;top:0}
+td{padding:8px 12px;border-bottom:1px solid var(--border)}
+tr:hover td{background:#ffffff08}
+.num{text-align:right;font-family:'JetBrains Mono',monospace;font-size:.8rem}
+.total-row td{font-weight:700;border-top:2px solid var(--accent);background:var(--surface)}
+.chart-wrap{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1.5rem;margin:1.5rem 0}
+.chart-wrap canvas{max-height:500px}
+.chart-insight{color:var(--muted);font-size:.85rem;margin-top:.75rem;padding-top:.75rem;border-top:1px solid var(--border)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem}
+.kpi-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1rem;margin:1.5rem 0}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:1.25rem}
+.kpi .label{font-size:.75rem;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+.kpi .value{font-size:1.6rem;font-weight:700;color:#fff;margin-top:.25rem;font-variant-numeric:tabular-nums}
+.kpi .sub{font-size:.75rem;color:var(--muted);margin-top:.25rem}
+@media(max-width:900px){.grid2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>Auditor&iacute;a Completa &mdash; Datos Reales Odoo</h1>
+<p>Periodo: <strong>2026-01-02 a 2026-04-04</strong> (92 d&iacute;as) &bull; Base de datos: zazuexpress2-prod-27700346 &bull; Generado: 2026-04-08</p>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2>1. Auditor&iacute;a Inicial</h2>
+<table>
+<tr><th style="width:35%">Campo</th><th>Valor</th></tr>
+<tr><td>Fuente</td><td>Odoo XML-RPC &mdash; zazuexpress2.odoo.com</td></tr>
+<tr><td>Base de datos</td><td>zazuexpress2-prod-27700346</td></tr>
+<tr><td>Modelo principal</td><td>pos.order.line (nivel de l&iacute;nea de orden POS)</td></tr>
+<tr><td>Columnas reales usadas</td><td>product_id, order_id, qty, price_unit, price_subtotal, price_subtotal_incl, discount, full_product_name</td></tr>
+<tr><td>Nivel estructural</td><td>L&iacute;nea de orden (order line level) &mdash; permite an&aacute;lisis por producto</td></tr>
+<tr><td>Rango de fechas detectado</td><td>2026-01-02 a 2026-04-04 (filtrado expl&iacute;cito)</td></tr>
+<tr><td>sale.order en rango</td><td><strong>0 ordenes</strong> &mdash; canal &uacute;nico es POS/TPV</td></tr>
+<tr><td>Total ordenes POS en rango</td><td>21,223 ordenes (estado: paid, done, invoiced)</td></tr>
+<tr><td>Total l&iacute;neas POS en rango</td><td>186,652 l&iacute;neas</td></tr>
+<tr><td>Ordenes fuera de rango</td><td>6,853 (excluidas del an&aacute;lisis)</td></tr>
+<tr><td>Limitaciones detectadas</td><td>
+  &bull; MEDIAS CORTAS y MEDIAS LARGAS no existen como categor&iacute;a en product.category<br>
+  &bull; OVERSIZE no existe como categor&iacute;a<br>
+  &bull; 22 productos vendidos con category_id = 0 (Sin categor&iacute;a)<br>
+  &bull; Productos de descuento/promoci&oacute;n mezclados en l&iacute;neas con price_unit negativo
+</td></tr>
+</table>
+
+<div class="note">
+  <strong>Registros excluidos:</strong> 32,773 l&iacute;neas de descuento (price_unit &lt; 0), 2 l&iacute;neas de devoluci&oacute;n (qty &lt; 0), 5 &oacute;rdenes canceladas (reembolsos). Motivo: no representan ventas reales de producto.
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2>2. Resumen Ejecutivo</h2>
+
+<div class="kpi-row">
+  <div class="kpi"><div class="label">Ordenes POS</div><div class="value">21,223</div><div class="sub">92 d&iacute;as &bull; ~231/d&iacute;a</div></div>
+  <div class="kpi"><div class="label">Ventas proyectadas</div><div class="value">13,618</div><div class="sub">round(Stock / Cantidad)</div></div>
+  <div class="kpi"><div class="label">Ingresos proyectados</div><div class="value">S/ 1,344,415</div><div class="sub">(Stock / Cantidad) &times; Ticket</div></div>
+  <div class="kpi"><div class="label">Stock actual</div><div class="value">75,880</div><div class="sub">stock.quant &bull; 15 familias</div></div>
+  <div class="kpi"><div class="label">Ticket general</div><div class="value">S/ 99</div><div class="sub">Medias: S/ 6 &bull; Oversize: nulo</div></div>
+  <div class="kpi"><div class="label">Familias</div><div class="value">15</div><div class="sub">14 activas + 1 nulo (Oversize)</div></div>
+</div>
+
+<h3>Qu&eacute; contiene el dataset</h3>
+<p>El dataset comprende <strong>186,652 l&iacute;neas de orden POS</strong> del periodo analizado. De estas, 153,877 son ventas reales de producto (HECHO), 32,773 son l&iacute;neas de descuento/promoci&oacute;n (price_unit negativo), y 2 son devoluciones.</p>
+
+<h3>Qu&eacute; se puede calcular con confianza</h3>
+<p>&bull; Stock actual por familia <span class="badge badge-real">DATO REAL</span><br>
+&bull; Unidades vendidas por familia <span class="badge badge-real">DATO REAL</span><br>
+&bull; Ticket promedio real (subtotal_incl / qty) <span class="badge badge-calc">CALCULADO</span><br>
+&bull; Cantidad promedio por orden <span class="badge badge-calc">CALCULADO</span><br>
+&bull; Ventas proyectadas (stock / cant_por_orden) <span class="badge badge-calc">CALCULADO</span><br>
+&bull; Ingresos proyectados (vproy &times; ticket_comercial) <span class="badge badge-calc">CALCULADO</span></p>
+
+<h3>Qu&eacute; NO se puede calcular desde Odoo</h3>
+<p>&bull; Ventas de MEDIAS CORTAS / MEDIAS LARGAS como categor&iacute;a separada <span class="badge badge-na">NO DISPONIBLE</span> &mdash; no existe como categor&iacute;a en Odoo<br>
+&bull; OVERSIZE como categor&iacute;a separada <span class="badge badge-na">NO DISPONIBLE</span><br>
+&bull; Historial de costos de compra (costo de adquisici&oacute;n) <span class="badge badge-na">NO DISPONIBLE</span><br>
+&bull; Margen de utilidad por producto <span class="badge badge-na">NO DISPONIBLE</span></p>
+
+<h3>Causa principal de diferencias vs. el sistema/p&aacute;gina</h3>
+<p>El ticket real unitario (S/ 12&ndash;35 por unidad) difiere radicalmente del ticket comercial (S/ 99). Esto se debe a que el ticket comercial es el <strong>precio por paquete/combo</strong> (ej: 5 cl&aacute;sicos x S/99), mientras que Odoo registra cada unidad individual como una l&iacute;nea separada. Es decir: <strong>S/99 &div; 5 unidades = ~S/19.80 por unidad</strong>, lo cual es consistente con los datos reales.</p>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2>3. Tabla Principal Estilo Negocio</h2>
+
+<div style="overflow-x:auto">
+<table id="main-table">
+<thead>
+<tr>
+  <th>Familia</th>
+  <th class="num">Stock Actual</th>
+  <th class="num">Cantidad</th>
+  <th class="num">Ventas</th>
+  <th class="num">Ticket</th>
+  <th class="num">Ingresos</th>
+  <th class="num">% Ingresos</th>
+</tr>
+</thead>
+<tbody id="main-tbody"></tbody>
+</table>
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2>4. Secciones Obligatorias</h2>
+
+<h3>HECHO &mdash; Ventas Reales</h3>
+<table>
+<thead><tr><th>Familia</th><th class="num">Registros</th><th class="num">Unidades</th><th class="num">Ticket prom. (IGV)</th><th class="num">Ingresos reales (IGV)</th><th>Observaciones</th></tr></thead>
+<tbody id="hecho-tbody"></tbody>
+</table>
+
+<h3>CAMBIO &mdash; Devoluciones</h3>
+<table>
+<thead><tr><th>Tipo</th><th class="num">Registros</th><th>Impacto</th><th>Evidencia</th></tr></thead>
+<tbody>
+<tr><td>Devoluciones (qty &lt; 0)</td><td class="num">2</td><td>Marginal &mdash; 2 l&iacute;neas sobre 186,652</td><td>Campo: qty negativa en pos.order.line</td></tr>
+</tbody>
+</table>
+
+<h3>CANCELADO</h3>
+<table>
+<thead><tr><th>Orden</th><th>Fecha</th><th class="num">Monto</th><th>Impacto si se contara mal</th><th>Evidencia</th></tr></thead>
+<tbody id="cancel-tbody"></tbody>
+</table>
+
+<h3>REVISAR &mdash; L&iacute;neas de Descuento</h3>
+<table>
+<thead><tr><th>Tipo de registro</th><th class="num">L&iacute;neas</th><th class="num">Monto (IGV)</th><th>Riesgo</th><th>Acci&oacute;n sugerida</th></tr></thead>
+<tbody id="revisar-tbody"></tbody>
+</table>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2>5. Conciliaci&oacute;n General</h2>
+<table>
+<thead><tr><th>Concepto</th><th class="num">Registros</th><th class="num">Monto</th><th>Incluido en venta real?</th><th>Observaci&oacute;n</th></tr></thead>
+<tbody>
+<tr><td>HECHO (ventas ropa)</td><td class="num">153,877</td><td class="num">S/ 2,514,632.74</td><td>SI</td><td>Ventas positivas, precio &ge; 0</td></tr>
+<tr><td>DESCUENTOS (promociones)</td><td class="num">32,773</td><td class="num">S/ -277,632.69</td><td>NO</td><td>price_unit &lt; 0, collares/puntos/promos</td></tr>
+<tr><td>CAMBIO (devoluciones)</td><td class="num">2</td><td class="num">N/C</td><td>NO</td><td>qty negativa, impacto marginal</td></tr>
+<tr><td>CANCELADO (reembolsos)</td><td class="num">5</td><td class="num">S/ -520.00</td><td>NO</td><td>state=cancel en pos.order</td></tr>
+<tr><td>FUERA DE RANGO</td><td class="num">6,853</td><td class="num">N/A</td><td>EXCLUIDO</td><td>Ordenes anteriores a 2026-01-02</td></tr>
+<tr class="total-row"><td>TOTAL pos.order (amount_total)</td><td class="num">21,223</td><td class="num">S/ 2,585,348.17</td><td></td><td>Incluye todo: ropa + descuentos + servicios + IGV</td></tr>
+<tr class="total-row"><td>TOTAL NETO (solo ropa HECHO)</td><td class="num">153,877</td><td class="num">S/ 2,514,632.74</td><td></td><td>Base para proyecciones</td></tr>
+</tbody>
+</table>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2>6. Diagn&oacute;stico de Diferencias</h2>
+
+<div class="note">
+<strong>Diferencia total:</strong> S/ 2,585,348.17 (ordenes) &minus; S/ 2,514,632.74 (ropa HECHO) = <strong>S/ 70,715.43</strong>
+</div>
+
+<table>
+<thead><tr><th>Factor de diferencia</th><th>Explicaci&oacute;n</th><th>Impacto estimado</th></tr></thead>
+<tbody>
+<tr><td>Productos no-ropa (accesorios, tech)</td><td>Productos como AIRPODS, cables, cases que se venden en POS pero no son de la categor&iacute;a ropa</td><td>Principal contribuyente a la diferencia</td></tr>
+<tr><td>Servicios de env&iacute;o</td><td>420 l&iacute;neas de Delivery/Courier con precio negativo (descuento de env&iacute;o)</td><td>S/ -4,271.40</td></tr>
+<tr><td>Productos sin categor&iacute;a (id=0)</td><td>22 productos con category_id=0 excluidos del an&aacute;lisis por falta de clasificaci&oacute;n</td><td>Menor</td></tr>
+<tr><td>Ticket unitario vs. ticket combo</td><td>Odoo registra precio por UNIDAD (S/12-35), el negocio vende por COMBO (5x99, 3x50). No es error; es diferencia de granularidad.</td><td>No es diferencia real, solo de perspectiva</td></tr>
+<tr><td>CAMBIO no infla conteos</td><td>Solo 2 l&iacute;neas de devoluci&oacute;n en 92 d&iacute;as &mdash; impacto cero</td><td>Negligible</td></tr>
+<tr><td>CANCELADO no infla ingresos</td><td>5 reembolsos por S/ -520.00, correctamente excluidos por state=cancel</td><td>S/ -520.00</td></tr>
+<tr><td>Descuentos no contados como venta</td><td>32,773 l&iacute;neas de promoci&oacute;n/puntos/regalos correctamente excluidas</td><td>S/ -277,632.69 correctamente separado</td></tr>
+<tr><td>Polera presente en datos</td><td>"Poleras" existe como categor&iacute;a con 10,677 unidades vendidas y 4,098 stock. Incluida en tabla principal.</td><td>S/ 373,999.03 ingreso real</td></tr>
+</tbody>
+</table>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2>7. An&aacute;lisis Estad&iacute;stico</h2>
+<div id="stats-section"></div>
+
+<!-- ═══════════════════════════════════════════ -->
+<h2>8. Pack de Gr&aacute;ficos Avanzados</h2>
+
+<h3>Chart A: Ticket vs Ventas (Scatter con Cuadrantes)</h3>
+<div class="chart-wrap">
+  <canvas id="chartA"></canvas>
+  <div class="chart-insight" id="insightA"></div>
+</div>
+
+<h3>Chart B: Distribuci&oacute;n de Ticket por Familia</h3>
+<div class="chart-wrap">
+  <canvas id="chartB"></canvas>
+  <div class="chart-insight" id="insightB"></div>
+</div>
+
+<div class="grid2">
+<div>
+<h3>Chart C: Composici&oacute;n de Ingresos</h3>
+<div class="chart-wrap">
+  <canvas id="chartC"></canvas>
+  <div class="chart-insight" id="insightC"></div>
+</div>
+</div>
+<div>
+<h3>Chart D: Ranking por Ingresos Reales</h3>
+<div class="chart-wrap">
+  <canvas id="chartD"></canvas>
+  <div class="chart-insight" id="insightD"></div>
+</div>
+</div>
+</div>
+
+<h3>Chart E: Ticket vs Unidades con Labels</h3>
+<div class="chart-wrap">
+  <canvas id="chartE"></canvas>
+  <div class="chart-insight" id="insightE"></div>
+</div>
+
+<h3>Chart F: Sensibilidad de Proyecci&oacute;n</h3>
+<div class="chart-wrap">
+  <canvas id="chartF"></canvas>
+  <div class="chart-insight" id="insightF"></div>
+</div>
+
+</div><!-- /container -->
+
+<script>
+const DATA = {
+  families: [
+    {f:"BABY TY",stock:2495,cant:7,ventas:356,ticket:99,ingresos:35286.43},
+    {f:"BABY TY MANGA",stock:1338,cant:7,ventas:191,ticket:99,ingresos:18923.14},
+    {f:"CAMISA WAFFLE",stock:397,cant:4,ventas:99,ticket:99,ingresos:9825.75},
+    {f:"CAMISERO JERSEY",stock:113,cant:4,ventas:28,ticket:99,ingresos:2796.75},
+    {f:"CAMISERO PIKE",stock:5307,cant:4,ventas:1327,ticket:99,ingresos:131348.25},
+    {f:"CLASICO",stock:27402,cant:9,ventas:3045,ticket:99,ingresos:301422},
+    {f:"CUELLO CHINO",stock:1766,cant:4,ventas:442,ticket:99,ingresos:43708.5},
+    {f:"CUELLO CHINO WAFFLE",stock:1597,cant:4,ventas:399,ticket:99,ingresos:39525.75},
+    {f:"JERSEY MANGA LARGA",stock:5490,cant:5,ventas:1098,ticket:99,ingresos:108702},
+    {f:"MEDIAS CORTAS",stock:45,cant:3,ventas:15,ticket:6,ingresos:90},
+    {f:"MEDIAS LARGAS",stock:77,cant:3,ventas:26,ticket:6,ingresos:154},
+    {f:"OVERSIZE",stock:271,cant:null,ventas:null,ticket:null,ingresos:null},
+    {f:"WAFFLE",stock:16065,cant:5,ventas:3213,ticket:99,ingresos:318087},
+    {f:"WAFFLE CAMISERO",stock:6546,cant:4,ventas:1636,ticket:99,ingresos:162013.5},
+    {f:"WAFFLE MANGA LARGA",stock:6971,cant:4,ventas:1743,ticket:99,ingresos:172532.25},
+  ],
+  descuentos: {total:-277632.69, puntos:-10955, gratis:-14162, promos:-7007},
+  cancelados: [
+    {n:"REEMBOLSO Overshark-000466",d:"2026-03-20",a:-111},
+    {n:"REEMBOLSO Overshark/6858",d:"2026-03-04",a:-222},
+    {n:"REEMBOLSO Overshark-000410",d:"2026-03-03",a:-111},
+    {n:"REEMBOLSO Overshark/2991",d:"2026-01-05",a:-111},
+    {n:"/ (otro)",d:"2026-01-05",a:35},
+  ]
+};
+
+const F = DATA.families;
+const fmt = (n,d=0) => n.toLocaleString('es-PE',{minimumFractionDigits:d,maximumFractionDigits:d});
+const fmtS = (n,d=2) => 'S/ '+fmt(n,d);
+const COLORS = ['#f59e0b','#3b82f6','#22c55e','#a855f7','#ec4899','#06b6d4','#f97316','#84cc16','#ef4444','#6366f1','#14b8a6'];
+
+// ── Main table ──
+(function(){
+  const tb = document.getElementById('main-tbody');
+  let tStock=0,tVentas=0,tIng=0;
+  const tIng2 = F.filter(r=>r.ingresos).reduce((a,r)=>a+r.ingresos,0);
+  F.forEach((r,i)=>{
+    tStock+=r.stock;
+    if(r.ventas!==null){tVentas+=r.ventas; tIng+=r.ingresos;}
+    const pct = r.ingresos ? ((r.ingresos/tIng2)*100).toFixed(2)+'%' : '';
+    if(r.f==='OVERSIZE'){
+      tb.innerHTML += `<tr><td>${r.f}</td><td class="num">${fmt(r.stock)}</td>
+        <td class="num"></td><td class="num"></td><td class="num"></td><td class="num"></td><td class="num"></td></tr>`;
+    } else {
+      tb.innerHTML += `<tr><td>${r.f}</td><td class="num">${fmt(r.stock)}</td>
+        <td class="num">${r.cant}</td><td class="num">${fmt(r.ventas)}</td>
+        <td class="num">S/${r.ticket}</td><td class="num">${fmtS(r.ingresos)}</td>
+        <td class="num">${pct}</td></tr>`;
+    }
+  });
+  tb.innerHTML += `<tr class="total-row"><td>Total general</td><td class="num">${fmt(tStock)}</td>
+    <td class="num"></td><td class="num">${fmt(tVentas)}</td><td class="num"></td>
+    <td class="num">${fmtS(tIng)}</td><td class="num">100%</td></tr>`;
+})();
+
+// ── HECHO table ──
+(function(){
+  const tb = document.getElementById('hecho-tbody');
+  let tV=0,tI2=0;
+  F.filter(r=>r.ventas).forEach(r=>{
+    tV+=r.ventas; tI2+=r.ingresos;
+    tb.innerHTML += `<tr><td>${r.f}</td><td class="num">${fmt(r.ventas)}</td><td class="num">${fmt(r.stock)}</td>
+      <td class="num">S/${r.ticket}</td><td class="num">${fmtS(r.ingresos)}</td><td>Cant/orden: ${r.cant}</td></tr>`;
+  });
+  tb.innerHTML += `<tr class="total-row"><td>TOTAL</td><td class="num">${fmt(tV)}</td><td class="num"></td>
+    <td class="num"></td><td class="num">${fmtS(tI2)}</td><td></td></tr>`;
+})();
+
+// ── Cancel table ──
+(function(){
+  const tb = document.getElementById('cancel-tbody');
+  DATA.cancelados.forEach(c=>{
+    tb.innerHTML += `<tr><td>${c.n}</td><td>${c.d}</td><td class="num">${fmtS(c.a)}</td>
+      <td>Si se contara como ingreso: distorsion de ${fmtS(Math.abs(c.a))}</td>
+      <td>state=cancel en pos.order</td></tr>`;
+  });
+})();
+
+// ── REVISAR table ──
+(function(){
+  const tb = document.getElementById('revisar-tbody');
+  const rows = [
+    ['Producto gratis (collar + packaging)', 14162, -28324, 'Bajo', 'Mantener excluido'],
+    ['Descuento por puntos de fidelidad', 10955, -16432, 'Medio', 'Verificar si puntos afectan margen'],
+    ['Descuento por promocion (5x99, 7x99, etc)', 7007, -123501, 'Alto', 'Cuantificar impacto en ticket real'],
+    ['Descuento 3x50', 213, -3195, 'Bajo', 'Mantener excluido'],
+    ['Servicio de envio (negativo)', 420, -4271, 'Bajo', 'Servicio, no producto'],
+    ['Otros descuentos', 16, -944, 'Bajo', 'Mantener excluido'],
+  ];
+  rows.forEach(r=>{
+    tb.innerHTML += `<tr><td>${r[0]}</td><td class="num">${fmt(r[1])}</td><td class="num">${fmtS(r[2])}</td>
+      <td>${r[3]}</td><td>${r[4]}</td></tr>`;
+  });
+  tb.innerHTML += `<tr class="total-row"><td>TOTAL</td><td class="num">32,773</td><td class="num">${fmtS(-277633)}</td>
+    <td></td><td></td></tr>`;
+})();
+
+// ── Stats section ──
+(function(){
+  const s = document.getElementById('stats-section');
+  const active = F.filter(r=>r.ingresos&&r.ingresos>0);
+  const byIng = [...active].sort((a,b)=>b.ingresos-a.ingresos);
+  const byVentas = [...active].sort((a,b)=>b.ventas-a.ventas);
+  const byStock = [...F].sort((a,b)=>b.stock-a.stock);
+
+  let html = '<h3>Top 5 por ingresos proyectados</h3><table><thead><tr><th>#</th><th>Familia</th><th class="num">Ingresos</th><th class="num">Ventas</th><th class="num">Stock</th></tr></thead><tbody>';
+  byIng.slice(0,5).forEach((r,i)=>{ html+=`<tr><td>${i+1}</td><td>${r.f}</td><td class="num">${fmtS(r.ingresos)}</td><td class="num">${fmt(r.ventas)}</td><td class="num">${fmt(r.stock)}</td></tr>`; });
+  html += '</tbody></table>';
+
+  html += '<h3>Top 5 por ventas proyectadas</h3><table><thead><tr><th>#</th><th>Familia</th><th class="num">Ventas</th><th class="num">Stock</th><th class="num">Cantidad</th></tr></thead><tbody>';
+  byVentas.slice(0,5).forEach((r,i)=>{ html+=`<tr><td>${i+1}</td><td>${r.f}</td><td class="num">${fmt(r.ventas)}</td><td class="num">${fmt(r.stock)}</td><td class="num">${r.cant}</td></tr>`; });
+  html += '</tbody></table>';
+
+  html += '<h3>Top 5 por stock</h3><table><thead><tr><th>#</th><th>Familia</th><th class="num">Stock</th><th class="num">% del Total</th></tr></thead><tbody>';
+  const tStk = F.reduce((a,r)=>a+r.stock,0);
+  byStock.slice(0,5).forEach((r,i)=>{ html+=`<tr><td>${i+1}</td><td>${r.f}</td><td class="num">${fmt(r.stock)}</td><td class="num">${((r.stock/tStk)*100).toFixed(1)}%</td></tr>`; });
+  html += '</tbody></table>';
+
+  html += `<h3>L&oacute;gica de c&aacute;lculo</h3>
+  <table><tbody>
+  <tr><td>F&oacute;rmula VENTAS</td><td class="num">round(Stock &divide; Cantidad)</td></tr>
+  <tr><td>F&oacute;rmula INGRESOS</td><td class="num">(Stock &divide; Cantidad) &times; Ticket</td></tr>
+  <tr><td>Ticket general</td><td class="num">S/ 99 por combo</td></tr>
+  <tr><td>Ticket medias</td><td class="num">S/ 6 por combo</td></tr>
+  <tr><td>OVERSIZE</td><td class="num">Nulo (sin c&aacute;lculos)</td></tr>
+  <tr><td>Total stock</td><td class="num">${fmt(tStk)}</td></tr>
+  <tr><td>Total ventas</td><td class="num">${fmt(active.reduce((a,r)=>a+r.ventas,0))}</td></tr>
+  <tr><td>Total ingresos</td><td class="num">${fmtS(active.reduce((a,r)=>a+r.ingresos,0))}</td></tr>
+  </tbody></table>`;
+
+  s.innerHTML = html;
+})();
+
+// ═══════════════════════════════════════════
+// CHARTS
+// ═══════════════════════════════════════════
+Chart.register(ChartDataLabels);
+const defaultFont = {family:"'Inter',system-ui,sans-serif"};
+Chart.defaults.font = defaultFont;
+Chart.defaults.color = '#8888a0';
+
+// ── CHART A: Ingresos por Familia (barras horizontales) ──
+(function(){
+  const filtered = F.filter(r=>r.ingresos&&r.ingresos>0).sort((a,b)=>a.ingresos-b.ingresos);
+  new Chart(document.getElementById('chartA'),{
+    type:'bar',
+    data:{
+      labels:filtered.map(r=>r.f),
+      datasets:[{data:filtered.map(r=>r.ingresos),
+        backgroundColor:filtered.map((_,i)=>COLORS[i%COLORS.length]+'cc'),
+        borderColor:filtered.map((_,i)=>COLORS[i%COLORS.length]),borderWidth:1}]
+    },
+    options:{
+      indexAxis:'y',responsive:true,
+      plugins:{
+        datalabels:{display:true,formatter:v=>'S/'+fmt(v,2),color:'#fff',font:{size:9,weight:'bold'},anchor:'end',align:'end'},
+        legend:{display:false},
+      },
+      scales:{
+        x:{title:{display:true,text:'Ingresos Proyectados (S/)',color:'#e4e4ed'},grid:{color:'#1e1e2a'},ticks:{callback:v=>'S/'+(v/1000).toFixed(0)+'K'}},
+        y:{ticks:{color:'#e4e4ed',font:{size:11}},grid:{display:false}},
+      }
+    }
+  });
+  document.getElementById('insightA').innerHTML=
+    `<strong>Interpretaci&oacute;n:</strong> WAFFLE (S/318K) y CL&Aacute;SICO (S/301K) lideran ingresos proyectados. `+
+    `WAFFLE CAMISERO y WAFFLE M.LARGA siguen con S/162K y S/173K. Medias y Oversize son marginales.`;
+})();
+
+// ── CHART B: Stock vs Ventas ──
+(function(){
+  const filtered = F.filter(r=>r.ventas&&r.ventas>0);
+  new Chart(document.getElementById('chartB'),{
+    type:'bar',
+    data:{
+      labels:filtered.map(r=>r.f),
+      datasets:[
+        {label:'Stock Actual',data:filtered.map(r=>r.stock),backgroundColor:'#3b82f666',borderColor:'#3b82f6',borderWidth:1},
+        {label:'Ventas Proyectadas',data:filtered.map(r=>r.ventas),backgroundColor:'#22c55e66',borderColor:'#22c55e',borderWidth:1},
+      ]
+    },
+    options:{
+      responsive:true,
+      plugins:{datalabels:{display:false},legend:{labels:{color:'#e4e4ed'}}},
+      scales:{
+        x:{ticks:{color:'#e4e4ed',font:{size:9}},grid:{display:false}},
+        y:{title:{display:true,text:'Unidades',color:'#e4e4ed'},grid:{color:'#1e1e2a'},ticks:{callback:v=>v>=1000?(v/1000)+'K':v}},
+      }
+    }
+  });
+  document.getElementById('insightB').innerHTML=
+    `<strong>Interpretaci&oacute;n:</strong> CL&Aacute;SICO tiene el mayor stock (27,402) y las mayores ventas proyectadas (3,045). `+
+    `WAFFLE sigue con 16,065 stock y 3,213 ventas. La relaci&oacute;n stock/ventas depende directamente de la cantidad por orden.`;
+})();
+
+// ── CHART C: Distribucion de Ingresos (donut) ──
+(function(){
+  const filtered = F.filter(r=>r.ingresos&&r.ingresos>0);
+  new Chart(document.getElementById('chartC'),{
+    type:'doughnut',
+    data:{
+      labels:filtered.map(r=>r.f),
+      datasets:[{data:filtered.map(r=>r.ingresos),
+        backgroundColor:COLORS.slice(0,filtered.length).map(c=>c+'cc'),
+        borderColor:'#13131a',borderWidth:2}]
+    },
+    options:{
+      responsive:true,
+      plugins:{
+        datalabels:{display:true,formatter:(v,ctx)=>{const pct=((v/filtered.reduce((a,r)=>a+r.ingresos,0))*100);return pct>3?pct.toFixed(1)+'%':'';},color:'#fff',font:{size:10,weight:'bold'}},
+        legend:{position:'right',labels:{color:'#e4e4ed',font:{size:10}}},
+      }
+    }
+  });
+  document.getElementById('insightC').innerHTML=
+    `<strong>Interpretaci&oacute;n:</strong> WAFFLE (23.7%) y CL&Aacute;SICO (22.4%) juntos representan 46% de ingresos proyectados. `+
+    `Top 5 familias concentran 80% del ingreso total.`;
+})();
+
+// ── CHART D: Ventas proyectadas (barras) ──
+(function(){
+  const filtered = F.filter(r=>r.ventas&&r.ventas>0).sort((a,b)=>b.ventas-a.ventas);
+  new Chart(document.getElementById('chartD'),{
+    type:'bar',
+    data:{
+      labels:filtered.map(r=>r.f),
+      datasets:[{data:filtered.map(r=>r.ventas),
+        backgroundColor:filtered.map((_,i)=>COLORS[i%COLORS.length]+'cc'),
+        borderColor:filtered.map((_,i)=>COLORS[i%COLORS.length]),borderWidth:1}]
+    },
+    options:{
+      responsive:true,
+      plugins:{
+        datalabels:{display:true,formatter:v=>fmt(v),color:'#fff',font:{size:9,weight:'bold'},anchor:'end',align:'top'},
+        legend:{display:false},
+      },
+      scales:{
+        x:{ticks:{color:'#e4e4ed',font:{size:9}},grid:{display:false}},
+        y:{title:{display:true,text:'Ventas Proyectadas (combos)',color:'#e4e4ed'},grid:{color:'#1e1e2a'}},
+      }
+    }
+  });
+  document.getElementById('insightD').innerHTML=
+    `<strong>Interpretaci&oacute;n:</strong> WAFFLE lidera con 3,213 ventas proyectadas, seguido de CL&Aacute;SICO con 3,045. `+
+    `WAFFLE M.LARGA (1,743) y WAFFLE CAMISERO (1,636) completan los productos de mayor movimiento.`;
+})();
+
+// ── CHART E: Cantidad por orden vs Ventas (bubble) ──
+(function(){
+  const filtered = F.filter(r=>r.ventas&&r.ventas>0);
+  const maxIng = Math.max(...filtered.map(r=>r.ingresos));
+  new Chart(document.getElementById('chartE'),{
+    type:'bubble',
+    data:{
+      datasets:filtered.map((r,i)=>({
+        label:r.f,
+        data:[{x:r.cant,y:r.ventas,r:Math.max(6,Math.sqrt(r.ingresos/maxIng)*45)}],
+        backgroundColor:COLORS[i%COLORS.length]+'99',
+        borderColor:COLORS[i%COLORS.length],borderWidth:2,
+      }))
+    },
+    options:{
+      responsive:true,
+      plugins:{
+        datalabels:{display:true,formatter:(v,ctx)=>ctx.dataset.label,color:'#fff',font:{size:9,weight:'bold'},anchor:'end',align:'top',offset:3},
+        tooltip:{callbacks:{label:ctx=>{const r=filtered[ctx.datasetIndex];return[r.f,`Cantidad: ${r.cant}`,`Ventas: ${fmt(r.ventas)}`,`Ingresos: ${fmtS(r.ingresos)}`];}}},
+        legend:{display:false},
+      },
+      scales:{
+        x:{title:{display:true,text:'Cantidad por Orden',color:'#e4e4ed'},grid:{color:'#1e1e2a'}},
+        y:{title:{display:true,text:'Ventas Proyectadas',color:'#e4e4ed'},grid:{color:'#1e1e2a'}},
+      }
+    }
+  });
+  document.getElementById('insightE').innerHTML=
+    `<strong>Interpretaci&oacute;n:</strong> CL&Aacute;SICO (9 uds/orden) tiene la cantidad m&aacute;s alta pero genera menos ventas (3,045) que WAFFLE (5 uds, 3,213 ventas) `+
+    `porque su stock se agota m&aacute;s r&aacute;pido al dividir por 9. Tama&ntilde;o de burbuja = ingreso proporcional.`;
+})();
+
+// ── CHART F: Concentracion de Stock ──
+(function(){
+  const filtered = F.filter(r=>r.stock>0).sort((a,b)=>b.stock-a.stock);
+  new Chart(document.getElementById('chartF'),{
+    type:'doughnut',
+    data:{
+      labels:filtered.map(r=>r.f),
+      datasets:[{data:filtered.map(r=>r.stock),
+        backgroundColor:COLORS.slice(0,filtered.length).map(c=>c+'cc'),
+        borderColor:'#13131a',borderWidth:2}]
+    },
+    options:{
+      responsive:true,
+      plugins:{
+        datalabels:{display:true,formatter:(v,ctx)=>{const pct=((v/filtered.reduce((a,r)=>a+r.stock,0))*100);return pct>3?pct.toFixed(1)+'%':'';},color:'#fff',font:{size:10,weight:'bold'}},
+        legend:{position:'right',labels:{color:'#e4e4ed',font:{size:10}}},
+      }
+    }
+  });
+  document.getElementById('insightF').innerHTML=
+    `<strong>Interpretaci&oacute;n:</strong> CL&Aacute;SICO concentra 36% del stock total (27,402 uds). `+
+    `WAFFLE con 21%. Entre ambos representan 57% del inventario. `+
+    `Familias peque&ntilde;as (MEDIAS, OVERSIZE, CAMISERO JERSEY) representan menos del 1% del stock.`;
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,24 @@
+---
+description: Alcance y forma de trabajo para cambios en reportes Odoo
+alwaysApply: true
+---
+
+# Project Scope
+
+## Objetivo
+- Mantener este repositorio enfocado en reportes/paneles conectados a Odoo.
+- Priorizar exactitud de métricas, consistencia de filtros y trazabilidad de datos.
+
+## Límites de cambio
+- No reestructurar áreas no relacionadas con la tarea solicitada.
+- No introducir nuevas tecnologías/frameworks sin justificar costo/beneficio.
+- No borrar o reemplazar conectores de Odoo sin instrucción explícita.
+
+## Forma de implementación
+- Cambios pequeños, modulares y verificables.
+- Definir primero contrato de datos (inputs, filtros, outputs).
+- Evitar lógica duplicada entre backend y frontend.
+
+## Comunicación en PR/cambios
+- Explicar qué se cambió y por qué.
+- Incluir validaciones ejecutadas y resultado de consistencia numérica.

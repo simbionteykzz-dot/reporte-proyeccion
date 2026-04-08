@@ -1,0 +1,24 @@
+---
+description: Criterios de terminado y validación para cambios de reportes
+alwaysApply: true
+---
+
+# Testing and Done Criteria
+
+## Checklist obligatorio
+- [ ] Endpoint responde 200 con filtros válidos.
+- [ ] Manejo de error claro para filtros inválidos.
+- [ ] Consistencia numérica validada (`total == pie == tabla`).
+- [ ] UI renderiza vacío sin romper cuando no hay datos.
+- [ ] No se introducen regresiones en archivos no relacionados.
+
+## Validación funcional
+- Probar al menos 1 familia principal (ej. CLASICO).
+- Probar 2 combinaciones de filtros (año completo y subconjunto por mes/semana).
+- Verificar que la tabla matricial y gráficos muestran los mismos valores.
+
+## Criterio de cierre
+- No se considera terminado si falta:
+  - Contrato de datos documentado,
+  - Validación de consistencia,
+  - Mensaje de error útil para usuario.

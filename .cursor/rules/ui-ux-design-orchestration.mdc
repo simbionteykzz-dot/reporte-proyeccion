@@ -1,0 +1,31 @@
+---
+description: Orquestación de skills UI/UX + Design con agentes para trabajo de interfaz
+alwaysApply: true
+---
+
+# UI UX Design Orchestration
+
+## Cuándo aplicar esta regla
+- Si la tarea afecta diseño visual, layout, usabilidad o interacción.
+- Si hay referencia visual (captura, mockup, Figma URL, wireframe).
+
+## Flujo obligatorio
+1. **Diseño/UX primero**:
+   - Revisar objetivo visual y criterios de éxito.
+   - Definir componentes y estados (loading, vacío, error, éxito).
+2. **Implementación guiada por diseño**:
+   - Mantener consistencia entre tabla, gráficos, filtros y KPIs.
+   - Reusar tokens (colores, espaciado, tipografía) en vez de estilos sueltos.
+3. **Validación visual y funcional**:
+   - Verificar alineación con referencia.
+   - Verificar accesibilidad básica (contraste, foco, legibilidad).
+
+## Agentes recomendados por etapa
+- Descubrimiento UI: `explore`
+- Diseño UX especializado: `ui-ux-designer`
+- Implementación de frontend: `frontend-developer` o `generalPurpose`
+- Verificación y arranque: `shell`
+
+## Integración con skills instaladas
+- Si hay Figma: usar skills de Figma (`figma-implement-design`, `figma-generate-design`, `figma-use`).
+- Si es rediseño de panel: combinar skill interna de UI/UX del proyecto + `report-qa-matrix`.

@@ -1,0 +1,30 @@
+---
+description: Estándares para conexión Odoo (timeouts, paginación, retries y fallback de campos)
+globs: "**/odoo_connector.py"
+alwaysApply: false
+---
+
+# Odoo Connector Standards
+
+## Objetivo
+Garantizar consultas estables y compatibles con distintas versiones de Odoo.
+
+## Reglas de implementación
+- Toda consulta masiva debe usar paginación (`search_read` por páginas).
+- Configurar timeouts de red explícitos y mensajes de error accionables.
+- Evitar supuestos rígidos de campos; usar fallback por versión cuando corresponda.
+- No duplicar lógica de autenticación/conexión en múltiples funciones.
+
+## Fallback de campos (reportes de movimientos)
+- Preferir campo principal definido por contrato.
+- Si el campo no existe, fallback explícito y documentado.
+- Registrar en respuesta/meta qué fallback se usó (si aplica).
+
+## Rendimiento
+- Evitar `read` por registro individual en loops grandes.
+- Priorizar lecturas en bloque y luego agregación local.
+- Añadir límites de seguridad en tamaño de consulta.
+
+## Validación mínima
+- Si falla Odoo, devolver error claro (no silencioso).
+- Probar con al menos un caso real de datos.
