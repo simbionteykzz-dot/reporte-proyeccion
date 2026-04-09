@@ -124,6 +124,14 @@ def login_page():
     return redirect("/login.html", code=302)
 
 
+@app.route("/login.html")
+def login_html_fallback():
+    """Si el rewrite llega antes que el CDN estatico, servir el HTML desde public/ (includeFiles)."""
+    resp = send_from_directory(str(PUBLIC_DIR), "login.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return resp
+
+
 @app.route("/")
 def index():
     resp = send_from_directory(str(PUBLIC_DIR), "dashboard.html")
