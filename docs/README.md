@@ -5,6 +5,7 @@ Material de referencia y presentación del panel **Proyección Inventario** cone
 | Documento | Contenido |
 |-----------|-------------|
 | [Proyección Inventario — visión general](./PROYECCION_INVENTARIO.md) | Qué es el proyecto, para qué sirve y qué se espera que haga (listo para presentar). |
+| [Interfaz por segmentos](./UI_SEGMENTOS.md) | Cada zona de la página (sidebar, KPIs, pestañas, insights, alertas, login, auditoría). |
 | [Arquitectura y stack](./ARQUITECTURA.md) | Estructura del repositorio, backend, frontend estático y despliegue. |
 | [Variables de entorno](./VARIABLES_ENTORNO.md) | Credenciales Odoo, panel y opciones de sesión. |
 
