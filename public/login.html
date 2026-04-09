@@ -78,7 +78,7 @@
       return r.json().then(function (j) { return { ok: r.ok, status: r.status, body: j }; });
     }).then(function (x) {
       if (x.ok && x.body && x.body.ok) {
-        window.location.href = '/';
+        window.location.href = '/dashboard.html';
         return;
       }
       err.textContent = (x.body && x.body.error) ? x.body.error : 'No se pudo iniciar sesión';

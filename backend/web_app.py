@@ -134,13 +134,29 @@ def login_html_fallback():
 
 @app.route("/")
 def index():
+    # En Vercel el HTML debe servirse desde public/ (CDN); send_from_directory aqui suele dar 404 sin bundle extra.
+    r = redirect("/dashboard.html", code=302)
+    r.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return r
+
+
+@app.route("/auditoria")
+def auditoria():
+    r = redirect("/reporte_auditoria.html", code=302)
+    r.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    return r
+
+
+@app.route("/dashboard.html")
+def dashboard_html_page():
+    """Local: sirve desde public/. En Vercel suele atenderlo el CDN antes que Flask."""
     resp = send_from_directory(str(PUBLIC_DIR), "dashboard.html")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return resp
 
 
-@app.route("/auditoria")
-def auditoria():
+@app.route("/reporte_auditoria.html")
+def reporte_auditoria_html_page():
     resp = send_from_directory(str(PUBLIC_DIR), "reporte_auditoria.html")
     resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
     return resp
