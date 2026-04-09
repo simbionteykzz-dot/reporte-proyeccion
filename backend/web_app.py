@@ -44,7 +44,17 @@ CORS(app, supports_credentials=True)
 
 def _auth_configured() -> bool:
     """Si hay DASHBOARD_PASSWORD en entorno, el panel exige login."""
-    return bool(os.environ.get("DASHBOARD_PASSWORD", "").strip())
+    return bool((os.environ.get("DASHBOARD_PASSWORD") or "").strip())
+
+
+def _env_strip(name: str) -> str:
+    """Evita fallos por espacios o saltos al pegar variables en Vercel."""
+    return (os.environ.get(name) or "").strip()
+
+
+def _dashboard_auth_env_ok() -> bool:
+    """True si email y contrasena de panel estan definidos (sin revelar valores)."""
+    return bool(_env_strip("DASHBOARD_LOGIN_EMAIL") and _env_strip("DASHBOARD_PASSWORD"))
 
 
 def _dashboard_session_ok() -> bool:
@@ -137,8 +147,8 @@ def api_auth_login():
     data = request.get_json(silent=True) or {}
     email = (data.get("email") or "").strip().lower()
     password = data.get("password") or ""
-    expected_email = (os.environ.get("DASHBOARD_LOGIN_EMAIL") or "").strip().lower()
-    expected_password = os.environ.get("DASHBOARD_PASSWORD") or ""
+    expected_email = _env_strip("DASHBOARD_LOGIN_EMAIL").lower()
+    expected_password = _env_strip("DASHBOARD_PASSWORD")
     if not expected_email:
         return jsonify({"error": "Servidor sin DASHBOARD_LOGIN_EMAIL configurado"}), 503
     if email == expected_email and _password_ok(password, expected_password):
@@ -166,6 +176,8 @@ def api_auth_status():
 
 @app.route("/api/health")
 def health():
+    dash_html = PUBLIC_DIR / "dashboard.html"
+    login_html = PUBLIC_DIR / "login.html"
     return jsonify({
         "ok": True,
         "odoo_configured": is_configured(),
@@ -173,6 +185,13 @@ def health():
         "python_dotenv_installed": dotenv_package_available(),
         "dotenv_files": dotenv_file_status(),
         "time": datetime.now().isoformat(timespec="seconds"),
+        "deployment": {
+            "public_dir_exists": PUBLIC_DIR.is_dir(),
+            "dashboard_html_on_disk": dash_html.is_file(),
+            "login_html_on_disk": login_html.is_file(),
+            "dashboard_auth_env_ok": _dashboard_auth_env_ok(),
+            "flask_secret_key_set": bool(_env_strip("FLASK_SECRET_KEY")),
+        },
     })
 
 

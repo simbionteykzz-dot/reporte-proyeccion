@@ -3,6 +3,9 @@
   "functions": {
     "app.py": {
       "includeFiles": "public/**"
+    },
+    "backend/app.py": {
+      "includeFiles": "public/**"
     }
   }
 }
