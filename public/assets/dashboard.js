@@ -103,7 +103,7 @@
         `<div style="color:var(--color-warning);font-size:0.9375rem;padding:48px 24px;text-align:center;max-width:520px;margin:0 auto">
           <p style="font-weight:600;margin-bottom:10px">No hay una segunda compania para Bravos</p>
           <p style="color:var(--color-text-muted);line-height:1.5">El usuario de la API debe tener acceso a ambas empresas en Odoo, o configura <code style="font-size:0.8em">ODOO_BRAVOS_COMPANY_ID</code> en el entorno con el ID numerico de la empresa Bravos.</p>
-          <button type="button" class="btn btn-primary" style="margin-top:20px" data-back-prod>Volver a Produccion</button>
+          <button type="button" class="btn btn-primary" style="margin-top:20px" data-back-prod>Volver a Overshark</button>
         </div>`;
       d.getElementById('loading-panel').querySelector('[data-back-prod]')?.addEventListener('click', () => setNav('produccion'));
       return;
@@ -138,7 +138,7 @@
     return Boolean(f.excluido_metricas);
   }
 
-  /** Fila sin KPI de proyeccion (OVERSIZE en Produccion; Bravos excluidos arriba). */
+  /** Fila sin KPI de proyeccion (OVERSIZE en Overshark; Bravos excluidos arriba). */
   function rowSinMetricas(f) {
     return filaBravosSinMetricas(f) || f.nombre === 'OVERSIZE';
   }
