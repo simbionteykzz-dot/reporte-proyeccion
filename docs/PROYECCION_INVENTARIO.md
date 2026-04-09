@@ -10,29 +10,28 @@ No sustituye a Odoo: **lee** datos y **calcula** indicadores para apoyar decisio
 
 ## Para qué sirve (función principal)
 
-1. **Visibilidad unificada**  
-   Ofrecer una vista consolidada por compañía, familia de producto y, cuando aplica, la vista **Bravos** (plantillas de producto concretas).
-
-2. **Proyección y riesgo**  
-   Apoyar la estimación de **cómo evoluciona el inventario** frente a la demanda reciente, incluyendo métricas de **días restantes**, **proyección de fin de mes** y **clasificación de criticidad** cuando el stock se agota o está en zona de riesgo.
-
-3. **Trazabilidad de reglas**  
-   Las cantidades por orden, tickets comerciales y exclusiones de categorías están **codificadas y documentadas en el backend** (`analytics.py`), de modo que los números del panel pueden explicarse frente a negocio.
-
-4. **Acceso controlado**  
-   El acceso al panel se protege con **credenciales definidas solo en el servidor** (variables de entorno), sin exponer contraseñas en el código del cliente.
+1. **Visibilidad unificada**
+  Ofrecer una vista consolidada por compañía, familia de producto y, cuando aplica, la vista **Bravos** (plantillas de producto concretas).
+2. **Proyección y riesgo**
+  Apoyar la estimación de **cómo evoluciona el inventario** frente a la demanda reciente, incluyendo métricas de **días restantes**, **proyección de fin de mes** y **clasificación de criticidad** cuando el stock se agota o está en zona de riesgo.
+3. **Trazabilidad de reglas**
+  Las cantidades por orden, tickets comerciales y exclusiones de categorías están **codificadas y documentadas en el backend** (`analytics.py`), de modo que los números del panel pueden explicarse frente a negocio.
+4. **Acceso controlado**
+  El acceso al panel se protege con **credenciales definidas solo en el servidor** (variables de entorno), sin exponer contraseñas en el código del cliente.
 
 ---
 
 ## Qué se espera que haga el sistema
 
-| Expectativa | Descripción |
-|-------------|-------------|
-| **Conectar a Odoo** | Con las variables `ODOO_*` correctas, el sistema debe autenticarse y leer modelos acordados (productos, stock, ventas, compañías, etc.). |
-| **Respetar filtros** | Fechas, compañía y pestaña Producción / Bravos deben cambiar los datos mostrados de forma coherente en KPIs, tablas y gráficos. |
-| **Consistencia numérica** | Totales y desgloses (por talla, familia, matriz) deben **cuadrar** entre sí; el proyecto define criterios de QA para evitar desalineaciones. |
-| **Comportamiento sin datos** | Si no hay datos o Odoo no está configurado, la interfaz debe mostrar estados claros (vacío / error) sin romper la aplicación. |
-| **Despliegue web** | El panel debe poder ejecutarse en un entorno HTTPS (por ejemplo Vercel) con sesión y cookies configuradas de forma adecuada para producción. |
+
+| Expectativa                  | Descripción                                                                                                                                  |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Conectar a Odoo**          | Con las variables `ODOO_`* correctas, el sistema debe autenticarse y leer modelos acordados (productos, stock, ventas, compañías, etc.).     |
+| **Respetar filtros**         | Fechas, compañía y pestaña Producción / Bravos deben cambiar los datos mostrados de forma coherente en KPIs, tablas y gráficos.              |
+| **Consistencia numérica**    | Totales y desgloses (por talla, familia, matriz) deben **cuadrar** entre sí; el proyecto define criterios de QA para evitar desalineaciones. |
+| **Comportamiento sin datos** | Si no hay datos o Odoo no está configurado, la interfaz debe mostrar estados claros (vacío / error) sin romper la aplicación.                |
+| **Despliegue web**           | El panel debe poder ejecutarse en un entorno HTTPS (por ejemplo Vercel) con sesión y cookies configuradas de forma adecuada para producción. |
+
 
 ---
 

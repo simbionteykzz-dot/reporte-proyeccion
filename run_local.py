@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Arranque local desde la raíz del repo (public/, assets/, .env)."""
+"""Arranque local desde la raíz del repo (public/, .env)."""
 from __future__ import annotations
 
 import os

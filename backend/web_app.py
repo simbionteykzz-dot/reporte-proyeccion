@@ -23,10 +23,11 @@ from analytics import (
     get_companies_for_dashboard_user,
 )
 
-# Raiz del repo (padre de /backend): public/, assets/, .env
+# Raiz del repo (padre de /backend): public/, .env
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PUBLIC_DIR = REPO_ROOT / "public"
-ASSETS_DIR = REPO_ROOT / "assets"
+# Un solo origen de estaticos con public/ (local + Vercel CDN)
+ASSETS_DIR = REPO_ROOT / "public" / "assets"
 
 # Cargar .env antes de leer FLASK_SECRET_KEY / credenciales del panel
 missing_config_keys()
