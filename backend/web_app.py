@@ -7,7 +7,7 @@ import xmlrpc.client
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from flask import Flask, jsonify, redirect, request, send_from_directory, session, url_for
+from flask import Flask, jsonify, redirect, request, send_from_directory, session
 from flask_cors import CORS
 
 from odoo_connector import (
@@ -70,7 +70,8 @@ def _require_dashboard_auth():
     path = request.path or ""
     if path.startswith("/assets/"):
         return None
-    if path == "/login" and request.method == "GET":
+    # Formulario estatico en /login.html (CDN); /login solo redirige
+    if path in ("/login", "/login.html") and request.method == "GET":
         return None
     if path.startswith("/api/auth/"):
         return None
@@ -79,8 +80,8 @@ def _require_dashboard_auth():
     if _dashboard_session_ok():
         return None
     if path.startswith("/api/"):
-        return jsonify({"error": "No autenticado", "login": "/login"}), 401
-    return redirect(url_for("login_page"))
+        return jsonify({"error": "No autenticado", "login": "/login.html"}), 401
+    return redirect("/login.html")
 
 
 def _request_dates() -> tuple[str | None, str | None]:
@@ -109,13 +110,8 @@ def _request_bravos_tab() -> bool:
 
 @app.route("/login")
 def login_page():
-    if not _auth_configured():
-        return redirect("/")
-    if _dashboard_session_ok():
-        return redirect("/")
-    resp = send_from_directory(str(PUBLIC_DIR), "login.html")
-    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-    return resp
+    """El HTML real se sirve como /login.html (public/ en CDN). Evita 404 en serverless sin public/ en el bundle."""
+    return redirect("/login.html", code=302)
 
 
 @app.route("/")

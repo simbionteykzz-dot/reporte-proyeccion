@@ -63,7 +63,7 @@
   async function apiFetch(url, init) {
     const resp = await fetch(url, Object.assign({ credentials: 'same-origin' }, init || {}));
     if (resp.status === 401) {
-      w.location.href = '/login';
+      w.location.href = '/login.html';
       throw new Error('No autenticado');
     }
     return resp;
@@ -566,7 +566,7 @@
         try {
           await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' });
         } catch (_) { /* ignore */ }
-        w.location.href = '/login';
+        w.location.href = '/login.html';
       });
     });
 
