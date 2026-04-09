@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hmac
+import json
 import os
 import xmlrpc.client
 from datetime import datetime, timedelta
@@ -43,19 +44,49 @@ if os.environ.get("SESSION_COOKIE_SECURE", "").strip().lower() in ("1", "true", 
 CORS(app, supports_credentials=True)
 
 
-def _auth_configured() -> bool:
-    """Si hay DASHBOARD_PASSWORD en entorno, el panel exige login."""
-    return bool((os.environ.get("DASHBOARD_PASSWORD") or "").strip())
-
-
 def _env_strip(name: str) -> str:
     """Evita fallos por espacios o saltos al pegar variables en Vercel."""
     return (os.environ.get(name) or "").strip()
 
 
+def _dashboard_user_pairs() -> list[tuple[str, str]]:
+    """
+    Usuarios del panel: (email_lower, password).
+    Prioridad 1: DASHBOARD_USERS = JSON [{"email":"...","password":"..."}, ...]
+    Prioridad 2: DASHBOARD_LOGIN_EMAIL + DASHBOARD_PASSWORD (un solo usuario, compatible con despliegues actuales).
+    """
+    raw = _env_strip("DASHBOARD_USERS")
+    if raw:
+        try:
+            data = json.loads(raw)
+            if isinstance(data, list):
+                out: list[tuple[str, str]] = []
+                for item in data:
+                    if not isinstance(item, dict):
+                        continue
+                    em = (item.get("email") or "").strip().lower()
+                    pw = (item.get("password") or "").strip()
+                    if em and pw:
+                        out.append((em, pw))
+                if out:
+                    return out
+        except (json.JSONDecodeError, TypeError, ValueError):
+            pass
+    em = _env_strip("DASHBOARD_LOGIN_EMAIL").lower()
+    pw = _env_strip("DASHBOARD_PASSWORD")
+    if em and pw:
+        return [(em, pw)]
+    return []
+
+
+def _auth_configured() -> bool:
+    """Si hay al menos un usuario de panel definido, se exige login."""
+    return len(_dashboard_user_pairs()) > 0
+
+
 def _dashboard_auth_env_ok() -> bool:
-    """True si email y contrasena de panel estan definidos (sin revelar valores)."""
-    return bool(_env_strip("DASHBOARD_LOGIN_EMAIL") and _env_strip("DASHBOARD_PASSWORD"))
+    """True si hay usuarios configurados (sin revelar valores)."""
+    return len(_dashboard_user_pairs()) > 0
 
 
 def _dashboard_session_ok() -> bool:
@@ -167,19 +198,17 @@ def reporte_auditoria_html_page():
 
 @app.route("/api/auth/login", methods=["POST"])
 def api_auth_login():
-    if not _auth_configured():
+    pairs = _dashboard_user_pairs()
+    if not pairs:
         return jsonify({"ok": True, "auth_disabled": True})
     data = request.get_json(silent=True) or {}
     email = (data.get("email") or "").strip().lower()
     password = data.get("password") or ""
-    expected_email = _env_strip("DASHBOARD_LOGIN_EMAIL").lower()
-    expected_password = _env_strip("DASHBOARD_PASSWORD")
-    if not expected_email:
-        return jsonify({"error": "Servidor sin DASHBOARD_LOGIN_EMAIL configurado"}), 503
-    if email == expected_email and _password_ok(password, expected_password):
-        session.permanent = True
-        session["dashboard_ok"] = True
-        return jsonify({"ok": True})
+    for expected_email, expected_password in pairs:
+        if email == expected_email and _password_ok(password, expected_password):
+            session.permanent = True
+            session["dashboard_ok"] = True
+            return jsonify({"ok": True})
     return jsonify({"error": "Credenciales incorrectas"}), 401
 
 
@@ -215,6 +244,7 @@ def health():
             "dashboard_html_on_disk": dash_html.is_file(),
             "login_html_on_disk": login_html.is_file(),
             "dashboard_auth_env_ok": _dashboard_auth_env_ok(),
+            "dashboard_users_count": len(_dashboard_user_pairs()),
             "flask_secret_key_set": bool(_env_strip("FLASK_SECRET_KEY")),
         },
     })
