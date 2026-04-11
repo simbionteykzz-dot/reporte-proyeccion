@@ -10,7 +10,7 @@
   // ── State ──
   const S = {
     data: null, theme: localStorage.getItem('soni-theme') || 'dark',
-    sortBy: 'ingresos_brutos', sortDir: 'desc', tab: 'income', charts: {},
+    sortBy: 'ingresos_brutos', sortDir: 'desc', tab: 'income', charts: {}, riskCharts: {},
     nav: 'produccion',
     bravosCompanyId: null,
     bravosName: 'Bravos',
@@ -25,6 +25,8 @@
     invRisksTimer: null,
     /** `__ALL__` o primera palabra del nombre de plantilla (ej. CLASICO) */
     invFilterGrupo: '__ALL__',
+    /** `__ALL__` o valor de columna color (Odoo / atributo) */
+    invFilterColor: '__ALL__',
   };
 
   // ── Format helpers ──
@@ -41,6 +43,7 @@
     localStorage.setItem('soni-theme', t);
     S.theme = t;
     renderCurrentTab();
+    if (S.view === 'risks' && S.invRisks) renderRiskChartsPayload(S.invRisks);
   }
 
   // ── Animate counter ──
@@ -108,6 +111,83 @@
     return params;
   }
 
+  /** Misma clave para `/api/dashboard` e `/api/inventory-risks` con los filtros actuales. */
+  function buildDataContextKey() {
+    const p = buildQueryParams().join('&');
+    return `${S.nav}|${p}`;
+  }
+
+  function cloneJson(x) {
+    return x == null ? x : JSON.parse(JSON.stringify(x));
+  }
+
+  const CACHE_MAX_ENTRIES = 16;
+  const dashCacheLru = new Map();
+  const invCacheLru = new Map();
+
+  /** Máx. filas por tabla de riesgo (API ya limita por bucket). */
+  const RISK_TABLE_ROWS = 200;
+
+  function cacheLruSet(map, key, value) {
+    if (map.has(key)) map.delete(key);
+    map.set(key, value);
+    while (map.size > CACHE_MAX_ENTRIES) {
+      const k = map.keys().next().value;
+      map.delete(k);
+    }
+  }
+
+  function cacheLruGet(map, key) {
+    if (!map.has(key)) return undefined;
+    const v = map.get(key);
+    map.delete(key);
+    map.set(key, v);
+    return v;
+  }
+
+  let dashRevalidateTimer = null;
+  let invRevalidateTimer = null;
+
+  function scheduleDashboardRevalidate(capturedKey) {
+    if (dashRevalidateTimer) clearTimeout(dashRevalidateTimer);
+    dashRevalidateTimer = setTimeout(() => {
+      dashRevalidateTimer = null;
+      if (buildDataContextKey() !== capturedKey) return;
+      if (S.view !== 'dashboard') return;
+      fetchData({ background: true });
+    }, 650);
+  }
+
+  function scheduleInvRisksRevalidate(capturedKey) {
+    if (invRevalidateTimer) clearTimeout(invRevalidateTimer);
+    invRevalidateTimer = setTimeout(() => {
+      invRevalidateTimer = null;
+      if (buildDataContextKey() !== capturedKey) return;
+      if (S.view !== 'inventory' && S.view !== 'risks') return;
+      fetchInventoryRisks(true, { background: true });
+    }, 650);
+  }
+
+  function updateDashboardCacheBadge(fromCache) {
+    const el = d.getElementById('badge-cache');
+    if (!el) return;
+    if (fromCache) {
+      el.hidden = false;
+      el.textContent = 'Instantáneo (caché)';
+      el.title = 'Vista servida desde memoria. Pulsa Actualizar para forzar Odoo.';
+    } else {
+      el.hidden = true;
+      el.textContent = '';
+    }
+  }
+
+  function updateInvRisksCacheBadge(fromCache) {
+    [d.getElementById('inv-badge-cache'), d.getElementById('risk-badge-cache')].forEach((el) => {
+      if (!el) return;
+      el.hidden = !fromCache;
+    });
+  }
+
   function inventoryRisksUrl() {
     let url = '/api/inventory-risks';
     const params = buildQueryParams();
@@ -145,8 +225,18 @@
       S.invRisksTimer = null;
     }
     if (view === 'inventory' || view === 'risks') {
-      S.invRisksTimer = setInterval(() => fetchInventoryRisks(true), 5 * 60 * 1000);
+      S.invRisksTimer = setInterval(() => fetchInventoryRisks(true, { force: true }), 5 * 60 * 1000);
     }
+    syncRiskNavActive();
+  }
+
+  function syncRiskNavActive() {
+    const onRisks = S.view === 'risks';
+    const k = S.riskFocus || 'dias';
+    d.querySelectorAll('[data-panel="risks"]').forEach((btn) => {
+      const fk = btn.getAttribute('data-risk-focus') || 'dias';
+      btn.classList.toggle('nav-item--risk-active', onRisks && fk === k);
+    });
   }
 
   /** Orden de columnas de talla en la matriz */
@@ -184,6 +274,15 @@
     return String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
   }
 
+  /** Nombre legible para riesgos: sin prefijo Odoo tipo [OVER_REF0002] que tapa el nombre. */
+  function riskProductDisplayName(r) {
+    const v = invStripCodePrefix(String(r?.nombre_variante || '').trim()).trim();
+    const p = invStripCodePrefix(String(r?.nombre_plantilla || '').trim()).trim();
+    if (v) return v;
+    if (p) return p;
+    return '—';
+  }
+
   function populateInvGrupoSelect(inv) {
     const sel = d.getElementById('inv-filter-grupo');
     if (!sel) return;
@@ -197,14 +296,52 @@
     if (!ok) S.invFilterGrupo = '__ALL__';
   }
 
+  /** Normaliza etiqueta de color (Odoo a veces devuelve «Color: Menta»). */
+  function invColorValue(r) {
+    let c = (r && r.color != null ? String(r.color) : '').trim();
+    c = c.replace(/^color\s*:\s*/i, '').trim();
+    return c || '—';
+  }
+
+  /** Colores posibles según familia actual: evita mostrar «Menta» si solo existe en otra familia. */
+  function invRowsForColorOptions(inv) {
+    let rows = [...(inv || [])];
+    if (S.invFilterGrupo && S.invFilterGrupo !== '__ALL__') {
+      rows = rows.filter(r => invGrupoPrenda(r.nombre_plantilla) === S.invFilterGrupo);
+    }
+    return rows;
+  }
+
+  function invApplyInventoryFilters(inv) {
+    let rows = [...(inv || [])];
+    if (S.invFilterGrupo && S.invFilterGrupo !== '__ALL__') {
+      rows = rows.filter(r => invGrupoPrenda(r.nombre_plantilla) === S.invFilterGrupo);
+    }
+    if (S.invFilterColor && S.invFilterColor !== '__ALL__') {
+      rows = rows.filter(r => invColorValue(r) === S.invFilterColor);
+    }
+    return rows;
+  }
+
+  function populateInvColorSelect(inv) {
+    const sel = d.getElementById('inv-filter-color');
+    if (!sel) return;
+    const scoped = invRowsForColorOptions(inv);
+    const vals = [...new Set(scoped.map(r => invColorValue(r)))].sort((a, b) => a.localeCompare(b, 'es'));
+    const prev = S.invFilterColor;
+    sel.innerHTML = `<option value="__ALL__">Todos los colores</option>${
+      vals.map(v => `<option value="${invEscAttr(v)}">${escHtml(v)}</option>`).join('')
+    }`;
+    const ok = prev === '__ALL__' || vals.includes(prev);
+    sel.value = ok ? prev : '__ALL__';
+    if (!ok) S.invFilterColor = '__ALL__';
+  }
+
+  /** `inv` ya debe venir filtrado por familia y color (ver `invApplyInventoryFilters`). */
   function renderInvTallaMatrix(inv) {
     const wrap = d.getElementById('inv-matrix-wrap');
     if (!wrap) return;
-    const rows = Array.isArray(inv) ? inv : [];
-    const filt = S.invFilterGrupo || '__ALL__';
-    const filtered = filt === '__ALL__'
-      ? rows
-      : rows.filter(r => invGrupoPrenda(r.nombre_plantilla) === filt);
+    const filtered = Array.isArray(inv) ? inv : [];
 
     if (!filtered.length) {
       wrap.innerHTML = '<p class="inv-matrix-empty">Sin filas para este filtro.</p>';
@@ -243,7 +380,7 @@
       tallas.map(t => `<th class="th-num">${escHtml(t)}</th>`).join('')
     }`;
     const trs = lineKeys.map((line) => {
-      const cells = tallas.map(t => `<td class="td-num">${fmt.n(matrix[line][t] ?? 0, 2)}</td>`).join('');
+      const cells = tallas.map(t => `<td class="td-num">${fmt.n(matrix[line][t] ?? 0, 0)}</td>`).join('');
       return `<tr><td class="inv-matrix-line">${escHtml(line)}</td>${cells}</tr>`;
     });
 
@@ -257,7 +394,8 @@
       <td>${escHtml(r.nombre_variante || '')}</td>
       <td>${escHtml(r.nombre_plantilla || '')}</td>
       <td>${escHtml(r.marca || '—')}</td>
-      <td>${escHtml(r.categoria || '')}</td>
+      <td>${escHtml(r.categoria || '—')}</td>
+      <td>${escHtml(invColorValue(r))}</td>
       <td>${fmt.n(r.stock, 2)}</td>
       <td>${fmt.n(r.compras_periodo, 2)}</td>
       <td>${fmt.n(r.ventas_periodo, 2)}</td>
@@ -266,20 +404,92 @@
     </tr>`;
   }
 
-  /** Tabla detalle + matriz; respeta `S.invFilterGrupo` en el detalle y la matriz. */
+  function invSumStock(part) {
+    return part.reduce((acc, r) => acc + (Number(r.stock) || 0), 0);
+  }
+
+  /** Marca con mayor suma de stock en el subconjunto (referencia rápida en el encabezado del bloque). */
+  function invTopMarcaByStock(part) {
+    const m = {};
+    part.forEach((r) => {
+      const k = String(r.marca_producto != null ? r.marca_producto : r.marca || '').trim() || '—';
+      m[k] = (m[k] || 0) + (Number(r.stock) || 0);
+    });
+    let best = '—';
+    let mx = -1;
+    Object.keys(m).forEach((k) => {
+      if (m[k] > mx) {
+        mx = m[k];
+        best = k;
+      }
+    });
+    return best;
+  }
+
+  function invDetailThead() {
+    return `<thead><tr>
+      <th>Código</th>
+      <th>Variante</th>
+      <th>Plantilla</th>
+      <th>Empresa</th>
+      <th>Tipo / categoría</th>
+      <th>Color</th>
+      <th class="th-num">Stock</th>
+      <th class="th-num">Compras (periodo)</th>
+      <th class="th-num">Ventas (periodo)</th>
+      <th class="th-num">Salida / día</th>
+      <th class="th-num">Días agotar</th>
+    </tr></thead>`;
+  }
+
+  /** Detalle agrupado por familia (acordeón) + matriz; respeta filtros familia y color. */
   function renderInvDetailAndMatrix(inv) {
     const full = inv || [];
-    const tbody = d.getElementById('inv-table-body');
-    let rows = [...full];
-    if (S.invFilterGrupo && S.invFilterGrupo !== '__ALL__') {
-      rows = rows.filter(r => invGrupoPrenda(r.nombre_plantilla) === S.invFilterGrupo);
-    }
-    if (tbody) {
-      const sorted = [...rows].sort((a, b) => (Number(b.stock) || 0) - (Number(a.stock) || 0));
-      tbody.innerHTML = sorted.map(rowInv).join('') || '<tr><td colspan="10">Sin filas para este filtro.</td></tr>';
-    }
+    const root = d.getElementById('inv-detail-root');
+    const act = d.getElementById('inv-detail-actions');
     populateInvGrupoSelect(full);
-    renderInvTallaMatrix(full);
+    populateInvColorSelect(full);
+    const rows = invApplyInventoryFilters(full);
+    renderInvTallaMatrix(rows);
+
+    if (!root) return;
+
+    if (!rows.length) {
+      root.innerHTML = '<p class="inv-detail-empty">Sin filas para este filtro.</p>';
+      if (act) act.hidden = true;
+      return;
+    }
+
+    const byGrupo = new Map();
+    rows.forEach((r) => {
+      const g = invGrupoPrenda(r.nombre_plantilla);
+      if (!byGrupo.has(g)) byGrupo.set(g, []);
+      byGrupo.get(g).push(r);
+    });
+    const grupos = [...byGrupo.keys()].sort((a, b) => a.localeCompare(b, 'es'));
+    const filteredOne = S.invFilterGrupo && S.invFilterGrupo !== '__ALL__';
+
+    const html = grupos.map((g) => {
+      const part = byGrupo.get(g);
+      const sorted = [...part].sort((a, b) => (Number(b.stock) || 0) - (Number(a.stock) || 0));
+      const n = part.length;
+      const sum = invSumStock(part);
+      const topM = invTopMarcaByStock(part);
+      const open = filteredOne || grupos.length === 1 ? ' open' : '';
+      const tbody = sorted.map(rowInv).join('');
+      return `<details class="inv-grupo-card"${open}>
+        <summary class="inv-grupo-summary">
+          <span class="inv-grupo-title">${escHtml(g)}</span>
+          <span class="inv-grupo-meta"><span class="inv-grupo-pill">${fmt.n(n, 0)} ref.</span><span class="inv-grupo-pill">Σ ${fmt.n(sum, 2)} u</span><span class="inv-grupo-pill inv-grupo-pill--muted">Marca prod. ↑ stock: ${escHtml(topM)}</span></span>
+        </summary>
+        <div class="inv-grupo-table-wrap table-container">
+          <table class="data-table inv-table">${invDetailThead()}<tbody>${tbody}</tbody></table>
+        </div>
+      </details>`;
+    }).join('');
+
+    root.innerHTML = html;
+    if (act) act.hidden = grupos.length <= 1;
   }
 
   function renderInventoryRisksPayload(payload, opts) {
@@ -292,67 +502,166 @@
       badge.textContent = `${meta.product_count || 0} refs · ${meta.company_name || ''} · ${meta.generated_at?.slice(11, 19) || ''}`;
     }
     const risks = payload.risks || {};
-    const mapMini = (rows, fn) => (rows || []).slice(0, 60).map(fn).join('');
+    const mapMini = (rows, fn) => (rows || []).slice(0, RISK_TABLE_ROWS).map(fn).join('');
     const tbBajo = d.getElementById('risk-tbody-bajo');
     if (tbBajo) {
       tbBajo.innerHTML = mapMini(risks.stock_bajo, r => `<tr>
-        <td>${escHtml(r.default_code || '')}</td><td>${escHtml(r.nombre_variante || '')}</td><td>${escHtml(r.marca || '')}</td>
-        <td>${fmt.n(r.stock, 2)}</td><td>${r.dias_para_agotar == null ? '—' : escHtml(String(r.dias_para_agotar))}</td><td>${fmt.n(r.salida_diaria_estimada, 4)}</td></tr>`) || '<tr><td colspan="6">Sin alertas.</td></tr>';
+        <td>${escHtml(riskProductDisplayName(r))}</td><td>${escHtml(r.marca_producto != null ? r.marca_producto : r.marca || '')}</td>
+        <td>${fmt.n(r.stock, 2)}</td><td>${r.dias_para_agotar == null ? '—' : escHtml(String(r.dias_para_agotar))}</td><td>${fmt.n(r.salida_diaria_estimada, 4)}</td></tr>`) || '<tr><td colspan="5">Sin alertas.</td></tr>';
     }
     const tbAgo = d.getElementById('risk-tbody-agotado');
     if (tbAgo) {
       tbAgo.innerHTML = mapMini(risks.stock_agotado, r => `<tr>
-        <td>${escHtml(r.default_code || '')}</td><td>${escHtml(r.nombre_variante || '')}</td><td>${escHtml(r.marca || '')}</td>
-        <td>${fmt.n(r.compras_periodo, 2)}</td><td>${fmt.n(r.ventas_periodo, 2)}</td></tr>`) || '<tr><td colspan="5">Sin registros.</td></tr>';
+        <td>${escHtml(riskProductDisplayName(r))}</td><td>${escHtml(r.marca_producto != null ? r.marca_producto : r.marca || '')}</td>
+        <td>${fmt.n(r.compras_periodo, 2)}</td><td>${fmt.n(r.ventas_periodo, 2)}</td></tr>`) || '<tr><td colspan="4">Sin registros.</td></tr>';
     }
     const tbCom = d.getElementById('risk-tbody-compra');
     if (tbCom) {
       tbCom.innerHTML = mapMini(risks.baja_compra, r => `<tr>
-        <td>${escHtml(r.default_code || '')}</td><td>${escHtml(r.nombre_variante || '')}</td><td>${escHtml(r.marca || '')}</td>
-        <td>${fmt.n(r.compras_periodo, 2)}</td><td>${fmt.n(r.ventas_periodo, 2)}</td><td>${fmt.n(r.stock, 2)}</td></tr>`) || '<tr><td colspan="6">Sin datos.</td></tr>';
+        <td>${escHtml(riskProductDisplayName(r))}</td><td>${escHtml(r.marca_producto != null ? r.marca_producto : r.marca || '')}</td>
+        <td>${fmt.n(r.compras_periodo, 2)}</td><td>${fmt.n(r.ventas_periodo, 2)}</td><td>${fmt.n(r.stock, 2)}</td></tr>`) || '<tr><td colspan="5">Sin datos.</td></tr>';
     }
     const tbDias = d.getElementById('risk-tbody-dias');
     if (tbDias) {
       tbDias.innerHTML = mapMini(risks.dias_agotar, r => `<tr>
-        <td>${escHtml(r.default_code || '')}</td><td>${escHtml(r.nombre_variante || '')}</td><td>${escHtml(r.marca || '')}</td>
+        <td>${escHtml(riskProductDisplayName(r))}</td><td>${escHtml(r.marca_producto != null ? r.marca_producto : r.marca || '')}</td>
         <td>${fmt.n(r.stock, 2)}</td><td>${r.dias_para_agotar == null ? '—' : escHtml(String(r.dias_para_agotar))}</td>
-        <td>${fmt.n(r.salida_diaria_estimada, 4)}</td><td>${fmt.n(r.compras_periodo, 2)}</td></tr>`) || '<tr><td colspan="7">Sin datos.</td></tr>';
+        <td>${fmt.n(r.salida_diaria_estimada, 4)}</td><td>${fmt.n(r.compras_periodo, 2)}</td></tr>`) || '<tr><td colspan="6">Sin datos.</td></tr>';
     }
+    const arrBajo = risks.stock_bajo || [];
+    const arrAgo = risks.stock_agotado || [];
+    const arrCom = risks.baja_compra || [];
+    const arrDias = risks.dias_agotar || [];
+    const nBajo = arrBajo.length;
+    const nAgo = arrAgo.length;
+    const nCom = arrCom.length;
+    const nDias = arrDias.length;
+    const setRiskNum = (id, v) => {
+      const el = d.getElementById(id);
+      if (el) el.textContent = String(v);
+    };
+    setRiskNum('risk-kpi-bajo', nBajo);
+    setRiskNum('risk-kpi-agotado', nAgo);
+    setRiskNum('risk-kpi-compra', nCom);
+    setRiskNum('risk-kpi-dias', nDias);
+    setRiskNum('risk-count-bajo', nBajo);
+    setRiskNum('risk-count-agotado', nAgo);
+    setRiskNum('risk-count-compra', nCom);
+    setRiskNum('risk-count-dias', nDias);
     const rb = d.getElementById('risk-meta-badge');
     if (rb) rb.textContent = `${meta.company_name || ''} · actualizado ${meta.generated_at?.slice(11, 19) || ''}`;
+    fillRiskHints(meta);
+    setRiskTableNotes(risks);
     highlightRiskFocus(!opt.silent);
+    renderRiskChartsPayload(payload);
+  }
+
+  function setRiskTableNotes(risks) {
+    const note = (suffix, arr) => {
+      const el = d.getElementById(`risk-table-note-${suffix}`);
+      if (!el) return;
+      const total = (arr || []).length;
+      const shown = Math.min(RISK_TABLE_ROWS, total);
+      el.textContent = total === 0
+        ? 'No hay filas en esta categoría.'
+        : `Mostrando ${shown} de ${total} referencias (hasta ${RISK_TABLE_ROWS} en tabla).`;
+    };
+    note('bajo', risks.stock_bajo);
+    note('agotado', risks.stock_agotado);
+    note('compra', risks.baja_compra);
+    note('dias', risks.dias_agotar);
+  }
+
+  function fillRiskHints(meta) {
+    const ps = riskPeriodSummary(meta);
+    const thr = meta?.stock_bajo_max != null ? fmt.n(meta.stock_bajo_max, 2) : '—';
+    const h = (id, text) => {
+      const el = d.getElementById(id);
+      if (el) el.textContent = text;
+    };
+    h('risk-hint-bajo', `Umbral stock bajo: ≤ ${thr} u. · ${ps}`);
+    h('risk-hint-agotado', `Sin stock interno · compras vs ventas del periodo · ${ps}`);
+    h('risk-hint-compra', `Percentil bajo de compras entre referencias con ventas · ${ps}`);
+    h('risk-hint-dias', `Días ≈ stock ÷ salida diaria · ${ps}`);
+  }
+
+  function syncRiskToolbarChips() {
+    d.querySelectorAll('[data-risk-company]').forEach((btn) => {
+      const v = btn.getAttribute('data-risk-company') || 'produccion';
+      btn.classList.toggle('risk-co-chip--active', S.nav === v);
+    });
+  }
+
+  function syncRiskTypeTabsActive() {
+    const k = S.riskFocus || 'dias';
+    d.querySelectorAll('[data-risk-tab]').forEach((btn) => {
+      const on = (btn.getAttribute('data-risk-tab') || '') === k;
+      btn.classList.toggle('risk-type-tab--active', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
   }
 
   function highlightRiskFocus(doScroll) {
     const k = S.riskFocus || 'dias';
-    ['bajo', 'agotado', 'compra', 'dias'].forEach(id => {
-      d.getElementById(`risk-section-${id}`)?.classList.toggle('risk-block--focus', id === k);
+    ['bajo', 'agotado', 'compra', 'dias'].forEach((id) => {
+      const sec = d.getElementById(`risk-section-${id}`);
+      if (!sec) return;
+      sec.hidden = id !== k;
+      sec.classList.toggle('risk-card--focus', id === k);
     });
+    syncRiskTypeTabsActive();
+    syncRiskToolbarChips();
+    syncRiskNavActive();
     if (doScroll && S.view === 'risks') {
-      d.getElementById(`risk-section-${k}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      d.querySelector('#panel-risks .risk-type-tabs')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
   }
 
-  async function fetchInventoryRisks(silent) {
+  function applyRiskFocus(k) {
+    S.riskFocus = k || 'dias';
+    highlightRiskFocus(false);
+    if (S.invRisks) renderRiskChartsPayload(S.invRisks);
+  }
+
+  async function fetchInventoryRisks(silent, opts) {
+    const options = opts || {};
+    const force = Boolean(options.force);
+    const background = Boolean(options.background);
+
     if (S.nav === 'bravos' && !S.bravosCompanyId) {
       const msg = 'No hay compañía Bravos configurada.';
       const el = d.getElementById(S.view === 'inventory' ? 'inv-error' : 'risk-error');
-      if (el) { el.hidden = false; el.textContent = msg; }
+      if (el && !background) { el.hidden = false; el.textContent = msg; }
       return;
     }
     if (S.nav === 'boxprime' && !S.boxPrimeCompanyId) {
       const msg = 'No se detectó la compañía Box Prime.';
       const el = d.getElementById(S.view === 'inventory' ? 'inv-error' : 'risk-error');
-      if (el) { el.hidden = false; el.textContent = msg; }
+      if (el && !background) { el.hidden = false; el.textContent = msg; }
       return;
     }
+
+    const key = buildDataContextKey();
+
+    if (!force && !background) {
+      const cached = cacheLruGet(invCacheLru, key);
+      if (cached != null) {
+        S.invRisks = cloneJson(cached);
+        renderInventoryRisksPayload(S.invRisks, { silent: true });
+        updateInvRisksCacheBadge(true);
+        scheduleInvRisksRevalidate(key);
+        return;
+      }
+    }
+
     const invL = d.getElementById('inv-loading');
     const riskL = d.getElementById('risk-loading');
     const invE = d.getElementById('inv-error');
     const riskE = d.getElementById('risk-error');
     if (invE) invE.hidden = true;
     if (riskE) riskE.hidden = true;
-    if (!silent) {
+    const showLoaders = !silent && !background;
+    if (showLoaders) {
       if (S.view === 'inventory' && invL) invL.hidden = false;
       if (S.view === 'risks' && riskL) riskL.hidden = false;
     }
@@ -362,9 +671,15 @@
         const err = await resp.json().catch(() => ({}));
         throw new Error(err.error || `HTTP ${resp.status}`);
       }
-      S.invRisks = await resp.json();
-      renderInventoryRisksPayload(S.invRisks, { silent: Boolean(silent) });
+      const raw = await resp.json();
+      cacheLruSet(invCacheLru, key, cloneJson(raw));
+      if (buildDataContextKey() !== key) return;
+      S.invRisks = raw;
+      const scrollSilent = Boolean(silent) || background;
+      renderInventoryRisksPayload(S.invRisks, { silent: scrollSilent });
+      updateInvRisksCacheBadge(false);
     } catch (e) {
+      if (background) return;
       const el = d.getElementById(S.view === 'inventory' ? 'inv-error' : 'risk-error');
       if (el) { el.hidden = false; el.textContent = e.message || String(e); }
     } finally {
@@ -373,35 +688,70 @@
     }
   }
 
-  async function fetchData() {
-    resetLoadingPanelDefault();
+  async function fetchData(options) {
+    const opts = options || {};
+    const force = Boolean(opts.force);
+    const background = Boolean(opts.background);
+    const key = buildDataContextKey();
+
+    if (!force && !background) {
+      const cached = cacheLruGet(dashCacheLru, key);
+      if (cached != null) {
+        S.data = cloneJson(cached);
+        S.projectionInclude = {};
+        d.getElementById('loading-panel').style.display = 'none';
+        if (S.view === 'dashboard') {
+          d.getElementById('dashboard-content').style.display = '';
+        } else {
+          d.getElementById('dashboard-content').style.display = 'none';
+        }
+        renderAll();
+        updateDashboardCacheBadge(true);
+        scheduleDashboardRevalidate(key);
+        return;
+      }
+    }
+
     const params = buildQueryParams();
     let url = '/api/dashboard';
     if (params.length) url += '?' + params.join('&');
 
-    d.getElementById('loading-panel').style.display = '';
-    d.getElementById('dashboard-content').style.display = 'none';
-
     if (S.nav === 'bravos' && !S.bravosCompanyId) {
-      d.getElementById('loading-panel').innerHTML =
-        `<div style="color:var(--color-warning);font-size:0.9375rem;padding:48px 24px;text-align:center;max-width:520px;margin:0 auto">
+      if (!background) {
+        resetLoadingPanelDefault();
+        d.getElementById('loading-panel').style.display = '';
+        d.getElementById('dashboard-content').style.display = 'none';
+        d.getElementById('loading-panel').innerHTML =
+          `<div style="color:var(--color-warning);font-size:0.9375rem;padding:48px 24px;text-align:center;max-width:520px;margin:0 auto">
           <p style="font-weight:600;margin-bottom:10px">No hay una segunda compania para Bravos</p>
           <p style="color:var(--color-text-muted);line-height:1.5">El usuario de la API debe tener acceso a ambas empresas en Odoo, o configura <code style="font-size:0.8em">ODOO_BRAVOS_COMPANY_ID</code> en el entorno con el ID numerico de la empresa Bravos.</p>
           <button type="button" class="btn btn-primary" style="margin-top:20px" data-back-prod>Volver a Overshark</button>
         </div>`;
-      d.getElementById('loading-panel').querySelector('[data-back-prod]')?.addEventListener('click', () => setNav('produccion'));
+        d.getElementById('loading-panel').querySelector('[data-back-prod]')?.addEventListener('click', () => setNav('produccion'));
+      }
       return;
     }
 
     if (S.nav === 'boxprime' && !S.boxPrimeCompanyId) {
-      d.getElementById('loading-panel').innerHTML =
-        `<div style="color:var(--color-warning);font-size:0.9375rem;padding:48px 24px;text-align:center;max-width:520px;margin:0 auto">
+      if (!background) {
+        resetLoadingPanelDefault();
+        d.getElementById('loading-panel').style.display = '';
+        d.getElementById('dashboard-content').style.display = 'none';
+        d.getElementById('loading-panel').innerHTML =
+          `<div style="color:var(--color-warning);font-size:0.9375rem;padding:48px 24px;text-align:center;max-width:520px;margin:0 auto">
           <p style="font-weight:600;margin-bottom:10px">No se detectó la compañía Box Prime</p>
           <p style="color:var(--color-text-muted);line-height:1.5">El usuario de la API debe tener acceso a la empresa en Odoo, o configura <code style="font-size:0.8em">ODOO_BOX_PRIME_COMPANY_ID</code> con el ID numérico de <strong>res.company</strong>. También se detecta si el nombre en Odoo contiene «Box Prime».</p>
           <button type="button" class="btn btn-primary" style="margin-top:20px" data-back-prod-box>Volver a Overshark</button>
         </div>`;
-      d.getElementById('loading-panel').querySelector('[data-back-prod-box]')?.addEventListener('click', () => setNav('produccion'));
+        d.getElementById('loading-panel').querySelector('[data-back-prod-box]')?.addEventListener('click', () => setNav('produccion'));
+      }
       return;
+    }
+
+    if (!background) {
+      resetLoadingPanelDefault();
+      d.getElementById('loading-panel').style.display = '';
+      d.getElementById('dashboard-content').style.display = 'none';
     }
 
     try {
@@ -410,16 +760,20 @@
         const err = await resp.json().catch(() => ({}));
         throw new Error(err.error || `HTTP ${resp.status}`);
       }
-      S.data = await resp.json();
+      const raw = await resp.json();
+      cacheLruSet(dashCacheLru, key, cloneJson(raw));
+      if (buildDataContextKey() !== key) return;
+      S.data = raw;
       S.projectionInclude = {};
-      d.getElementById('loading-panel').style.display = 'none';
-      if (S.view === 'dashboard') {
-        d.getElementById('dashboard-content').style.display = '';
-      } else {
-        d.getElementById('dashboard-content').style.display = 'none';
+      if (!background) {
+        d.getElementById('loading-panel').style.display = 'none';
       }
+      const dashEl = d.getElementById('dashboard-content');
+      if (dashEl) dashEl.style.display = S.view === 'dashboard' ? '' : 'none';
       renderAll();
+      updateDashboardCacheBadge(false);
     } catch (e) {
+      if (background) return;
       d.getElementById('loading-panel').innerHTML =
         `<div style="color:var(--color-danger);font-size:1rem;padding:40px 0;text-align:center">
           <p style="font-weight:600;margin-bottom:8px">Error al conectar con Odoo</p>
@@ -581,6 +935,10 @@
         ['income', 'analysis', 'depletion'].forEach(k => {
           if (S.charts[k] && typeof S.charts[k].resize === 'function') S.charts[k].resize();
         });
+        Object.keys(S.riskCharts || {}).forEach((k) => {
+          const ch = S.riskCharts[k];
+          if (ch && typeof ch.resize === 'function') ch.resize();
+        });
       });
     });
   }
@@ -665,6 +1023,299 @@
 
   // ── Charts ──
   function destroyChart(key) { if (S.charts[key]) { S.charts[key].destroy(); delete S.charts[key]; } }
+
+  function destroyRiskChart(key) {
+    if (S.riskCharts[key]) {
+      S.riskCharts[key].destroy();
+      delete S.riskCharts[key];
+    }
+  }
+
+  /** Etiquetas de gráfico: mismo criterio que tabla; texto acortado en eje Y. */
+  function riskChartRowLabel(r) {
+    const name = riskProductDisplayName(r);
+    if (name === '—') return '—';
+    return name.length > 30 ? `${name.slice(0, 28)}…` : name;
+  }
+
+  function riskPeriodSummary(meta) {
+    const df = meta?.date_from || '';
+    const dt = meta?.date_to || '';
+    const dp = meta?.days_in_period;
+    if (df && dt) return `${df} → ${dt}${dp != null ? ` · ${dp} días` : ''}`;
+    return 'periodo del filtro';
+  }
+
+  function setRiskChartEmpty(suffix, empty) {
+    const emptyEl = d.getElementById(`risk-chart-empty-${suffix}`);
+    const cv = d.getElementById(`risk-chart-${suffix}`);
+    if (emptyEl) emptyEl.hidden = !empty;
+    if (cv) cv.style.display = empty ? 'none' : 'block';
+  }
+
+  function renderRiskChartsPayload(payload) {
+    if (typeof Chart === 'undefined' || !payload || !payload.risks) return;
+    const risks = payload.risks;
+    const focus = S.riskFocus || 'dias';
+
+    const commonTooltip = () => ({
+      backgroundColor: ttBg(),
+      titleColor: isDark() ? '#fafafa' : '#18181b',
+      bodyColor: txtC(),
+      borderColor: gridC(),
+      borderWidth: 1,
+      padding: 10,
+    });
+
+    ['bajo', 'agotado', 'compra', 'dias'].forEach(destroyRiskChart);
+    ['bajo', 'agotado', 'compra', 'dias'].forEach((suf) => setRiskChartEmpty(suf, true));
+
+    if (S.view !== 'risks') return;
+
+    if (focus === 'bajo') {
+      const bajoRows = [...(risks.stock_bajo || [])].sort((a, b) => (Number(a.stock) || 0) - (Number(b.stock) || 0)).slice(0, 8);
+      if (!bajoRows.length) {
+        setRiskChartEmpty('bajo', true);
+      } else {
+        setRiskChartEmpty('bajo', false);
+        const ctx = d.getElementById('risk-chart-bajo');
+        if (ctx) {
+          S.riskCharts.bajo = new Chart(ctx, {
+            type: 'bar',
+            data: {
+              labels: bajoRows.map(riskChartRowLabel),
+              datasets: [{
+                label: 'Stock (u.)',
+                data: bajoRows.map(r => Number(r.stock) || 0),
+                backgroundColor: 'rgba(217, 119, 6, 0.78)',
+                borderColor: 'rgba(146, 64, 14, 0.95)',
+                borderWidth: 1,
+                borderRadius: 4,
+              }],
+            },
+            options: {
+              indexAxis: 'y',
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { display: false },
+                title: { display: true, text: 'Menor stock (hasta 8 SKU)', color: txtC(), font: { size: 12, weight: 600 } },
+                tooltip: {
+                  ...commonTooltip(),
+                  callbacks: {
+                    label: (c) => {
+                      const r = bajoRows[c.dataIndex];
+                      const lines = [`Stock: ${fmt.n(r.stock, 2)} u.`];
+                      if (r.dias_para_agotar != null) lines.push(`Días est.: ${r.dias_para_agotar}`);
+                      return lines;
+                    },
+                  },
+                },
+              },
+              scales: {
+                x: {
+                  title: { display: true, text: 'Unidades', color: txtC() },
+                  grid: { color: gridC() },
+                  ticks: { color: txtC() },
+                },
+                y: { grid: { display: false }, ticks: { color: txtC(), font: { size: 10 } } },
+              },
+            },
+          });
+        }
+      }
+    } else if (focus === 'agotado') {
+      const agoRows = [...(risks.stock_agotado || [])].sort((a, b) => (Number(b.ventas_periodo) || 0) - (Number(a.ventas_periodo) || 0)).slice(0, 8);
+      if (!agoRows.length) {
+        setRiskChartEmpty('agotado', true);
+      } else {
+        setRiskChartEmpty('agotado', false);
+        const ctx = d.getElementById('risk-chart-agotado');
+        if (ctx) {
+          S.riskCharts.agotado = new Chart(ctx, {
+            type: 'bar',
+            data: {
+              labels: agoRows.map(riskChartRowLabel),
+              datasets: [
+                {
+                  label: 'Compras período',
+                  data: agoRows.map(r => Number(r.compras_periodo) || 0),
+                  backgroundColor: 'rgba(59, 130, 246, 0.72)',
+                  borderColor: 'rgba(37, 99, 235, 0.9)',
+                  borderWidth: 1,
+                  borderRadius: 4,
+                },
+                {
+                  label: 'Ventas período',
+                  data: agoRows.map(r => Number(r.ventas_periodo) || 0),
+                  backgroundColor: 'rgba(244, 63, 94, 0.68)',
+                  borderColor: 'rgba(190, 18, 60, 0.9)',
+                  borderWidth: 1,
+                  borderRadius: 4,
+                },
+              ],
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              interaction: { mode: 'index', intersect: false },
+              plugins: {
+                legend: { labels: { color: txtC(), boxWidth: 12, padding: 12, usePointStyle: true } },
+                title: { display: true, text: 'Compras vs ventas (sin stock, top por ventas)', color: txtC(), font: { size: 12, weight: 600 } },
+                tooltip: {
+                  ...commonTooltip(),
+                  callbacks: {
+                    afterBody: (items) => {
+                      const i = items[0]?.dataIndex;
+                      if (i == null) return [];
+                      const r = agoRows[i];
+                      return [`Marca: ${String(r.marca_producto != null ? r.marca_producto : r.marca || '—')}`];
+                    },
+                  },
+                },
+              },
+              scales: {
+                x: { grid: { display: false }, ticks: { color: txtC(), maxRotation: 45, minRotation: 0, font: { size: 9 } } },
+                y: {
+                  title: { display: true, text: 'Unidades', color: txtC() },
+                  beginAtZero: true,
+                  grid: { color: gridC() },
+                  ticks: { color: txtC(), callback: v => fmt.compact(v) },
+                },
+              },
+            },
+          });
+        }
+      }
+    } else if (focus === 'compra') {
+      const comRows = [...(risks.baja_compra || [])].sort((a, b) => (Number(b.ventas_periodo) || 0) - (Number(a.ventas_periodo) || 0)).slice(0, 8);
+      if (!comRows.length) {
+        setRiskChartEmpty('compra', true);
+      } else {
+        setRiskChartEmpty('compra', false);
+        const ctx = d.getElementById('risk-chart-compra');
+        if (ctx) {
+          S.riskCharts.compra = new Chart(ctx, {
+            type: 'bar',
+            data: {
+              labels: comRows.map(riskChartRowLabel),
+              datasets: [
+                {
+                  label: 'Compras período',
+                  data: comRows.map(r => Number(r.compras_periodo) || 0),
+                  backgroundColor: 'rgba(59, 130, 246, 0.72)',
+                  borderColor: 'rgba(37, 99, 235, 0.9)',
+                  borderWidth: 1,
+                  borderRadius: 4,
+                },
+                {
+                  label: 'Ventas período',
+                  data: comRows.map(r => Number(r.ventas_periodo) || 0),
+                  backgroundColor: 'rgba(234, 88, 12, 0.7)',
+                  borderColor: 'rgba(194, 65, 12, 0.95)',
+                  borderWidth: 1,
+                  borderRadius: 4,
+                },
+              ],
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              interaction: { mode: 'index', intersect: false },
+              plugins: {
+                legend: { labels: { color: txtC(), boxWidth: 12, padding: 12, usePointStyle: true } },
+                title: { display: true, text: 'Brecha compra vs ventas (top 8)', color: txtC(), font: { size: 12, weight: 600 } },
+                tooltip: {
+                  ...commonTooltip(),
+                  callbacks: {
+                    afterBody: (items) => {
+                      const i = items[0]?.dataIndex;
+                      if (i == null) return [];
+                      const r = comRows[i];
+                      return [`Stock actual: ${fmt.n(r.stock, 2)} u.`];
+                    },
+                  },
+                },
+              },
+              scales: {
+                x: { grid: { display: false }, ticks: { color: txtC(), maxRotation: 45, minRotation: 0, font: { size: 9 } } },
+                y: {
+                  title: { display: true, text: 'Unidades', color: txtC() },
+                  beginAtZero: true,
+                  grid: { color: gridC() },
+                  ticks: { color: txtC(), callback: v => fmt.compact(v) },
+                },
+              },
+            },
+          });
+        }
+      }
+    } else {
+      const diasRows = [...(risks.dias_agotar || [])]
+        .filter(r => r.dias_para_agotar != null && Number(r.dias_para_agotar) < 99999)
+        .sort((a, b) => (Number(a.dias_para_agotar) || 0) - (Number(b.dias_para_agotar) || 0))
+        .slice(0, 8);
+      if (!diasRows.length) {
+        setRiskChartEmpty('dias', true);
+      } else {
+        setRiskChartEmpty('dias', false);
+        const ctx = d.getElementById('risk-chart-dias');
+        const diasColors = diasRows.map((r) => {
+          const dd = Number(r.dias_para_agotar) || 0;
+          if (dd <= 7) return '#ef4444';
+          if (dd <= 30) return '#f97316';
+          return '#2563eb';
+        });
+        if (ctx) {
+          S.riskCharts.dias = new Chart(ctx, {
+            type: 'bar',
+            data: {
+              labels: diasRows.map(riskChartRowLabel),
+              datasets: [{
+                label: 'Días hasta agotar',
+                data: diasRows.map(r => Math.min(Number(r.dias_para_agotar) || 0, 365)),
+                backgroundColor: diasColors,
+                borderRadius: 4,
+                borderSkipped: false,
+              }],
+            },
+            options: {
+              indexAxis: 'y',
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: { display: false },
+                title: { display: true, text: 'Urgencia (menos días = más prioridad)', color: txtC(), font: { size: 12, weight: 600 } },
+                tooltip: {
+                  ...commonTooltip(),
+                  callbacks: {
+                    label: (c) => {
+                      const r = diasRows[c.dataIndex];
+                      return [
+                        `Días: ${fmt.n(r.dias_para_agotar, 0)}`,
+                        `Stock: ${fmt.n(r.stock, 2)} u.`,
+                        `Salida/día: ${fmt.n(r.salida_diaria_estimada, 4)}`,
+                      ];
+                    },
+                  },
+                },
+              },
+              scales: {
+                x: {
+                  title: { display: true, text: 'Días', color: txtC() },
+                  grid: { color: gridC() },
+                  ticks: { color: txtC() },
+                },
+                y: { grid: { display: false }, ticks: { color: txtC(), font: { size: 10 } } },
+              },
+            },
+          });
+        }
+      }
+    }
+
+    scheduleDeferredChartResize();
+  }
 
   function isDark() { return S.theme === 'dark'; }
   function txtC() { return isDark() ? '#a1a1aa' : '#52525b'; }
@@ -1194,12 +1845,13 @@
 
     // Refresh
     d.getElementById('btn-refresh')?.addEventListener('click', () => {
-      if (S.view === 'inventory' || S.view === 'risks') fetchInventoryRisks();
-      else fetchData();
+      if (S.view === 'inventory' || S.view === 'risks') fetchInventoryRisks(false, { force: true });
+      else fetchData({ force: true });
     });
     ['date-from', 'date-to'].forEach((id) => {
       d.getElementById(id)?.addEventListener('change', () => {
         if (S.view === 'inventory' || S.view === 'risks') fetchInventoryRisks();
+        else if (S.view === 'dashboard') fetchData();
       });
     });
 
@@ -1244,17 +1896,47 @@
       setNav(btn.dataset.nav || 'produccion', {});
     }));
 
-    d.querySelectorAll('.nav-item[data-panel="risks"]').forEach(btn => btn.addEventListener('click', () => {
-      S.riskFocus = btn.getAttribute('data-risk-focus') || 'dias';
-      setView('risks');
-      fetchInventoryRisks();
-    }));
+    d.querySelectorAll('[data-panel="risks"]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        S.riskFocus = btn.getAttribute('data-risk-focus') || 'dias';
+        setView('risks');
+        fetchInventoryRisks();
+      });
+    });
+
+    d.querySelectorAll('[data-risk-company]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const nav = btn.getAttribute('data-risk-company') || 'produccion';
+        setNav(nav, {});
+      });
+    });
+
+    d.querySelectorAll('[data-risk-tab]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        applyRiskFocus(btn.getAttribute('data-risk-tab') || 'dias');
+      });
+    });
+
+    d.querySelectorAll('[data-risk-focus-tab]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        applyRiskFocus(btn.getAttribute('data-risk-focus-tab') || 'dias');
+      });
+    });
 
     d.getElementById('inv-filters-block')?.addEventListener('change', (ev) => {
       const t = ev.target;
-      if (!t || t.id !== 'inv-filter-grupo') return;
-      S.invFilterGrupo = t.value;
+      if (!t) return;
+      if (t.id === 'inv-filter-grupo') S.invFilterGrupo = t.value;
+      else if (t.id === 'inv-filter-color') S.invFilterColor = t.value;
+      else return;
       if (S.invRisks && S.invRisks.inventory) renderInvDetailAndMatrix(S.invRisks.inventory);
+    });
+
+    d.getElementById('inv-expand-all')?.addEventListener('click', () => {
+      d.querySelectorAll('#inv-detail-root details.inv-grupo-card').forEach((el) => { el.open = true; });
+    });
+    d.getElementById('inv-collapse-all')?.addEventListener('click', () => {
+      d.querySelectorAll('#inv-detail-root details.inv-grupo-card').forEach((el) => { el.open = false; });
     });
 
     // Load

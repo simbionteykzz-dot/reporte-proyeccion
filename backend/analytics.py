@@ -1826,10 +1826,11 @@ def _days_in_period_inv(df: str | None, dt: str | None) -> int:
 
 
 def _risk_stock_bajo_max() -> float:
+    """Umbral «stock bajo»: por defecto 30 u.; sobreescribible con ODOO_RISK_STOCK_BAJO_MAX."""
     try:
-        return max(1.0, float(os.environ.get("ODOO_RISK_STOCK_BAJO_MAX", "10")))
+        return max(1.0, float(os.environ.get("ODOO_RISK_STOCK_BAJO_MAX", "30")))
     except ValueError:
-        return 10.0
+        return 30.0
 
 
 def _inventory_resolve_product_ids(
@@ -1951,6 +1952,150 @@ def _read_templates_brand_map(
     return out
 
 
+def _inventory_normalize_color_label(s: str) -> str:
+    """Quita prefijos tipo «Color: » que devuelve Odoo en valores de atributo."""
+    t = (s or "").strip()
+    if not t:
+        return "—"
+    t = re.sub(r"(?i)^color\s*:\s*", "", t).strip()
+    return t or "—"
+
+
+def _inventory_short_category(complete_name: str) -> str:
+    """Último segmento del árbol de categoría Odoo (ej. POLOS, PANTALONES, TECNOLOGÍA)."""
+    s = (complete_name or "").strip()
+    if not s:
+        return "—"
+    parts = [p.strip() for p in re.split(r"\s*/\s*", s) if p.strip()]
+    leaf = parts[-1] if parts else s
+    leaf = leaf.replace("_", " ").strip()
+    return leaf or "—"
+
+
+def _inventory_row_excluded(tmpl_name: str, variant_name: str, default_code: str) -> bool:
+    """
+    Excluye promociones tipo «cadenas de regalo», descuentos, puntos, envíos y regalos
+    (no son inventario físico útil en esta vista).
+    """
+    blob = f"{tmpl_name} {variant_name} {default_code}".casefold()
+    if "servicio de env" in blob:
+        return True
+    if "producto gratis" in blob:
+        return True
+    if "por punto" in blob:
+        return True
+    if "cadena de regalo" in blob:
+        return True
+    if "descuento" in blob:
+        return True
+    # Regalos / packaging (ej. «Collar de regalo + Packaging»)
+    if "collar" in blob and "regalo" in blob:
+        return True
+    if "regalo" in blob and "packaging" in blob:
+        return True
+    if " de regalo" in blob or "+ packaging" in blob:
+        return True
+    return False
+
+
+def _inventory_color_fallback(variant_display: str) -> str:
+    if not variant_display:
+        return ""
+    s = variant_display.strip()
+    if " - " in s:
+        tail = s.rsplit(" - ", 1)[-1].strip()
+        if 1 <= len(tail) <= 36 and not re.match(r"^\d", tail):
+            return tail
+    return ""
+
+
+def _inventory_fetch_colors(extractor: OdooRealExtractor, product_ids: list[int]) -> dict[int, str]:
+    """Color desde atributos de variante (atributo nombre ~ color); fallback nombre variante."""
+    out: dict[int, str] = {}
+    if not product_ids:
+        return out
+    try:
+        rows = extractor._sr(
+            "product.product",
+            [("id", "in", product_ids)],
+            ["id", "name", "display_name", "product_template_attribute_value_ids"],
+        )
+    except Exception:
+        try:
+            rows = extractor._sr(
+                "product.product",
+                [("id", "in", product_ids)],
+                ["id", "name", "display_name"],
+            )
+        except Exception:
+            return out
+        for r in rows:
+            pid = int(r["id"])
+            nm = (r.get("display_name") or r.get("name") or "").strip()
+            fb = _inventory_color_fallback(nm)
+            if fb:
+                out[pid] = fb
+        return out
+
+    ptav_ids: set[int] = set()
+    pid_to_ptavs: dict[int, list[int]] = {}
+    for r in rows:
+        pid = int(r["id"])
+        raw = r.get("product_template_attribute_value_ids") or []
+        ids = [int(x) for x in raw] if isinstance(raw, (list, tuple)) else []
+        pid_to_ptavs[pid] = ids
+        ptav_ids.update(ids)
+
+    at_map: dict[int, dict[str, Any]] = {}
+    if ptav_ids:
+        try:
+            ptavs = extractor._sr(
+                "product.template.attribute.value",
+                [("id", "in", list(ptav_ids))],
+                ["id", "name", "attribute_id", "product_attribute_value_id"],
+            )
+            at_map = {int(p["id"]): p for p in ptavs}
+        except Exception:
+            at_map = {}
+
+    color_re = re.compile(r"color|colour|colo\.|tinte|tono", re.I)
+
+    def _attr_is_color(aname: str) -> bool:
+        return bool(aname and color_re.search(aname))
+
+    for pid, vids in pid_to_ptavs.items():
+        labels: list[str] = []
+        for vid in vids:
+            rec = at_map.get(vid)
+            if not rec:
+                continue
+            att = rec.get("attribute_id")
+            aname = ""
+            if isinstance(att, (list, tuple)) and len(att) >= 2:
+                aname = str(att[1] or "")
+            pav = rec.get("product_attribute_value_id")
+            if isinstance(pav, (list, tuple)) and len(pav) >= 2:
+                disp = (pav[1] or "").strip()
+            else:
+                disp = (rec.get("name") or "").strip()
+            if not disp:
+                continue
+            if _attr_is_color(aname):
+                labels.append(disp)
+        if labels:
+            out[pid] = ", ".join(dict.fromkeys(labels))
+        else:
+            nm = ""
+            for r in rows:
+                if int(r["id"]) == pid:
+                    nm = (r.get("display_name") or r.get("name") or "").strip()
+                    break
+            fb = _inventory_color_fallback(nm)
+            if fb:
+                out[pid] = fb
+    return out
+
+
 def _aggregate_qty_by_product(
     extractor: OdooRealExtractor,
     product_ids: list[int],
@@ -2066,6 +2211,7 @@ def generate_inventory_risks_payload(
     tmpl_map = _read_templates_brand_map(extractor, sorted(tmpl_ids_u), categ_names)
 
     pos_q, sale_q, pur_q = _aggregate_qty_by_product(extractor, product_ids, date_from, date_to)
+    color_by_pid = _inventory_fetch_colors(extractor, product_ids)
 
     rows_out: list[dict[str, Any]] = []
     for pid in sorted(product_ids, key=lambda x: (
@@ -2075,6 +2221,12 @@ def generate_inventory_risks_payload(
         det = details.get(pid, {})
         tmpl_id = int(det.get("tmpl_id") or 0)
         tm = tmpl_map.get(tmpl_id, {})
+        tmpl_name = (tm.get("tmpl_name") or "").strip()
+        variant_name = (det.get("name") or "").strip()
+        default_code = (det.get("default_code") or "").strip()
+        if _inventory_row_excluded(tmpl_name, variant_name, default_code):
+            continue
+
         stock = float(stock_sum.get(pid, 0.0))
         vpos = float(pos_q.get(pid, 0.0))
         vsale = float(sale_q.get(pid, 0.0))
@@ -2088,13 +2240,21 @@ def generate_inventory_risks_payload(
         else:
             dias_ag = 99999
 
+        cat_full = categ_names.get(int(det.get("cat_id") or 0), "") or ""
+        categoria_short = _inventory_short_category(cat_full) if cat_full else "—"
+        col_label = _inventory_normalize_color_label(color_by_pid.get(pid) or "")
+        marca_prod = (tm.get("marca") or "").strip() or "—"
+        empresa = (company_label or "").strip() or "—"
+
         rows_out.append({
             "product_id": pid,
-            "default_code": (det.get("default_code") or "").strip(),
-            "nombre_variante": (det.get("name") or "").strip(),
-            "nombre_plantilla": tm.get("tmpl_name") or "",
-            "marca": tm.get("marca") or "—",
-            "categoria": categ_names.get(int(det.get("cat_id") or 0), "") or "—",
+            "default_code": default_code,
+            "nombre_variante": variant_name,
+            "nombre_plantilla": tmpl_name,
+            "marca": empresa,
+            "marca_producto": marca_prod,
+            "categoria": categoria_short,
+            "color": col_label,
             "stock": round(stock, 4),
             "compras_periodo": round(vpur, 4),
             "ventas_periodo": round(ventas_u, 4),
@@ -2144,7 +2304,11 @@ def generate_inventory_risks_payload(
             "product_count": len(rows_out),
             "refresh_hint_sec": 300,
             "definition": {
-                "inventario": "stock en ubicaciones internas por variante; marca desde plantilla o categoría",
+                "inventario": (
+                    "stock en ubicaciones internas; columna marca = empresa Odoo; "
+                    "categoría = último nivel del árbol; color desde atributos; "
+                    "excluidos descuentos/regalos/puntos/envíos"
+                ),
                 "salida_diaria": "(uds POS + uds ventas) / días del periodo",
                 "dias_agotar": "stock / salida_diaria si salida_diaria > 0",
                 "baja_compra": "entre productos con ventas en periodo, compras en percentil bajo (~15%)",
