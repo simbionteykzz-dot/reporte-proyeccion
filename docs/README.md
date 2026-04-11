@@ -10,6 +10,7 @@ Material de referencia y presentación del panel **Proyección Inventario** cone
 | [Interfaz por segmentos](./UI_SEGMENTOS.md)                          | Cada zona de la página (sidebar, KPIs, pestañas, insights, alertas, login, auditoría).                             |
 | [Arquitectura y stack](./ARQUITECTURA.md)                            | Flujo Odoo ↔ backend ↔ navegador y despliegue.                                                                     |
 | [Variables de entorno](./VARIABLES_ENTORNO.md)                       | Credenciales Odoo, panel y opciones de sesión.                                                                     |
+| [Cambios vista Riesgos](./CAMBIOS_VISTA_RIESGOS.md)                  | Resumen de la rediseño de Riesgos, umbral stock bajo (30 u.) y referencia técnica.                                 |
 
 
 ### Carpeta `reference/`

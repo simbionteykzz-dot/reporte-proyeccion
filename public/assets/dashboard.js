@@ -1732,92 +1732,157 @@
     window.XLSX.writeFile(wb, `proyecciones_${new Date().toISOString().slice(0, 10)}.xlsx`);
   }
 
-  function exportProjectionPdf() {
-    if (!S.data || !window.jspdf?.jsPDF) return;
-    const doc = new window.jspdf.jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
-    const lineCol = isBravosAggregation() ? 'Linea' : (isBoxPrimeAggregation() ? 'Producto' : 'Familia');
-    const headers = [[lineCol, 'Stock', 'Cantidad', 'Ticket', 'Ventas', 'Ingresos', '%', 'Dias']];
-    const body = getProjectionRows().map(r => [
-      r[0],
-      r[1] === '' ? '' : fmt.n(r[1], 0),
-      r[2] === '' ? '' : fmt.n(r[2], 0),
-      r[3] === '' ? '' : `S/ ${fmt.n(r[3], 0)}`,
-      r[4] === '' ? '' : fmt.n(r[4], 0),
-      r[5] === '' ? '' : `S/ ${fmt.n(r[5], 2)}`,
-      r[6] === '' ? '' : `${fmt.n(r[6], 2)}%`,
-      r[7] === '' ? '' : String(r[7]),
-    ]);
-    const meta = S.data.meta || {};
-    const company = (meta.company_name || '').trim();
-    const from = d.getElementById('date-from')?.value || '';
-    const to = d.getElementById('date-to')?.value || '';
-    const periodo = from && to ? `${from} → ${to}` : (from || to || 'Periodo segun filtros');
-    const pageW = doc.internal.pageSize.getWidth();
-    const pageH = doc.internal.pageSize.getHeight();
-    const m = { left: 28, right: 28, top: 56, bottom: 40 };
-    doc.setFillColor(245, 158, 11);
-    doc.rect(0, 0, pageW, 4, 'F');
-    doc.setFillColor(28, 28, 32);
-    doc.rect(0, 4, pageW, 44, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(15);
-    doc.text('Proyeccion de inventario', m.left, 28);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(9);
-    doc.setTextColor(212, 212, 216);
-    const sub1 = [APP_NAME, company].filter(Boolean).join(' · ');
-    doc.text(sub1, m.left, 40);
-    doc.text(`Periodo: ${periodo}`, m.left, 50);
-    doc.setTextColor(24, 24, 27);
-    const genAt = meta.generated_at ? String(meta.generated_at).replace('T', ' ').slice(0, 19) : '';
-    if (genAt) doc.text(`Generado: ${genAt}`, pageW - m.right, 28, { align: 'right' });
+  async function fetchPdfImageDataUrl(url) {
+    try {
+      const resp = await fetch(url, { credentials: 'same-origin' });
+      if (!resp.ok) return null;
+      const blob = await resp.blob();
+      return await new Promise((resolve, reject) => {
+        const fr = new FileReader();
+        fr.onload = () => resolve(fr.result);
+        fr.onerror = reject;
+        fr.readAsDataURL(blob);
+      });
+    } catch (_) {
+      return null;
+    }
+  }
 
-    doc.autoTable({
-      head: headers,
-      body,
-      startY: m.top,
-      margin: { left: m.left, right: m.right, bottom: m.bottom },
-      styles: {
-        fontSize: 8.5,
-        cellPadding: { top: 5, bottom: 5, left: 6, right: 6 },
-        lineColor: [228, 228, 231],
-        lineWidth: 0.25,
-        valign: 'middle',
-      },
-      headStyles: {
-        fillColor: [217, 119, 6],
-        textColor: [255, 255, 255],
-        fontStyle: 'bold',
-        fontSize: 9,
-      },
-      alternateRowStyles: { fillColor: [250, 250, 250] },
-      columnStyles: {
-        0: { cellWidth: 'auto', minCellWidth: 90, halign: 'left' },
-        1: { halign: 'right' },
-        2: { halign: 'right' },
-        3: { halign: 'right' },
-        4: { halign: 'right' },
-        5: { halign: 'right' },
-        6: { halign: 'right' },
-        7: { halign: 'right' },
-      },
-      didParseCell: (data) => {
-        if (data.section === 'body' && data.row.index === body.length - 1) {
-          data.cell.styles.fontStyle = 'bold';
-          data.cell.styles.fillColor = [254, 243, 199];
-          data.cell.styles.textColor = [66, 32, 6];
-        }
-      },
-      didDrawPage: (data) => {
-        const n = doc.internal.getNumberOfPages();
-        doc.setFontSize(8);
-        doc.setTextColor(113, 113, 122);
-        doc.setFont('helvetica', 'normal');
-        doc.text(`Pagina ${data.pageNumber} / ${n} · ${APP_NAME}`, m.left, pageH - 18);
-      },
-    });
-    doc.save(`proyecciones_${new Date().toISOString().slice(0, 10)}.pdf`);
+  function pdfBrandLogoPath() {
+    if (S.nav === 'bravos') return '/assets/iconos-barra/brav-icon.png';
+    if (S.nav === 'boxprime') return '/assets/iconos-barra/box.icon.png';
+    return '/assets/iconos-barra/over-icon.png';
+  }
+
+  function pdfBrandDisplayName() {
+    if (S.nav === 'bravos') return (S.bravosName || 'Bravos').trim() || 'Bravos';
+    if (S.nav === 'boxprime') return (S.boxPrimeName || 'Box Prime').trim() || 'Box Prime';
+    return 'Overshark';
+  }
+
+  async function exportProjectionPdf() {
+    if (!S.data || !window.jspdf?.jsPDF) return;
+    const btnPdf = d.getElementById('btn-pdf');
+    if (btnPdf) btnPdf.disabled = true;
+    try {
+      const [appImg, brandImg] = await Promise.all([
+        fetchPdfImageDataUrl('/assets/odooreport-icon.png'),
+        fetchPdfImageDataUrl(pdfBrandLogoPath()),
+      ]);
+
+      const doc = new window.jspdf.jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+      const lineCol = isBravosAggregation() ? 'Producto' : (isBoxPrimeAggregation() ? 'Producto' : 'Familia');
+      const headers = [[lineCol, 'Stock', 'Cantidad', 'Ticket', 'Ventas', 'Ingresos', 'Porcentaje', 'Dias']];
+      const body = getProjectionRows().map(r => [
+        r[0],
+        r[1] === '' ? '' : fmt.n(r[1], 0),
+        r[2] === '' ? '' : fmt.n(r[2], 0),
+        r[3] === '' ? '' : `S/ ${fmt.n(r[3], 0)}`,
+        r[4] === '' ? '' : fmt.n(r[4], 0),
+        r[5] === '' ? '' : `S/ ${fmt.n(r[5], 2)}`,
+        r[6] === '' ? '' : `${fmt.n(r[6], 2)}%`,
+        r[7] === '' ? '' : String(r[7]),
+      ]);
+      const meta = S.data.meta || {};
+      const company = (meta.company_name || '').trim();
+      const from = d.getElementById('date-from')?.value || '';
+      const to = d.getElementById('date-to')?.value || '';
+      const periodo = from && to ? `${from} → ${to}` : (from || to || 'Periodo segun filtros');
+      const pageW = doc.internal.pageSize.getWidth();
+      const pageH = doc.internal.pageSize.getHeight();
+      const m = { left: 28, right: 28, top: 72, bottom: 40 };
+      const brandName = pdfBrandDisplayName();
+
+      doc.setFillColor(245, 158, 11);
+      doc.rect(0, 0, pageW, 4, 'F');
+      doc.setFillColor(24, 24, 27);
+      doc.rect(0, 4, pageW, 52, 'F');
+
+      const logoSz = 34;
+      const logoY = 12;
+      if (appImg) {
+        try {
+          doc.addImage(appImg, 'PNG', m.left, logoY, logoSz, logoSz);
+        } catch (_) { /* formato no soportado */ }
+      }
+      if (brandImg) {
+        try {
+          doc.addImage(brandImg, 'PNG', pageW - m.right - logoSz, logoY, logoSz, logoSz);
+        } catch (_) { /* idem */ }
+      }
+
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(17);
+      doc.text('Proyeccion de inventario', pageW / 2, 30, { align: 'center' });
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(212, 212, 216);
+      doc.text(`${APP_NAME} · ${brandName}${company ? ` · ${company}` : ''}`, pageW / 2, 44, { align: 'center' });
+      doc.text(`Periodo: ${periodo}`, pageW / 2, 54, { align: 'center' });
+      const genAt = meta.generated_at ? String(meta.generated_at).replace('T', ' ').slice(0, 19) : '';
+
+      doc.setDrawColor(63, 63, 70);
+      doc.setLineWidth(0.5);
+      doc.line(m.left, 58, pageW - m.right, 58);
+
+      doc.autoTable({
+        head: headers,
+        body,
+        startY: m.top,
+        margin: { left: m.left, right: m.right, bottom: m.bottom },
+        styles: {
+          fontSize: 9,
+          cellPadding: { top: 6, bottom: 6, left: 7, right: 7 },
+          lineColor: [212, 212, 216],
+          lineWidth: 0.35,
+          valign: 'middle',
+          textColor: [39, 39, 42],
+        },
+        headStyles: {
+          fillColor: [180, 83, 9],
+          textColor: [255, 255, 255],
+          fontStyle: 'bold',
+          fontSize: 9.5,
+        },
+        alternateRowStyles: { fillColor: [250, 250, 250] },
+        columnStyles: {
+          0: { cellWidth: 'auto', minCellWidth: 100, halign: 'left' },
+          1: { halign: 'right' },
+          2: { halign: 'right' },
+          3: { halign: 'right' },
+          4: { halign: 'right' },
+          5: { halign: 'right' },
+          6: { halign: 'right' },
+          7: { halign: 'right' },
+        },
+        didParseCell: (data) => {
+          if (data.section === 'body' && data.row.index === body.length - 1) {
+            data.cell.styles.fontStyle = 'bold';
+            data.cell.styles.fillColor = [254, 243, 199];
+            data.cell.styles.textColor = [66, 32, 6];
+          }
+        },
+        didDrawPage: (data) => {
+          const n = doc.internal.getNumberOfPages();
+          const yFoot = pageH - 18;
+          doc.setFontSize(8);
+          doc.setTextColor(113, 113, 122);
+          doc.setFont('helvetica', 'normal');
+          doc.text(
+            `Pagina ${data.pageNumber} / ${n} · ${APP_NAME} · ${brandName}`,
+            m.left,
+            yFoot,
+          );
+          if (genAt) {
+            doc.text(`Generado: ${genAt}`, pageW - m.right, yFoot, { align: 'right' });
+          }
+        },
+      });
+      doc.save(`proyecciones_${new Date().toISOString().slice(0, 10)}.pdf`);
+    } finally {
+      if (btnPdf) btnPdf.disabled = false;
+    }
   }
 
   // ── Init ──
@@ -1867,7 +1932,9 @@
     // CSV
     d.getElementById('btn-csv')?.addEventListener('click', exportCSV);
     d.getElementById('btn-xlsx')?.addEventListener('click', exportProjectionXlsx);
-    d.getElementById('btn-pdf')?.addEventListener('click', exportProjectionPdf);
+    d.getElementById('btn-pdf')?.addEventListener('click', () => {
+      exportProjectionPdf().catch(() => {});
+    });
     d.getElementById('table-body')?.addEventListener('change', ev => {
       const t = ev.target;
       if (!t || !t.matches || !t.matches('input.proj-check-input[data-proj-key]')) return;

@@ -17,6 +17,7 @@ Opcionales típicas del conector (ver `odoo_connector.py` y documentación inter
 - `ODOO_INCLUDE_POS` — Incluir o no ventas POS (`1` / `0`).
 - `ODOO_SALE_STATES`, `ODOO_POS_STATES` — Estados de pedidos a considerar.
 - `ODOO_BRAVOS_TEMPLATE_IDS`, `ODOO_BRAVOS_TEMPLATE_METRICS_IDS` — Ajuste de plantillas Bravos.
+- `ODOO_RISK_STOCK_BAJO_MAX` — Umbral numérico para la categoría **stock bajo** en `/api/inventory-risks` (por defecto en código: **30** si no se define).
 
 ## Panel web (login)
 
