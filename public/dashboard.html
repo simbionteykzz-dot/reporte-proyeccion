@@ -28,55 +28,61 @@
         </div>
       </div>
       <nav class="sidebar-nav" aria-label="Secciones del panel">
-        <div class="nav-section">
-          <div class="nav-section-label">Empresas</div>
-          <button class="nav-item active" data-nav="produccion" data-panel="dashboard" type="button">
-            <img class="nav-icon" src="/assets/iconos-barra/over-icon.png" alt="" width="20" height="20" decoding="async">
-            <span class="nav-text">Overshark</span>
-          </button>
-          <button class="nav-item" data-nav="bravos" data-panel="dashboard" type="button">
-            <img class="nav-icon" src="/assets/iconos-barra/brav-icon.png" alt="" width="20" height="20" decoding="async">
-            <span class="nav-text">Bravos</span>
-          </button>
-          <button class="nav-item" data-nav="boxprime" data-panel="dashboard" type="button">
-            <img class="nav-icon" src="/assets/iconos-barra/box.icon.png" alt="" width="20" height="20" decoding="async">
-            <span class="nav-text">Box Prime</span>
-          </button>
-        </div>
-        <div class="nav-section">
-          <div class="nav-section-label">Inventario</div>
-          <button class="nav-item nav-item--inv" data-nav="produccion" data-panel="inventory" type="button" title="Stock por variante y marca — Overshark">
-            <img class="nav-icon" src="/assets/iconos-barra/over-icon.png" alt="" width="20" height="20" decoding="async">
-            <span class="nav-text">Overshark</span>
-          </button>
-          <button class="nav-item nav-item--inv" data-nav="bravos" data-panel="inventory" type="button" title="Stock por variante y marca — Bravos">
-            <img class="nav-icon" src="/assets/iconos-barra/brav-icon.png" alt="" width="20" height="20" decoding="async">
-            <span class="nav-text">Bravos</span>
-          </button>
-          <button class="nav-item nav-item--inv" data-nav="boxprime" data-panel="inventory" type="button" title="Stock por variante y marca — Box Prime">
-            <img class="nav-icon" src="/assets/iconos-barra/box.icon.png" alt="" width="20" height="20" decoding="async">
-            <span class="nav-text">Box Prime</span>
-          </button>
-        </div>
-        <div class="nav-section">
-          <div class="nav-section-label">Riesgos</div>
-          <button class="nav-item nav-item--risk" type="button" data-panel="risks" data-risk-focus="bajo" title="Alertas de stock bajo">
-            <span class="nav-risk-dot" aria-hidden="true"></span>
-            <span class="nav-text">Stock por agotarse</span>
-          </button>
-          <button class="nav-item nav-item--risk" type="button" data-panel="risks" data-risk-focus="agotado" title="Sin stock">
-            <span class="nav-risk-dot nav-risk-dot--danger" aria-hidden="true"></span>
-            <span class="nav-text">Stock agotado</span>
-          </button>
-          <button class="nav-item nav-item--risk" type="button" data-panel="risks" data-risk-focus="compra" title="Pocas compras vs ventas">
-            <span class="nav-risk-dot nav-risk-dot--warn" aria-hidden="true"></span>
-            <span class="nav-text">Baja compra</span>
-          </button>
-          <button class="nav-item nav-item--risk" type="button" data-panel="risks" data-risk-focus="dias" title="Días hasta agotar y salida diaria">
-            <span class="nav-risk-dot nav-risk-dot--accent" aria-hidden="true"></span>
-            <span class="nav-text">Días por agotarse</span>
-          </button>
-        </div>
+        <details class="nav-section" open>
+          <summary class="nav-section-label">Marcas</summary>
+          <div class="nav-section__body">
+            <button class="nav-item active" data-nav="produccion" data-panel="dashboard" type="button">
+              <img class="nav-icon" src="/assets/iconos-barra/over-icon.png" alt="" width="20" height="20" decoding="async">
+              <span class="nav-text">Overshark</span>
+            </button>
+            <button class="nav-item" data-nav="bravos" data-panel="dashboard" type="button">
+              <img class="nav-icon" src="/assets/iconos-barra/brav-icon.png" alt="" width="20" height="20" decoding="async">
+              <span class="nav-text">Bravos</span>
+            </button>
+            <button class="nav-item" data-nav="boxprime" data-panel="dashboard" type="button">
+              <img class="nav-icon" src="/assets/iconos-barra/box.icon.png" alt="" width="20" height="20" decoding="async">
+              <span class="nav-text">Box Prime</span>
+            </button>
+          </div>
+        </details>
+        <details class="nav-section">
+          <summary class="nav-section-label">Inventario</summary>
+          <div class="nav-section__body">
+            <button class="nav-item nav-item--inv" data-nav="produccion" data-panel="inventory" type="button" title="Stock por variante y marca — Overshark">
+              <img class="nav-icon" src="/assets/iconos-barra/over-icon.png" alt="" width="20" height="20" decoding="async">
+              <span class="nav-text">Overshark</span>
+            </button>
+            <button class="nav-item nav-item--inv" data-nav="bravos" data-panel="inventory" type="button" title="Stock por variante y marca — Bravos">
+              <img class="nav-icon" src="/assets/iconos-barra/brav-icon.png" alt="" width="20" height="20" decoding="async">
+              <span class="nav-text">Bravos</span>
+            </button>
+            <button class="nav-item nav-item--inv" data-nav="boxprime" data-panel="inventory" type="button" title="Stock por variante y marca — Box Prime">
+              <img class="nav-icon" src="/assets/iconos-barra/box.icon.png" alt="" width="20" height="20" decoding="async">
+              <span class="nav-text">Box Prime</span>
+            </button>
+          </div>
+        </details>
+        <details class="nav-section">
+          <summary class="nav-section-label">Riesgos</summary>
+          <div class="nav-section__body">
+            <button class="nav-item nav-item--risk" type="button" data-panel="risks" data-risk-focus="bajo" title="Alertas de stock bajo">
+              <span class="nav-risk-dot" aria-hidden="true"></span>
+              <span class="nav-text">Stock por agotarse</span>
+            </button>
+            <button class="nav-item nav-item--risk" type="button" data-panel="risks" data-risk-focus="agotado" title="Sin stock">
+              <span class="nav-risk-dot nav-risk-dot--danger" aria-hidden="true"></span>
+              <span class="nav-text">Stock agotado</span>
+            </button>
+            <button class="nav-item nav-item--risk" type="button" data-panel="risks" data-risk-focus="compra" title="Pocas compras vs ventas">
+              <span class="nav-risk-dot nav-risk-dot--warn" aria-hidden="true"></span>
+              <span class="nav-text">Baja compra</span>
+            </button>
+            <button class="nav-item nav-item--risk" type="button" data-panel="risks" data-risk-focus="dias" title="Días hasta agotar y salida diaria">
+              <span class="nav-risk-dot nav-risk-dot--accent" aria-hidden="true"></span>
+              <span class="nav-text">Días por agotarse</span>
+            </button>
+          </div>
+        </details>
       </nav>
       <div class="sidebar-footer">
         <button type="button" class="btn btn-ghost" id="theme-toggle" data-theme-toggle style="width:100%">
@@ -116,20 +122,25 @@
             <h1 class="page-heading" id="page-heading">Proyección Inventario</h1>
           </div>
         </div>
-        <div class="topbar-section">
-          <div class="filter-group">
-            <label class="filter-label">Desde</label>
-            <input type="date" id="date-from" class="input-date">
+        <details class="topbar-filters-details">
+          <summary class="topbar-filters-summary" aria-label="Mostrar u ocultar filtros de periodo">
+            <span class="topbar-filters-summary__text">Filtros del periodo</span>
+          </summary>
+          <div class="topbar-filters-body">
+            <div class="filter-group">
+              <label class="filter-label" for="date-from">Desde</label>
+              <input type="date" id="date-from" class="input-date">
+            </div>
+            <div class="filter-group">
+              <label class="filter-label" for="date-to">Hasta</label>
+              <input type="date" id="date-to" class="input-date">
+            </div>
+            <button class="btn btn-primary" id="btn-refresh" type="button">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+              <span>Actualizar</span>
+            </button>
           </div>
-          <div class="filter-group">
-            <label class="filter-label">Hasta</label>
-            <input type="date" id="date-to" class="input-date">
-          </div>
-          <button class="btn btn-primary" id="btn-refresh">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-            <span>Actualizar</span>
-          </button>
-        </div>
+        </details>
       </header>
 
       <!-- Content -->

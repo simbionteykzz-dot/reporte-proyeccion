@@ -1886,8 +1886,41 @@
   }
 
   // ── Init ──
+  function isMobileNavLayout() {
+    return w.matchMedia('(max-width: 768px)').matches;
+  }
+
+  function syncSidebarDetailsForViewport() {
+    const list = d.querySelectorAll('.sidebar-nav details.nav-section');
+    if (!list.length) return;
+    if (isMobileNavLayout()) {
+      list.forEach((det, i) => {
+        det.open = i === 0;
+      });
+    } else {
+      list.forEach((det) => { det.open = true; });
+    }
+  }
+
+  function syncTopbarFiltersDetails() {
+    const det = d.querySelector('.topbar-filters-details');
+    if (!det) return;
+    det.open = !isMobileNavLayout();
+  }
+
+  let sidebarDetailsResizeTimer;
+
   function init() {
     applyTheme(S.theme);
+    syncSidebarDetailsForViewport();
+    syncTopbarFiltersDetails();
+    w.addEventListener('resize', () => {
+      clearTimeout(sidebarDetailsResizeTimer);
+      sidebarDetailsResizeTimer = w.setTimeout(() => {
+        syncSidebarDetailsForViewport();
+        syncTopbarFiltersDetails();
+      }, 150);
+    });
 
     // Tabs
     d.querySelectorAll('.tab-button').forEach(btn => btn.addEventListener('click', () => {
@@ -1987,6 +2020,15 @@
     d.querySelectorAll('[data-risk-focus-tab]').forEach((btn) => {
       btn.addEventListener('click', () => {
         applyRiskFocus(btn.getAttribute('data-risk-focus-tab') || 'dias');
+      });
+    });
+
+    d.querySelectorAll('.sidebar-nav details.nav-section').forEach((det) => {
+      det.addEventListener('toggle', () => {
+        if (!isMobileNavLayout() || !det.open) return;
+        d.querySelectorAll('.sidebar-nav details.nav-section').forEach((other) => {
+          if (other !== det) other.open = false;
+        });
       });
     });
 
