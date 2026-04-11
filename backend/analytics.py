@@ -7,11 +7,12 @@ Uses existing odoo_connector.py infrastructure.
 from __future__ import annotations
 
 import os
+import re
 import sys
 import json
 from pathlib import Path
 from datetime import datetime, date, timedelta
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field, asdict
 from typing import Any, Optional
 from functools import lru_cache
@@ -21,8 +22,10 @@ from odoo_connector import (
     config_from_environ,
     connect,
     _search_read_all,
+    _chunks,
     _include_pos_from_env,
     _pos_order_states_from_env,
+    _sale_order_states_from_env,
     is_configured,
     missing_config_keys,
 )
@@ -32,6 +35,21 @@ from odoo_connector import (
 # ============================================================
 TICKET_COMERCIAL_DEFAULT = 99.0
 TICKET_COMERCIAL_MEDIAS = 60.0
+
+
+def _label_box_prime_product(detail: dict[str, Any], pid: int) -> str:
+    """Nombre para UI Box Prime: solo titulo del producto, sin [BOXP_REF…] repetido."""
+    plain = (detail.get("product_name") or "").strip()
+    if plain:
+        return plain
+    raw = (detail.get("name") or "").strip()
+    s = raw
+    for _ in range(4):
+        s2 = re.sub(r"^\[[^\]]+\]\s*", "", s)
+        if s2 == s:
+            break
+        s = s2
+    return (s.strip() or f"Producto {pid}")
 
 # Cantidades fijas por orden definidas por negocio
 BUSINESS_QTY_BY_FAMILY = {
@@ -76,8 +94,8 @@ EXCLUDE_CATEGORIES = {
 
 # Líneas Bravos (product.template) en UI: orden de filas (POLERA NERU, PANTALON OPRA, CLASICOS DE REGALO).
 BRAVOS_TEMPLATE_IDS_DEFAULT = (89, 143, 154)
-# Solo estas plantillas entran en stock, POS, KPIs y totales. 143/154 = solo fila visible con valores nulos.
-BRAVOS_TEMPLATE_METRICS_IDS_DEFAULT = (89,)
+# Plantillas que entran en stock, POS, KPIs y totales (las tres líneas Bravos en panel).
+BRAVOS_TEMPLATE_METRICS_IDS_DEFAULT = (89, 143, 154)
 
 
 def parse_bravos_template_ids_from_env() -> list[int]:
@@ -94,9 +112,8 @@ def parse_bravos_template_ids_from_env() -> list[int]:
 
 def parse_bravos_template_metrics_ids_from_env(display_ids: list[int]) -> set[int]:
     """
-    Plantillas que cuentan para métricas. Por defecto solo 89 (POLERA NERU).
-    OPRA (143) y CLASICOS DE REGALO (154) quedan en tabla con valor nulo (no suman).
-    Override: ODOO_BRAVOS_TEMPLATE_METRICS_IDS=89,143
+    Plantillas que cuentan para métricas. Por defecto 89, 143 y 154 (tres líneas Bravos).
+    Override: ODOO_BRAVOS_TEMPLATE_METRICS_IDS=89 (p. ej. solo Polera).
     """
     raw = os.environ.get("ODOO_BRAVOS_TEMPLATE_METRICS_IDS", "").strip()
     out: set[int] = set()
@@ -146,6 +163,8 @@ class FamilyData:
     list_price_avg: float = 0.0
     # Bravos: fila visible sin sumar a totales ni KPI (como OVERSIZE en tabla).
     excluido_metricas: bool = False
+    # Box Prime: variantes del mismo product.template (product.product count).
+    variant_count: int = 0
 
 
 @dataclass
@@ -270,6 +289,24 @@ class OdooRealExtractor:
             stock[pid] += float(q.get("quantity", 0))
         return dict(stock)
 
+    def get_stock_by_product_internal_all(self) -> dict[int, float]:
+        """Suma stock en ubicaciones internas (incluye cantidades 0 o negativas en quants)."""
+        loc_ids = self.get_internal_location_ids()
+        if not loc_ids:
+            return {}
+        quant_domain: list[Any] = [("location_id", "in", loc_ids)]
+        if self.company_id:
+            quant_domain.append(("company_id", "=", self.company_id))
+        quants = self._sr("stock.quant", quant_domain, ["product_id", "quantity"])
+        stock = defaultdict(float)
+        for q in quants:
+            pid_t = q.get("product_id")
+            if not pid_t:
+                continue
+            pid = pid_t[0] if isinstance(pid_t, (list, tuple)) else int(pid_t)
+            stock[pid] += float(q.get("quantity", 0))
+        return dict(stock)
+
     def get_product_details(self, product_ids: list[int]) -> dict[int, dict]:
         products = self._sr("product.product",
             [("id", "in", product_ids)],
@@ -310,13 +347,38 @@ class OdooRealExtractor:
             tmpl = p.get("product_tmpl_id")
             tmpl_id = int(tmpl[0]) if isinstance(tmpl, (list, tuple)) and tmpl else int(tmpl or 0)
 
+            dc = (p.get("default_code") or "").strip()
             result[pid] = {
                 "name": p.get("display_name", p.get("name", f"[{pid}]")),
+                "product_name": (p.get("name") or "").strip(),
+                "default_code": dc,
                 "cat_id": cat_id,
                 "list_price": lp,
                 "tmpl_id": tmpl_id,
             }
         return result
+
+    def get_box_prime_product_ids(self) -> list[int]:
+        """
+        Productos Box Prime: default_code tipo BOXP_* (ilike BOXP%).
+        Primero restringe a compañía compartida o la del extractor; si no hay resultados,
+        busca solo por código (útil si los productos están sin company_id o en otra variante).
+        """
+        cid = self.company_id
+        if not cid:
+            return []
+        dom_company: list[Any] = [
+            "&",
+            ("default_code", "=ilike", "BOXP%"),
+            "|",
+            ("company_id", "=", False),
+            ("company_id", "=", cid),
+        ]
+        rows = self._sr("product.product", dom_company, ["id"])
+        if rows:
+            return sorted({int(r["id"]) for r in rows})
+        rows = self._sr("product.product", [("default_code", "=ilike", "BOXP%")], ["id"])
+        return sorted({int(r["id"]) for r in rows})
 
     def get_pos_lines(self, product_ids: list[int],
                       date_from: str | None = None,
@@ -434,6 +496,98 @@ class OdooRealExtractor:
                 "usage": r.get("usage") or "",
             }
         return out
+
+
+def compute_ticket_promedio_por_empresa(
+    extractor: OdooRealExtractor,
+    date_from: str | None,
+    date_to: str | None,
+) -> tuple[float, dict[str, Any]]:
+    """
+    Ticket medio por compañía (Overshark, Bravos, Box Prime, etc.): suma de subtotales
+    de líneas en notas de venta (sale.order.line) + TPV (pos.order.line), dividido entre
+    el número de pedidos únicos en cada canal en el periodo. Respeta company_id del extractor.
+    """
+    sale_lines: list[dict[str, Any]] = []
+    pos_lines_all: list[dict[str, Any]] = []
+
+    states = _sale_order_states_from_env()
+    domain_s: list[Any] = [("state", "in", states)]
+    if date_from:
+        domain_s.append(("order_id.date_order", ">=", date_from + " 00:00:00"))
+    if date_to:
+        domain_s.append(("order_id.date_order", "<=", date_to + " 23:59:59"))
+    if extractor.company_id:
+        domain_s.append(("order_id.company_id", "=", extractor.company_id))
+    try:
+        sale_lines = extractor._sr("sale.order.line", domain_s, ["order_id", "price_subtotal"])
+    except Exception:
+        sale_lines = []
+
+    if _include_pos_from_env():
+        pos_states = _pos_order_states_from_env()
+        domain_p: list[Any] = [("order_id.state", "in", pos_states)]
+        if date_from:
+            domain_p.append(("order_id.date_order", ">=", date_from + " 00:00:00"))
+        if date_to:
+            domain_p.append(("order_id.date_order", "<=", date_to + " 23:59:59"))
+        if extractor.company_id:
+            domain_p.append(("order_id.company_id", "=", extractor.company_id))
+        try:
+            pos_lines_all = extractor._sr(
+                "pos.order.line",
+                domain_p,
+                ["order_id", "price_subtotal", "price_subtotal_incl"],
+            )
+        except Exception:
+            pos_lines_all = []
+
+    sale_oids: set[int] = set()
+    sum_sale = 0.0
+    for ln in sale_lines:
+        oid_t = ln.get("order_id")
+        oid = oid_t[0] if isinstance(oid_t, (list, tuple)) else int(oid_t or 0)
+        if oid:
+            sale_oids.add(oid)
+        sum_sale += float(ln.get("price_subtotal") or 0)
+
+    pos_oids: set[int] = set()
+    sum_pos = 0.0
+    for ln in pos_lines_all:
+        oid_t = ln.get("order_id")
+        oid = oid_t[0] if isinstance(oid_t, (list, tuple)) else int(oid_t or 0)
+        if oid:
+            pos_oids.add(oid)
+        sub = ln.get("price_subtotal")
+        if sub is None:
+            sub = ln.get("price_subtotal_incl")
+        sum_pos += float(sub or 0)
+
+    n_sale = len(sale_oids)
+    n_pos = len(pos_oids)
+    n_pedidos = n_sale + n_pos
+    total_sub = sum_sale + sum_pos
+
+    if n_pedidos <= 0 or total_sub <= 0:
+        ticket = float(TICKET_COMERCIAL_DEFAULT)
+        fallback = True
+    else:
+        ticket = total_sub / n_pedidos
+        fallback = False
+
+    meta: dict[str, Any] = {
+        "pedidos_sale": n_sale,
+        "pedidos_pos": n_pos,
+        "pedidos_total": n_pedidos,
+        "subtotal_sale_lines": round(sum_sale, 2),
+        "subtotal_pos_lines": round(sum_pos, 2),
+        "fallback_ticket_comercial": fallback,
+        "formula": (
+            "sum(price_subtotal líneas venta+POS) / (pedidos únicos sale.order + pedidos únicos pos.order), "
+            "filtrado por company_id y fechas del dashboard"
+        ),
+    }
+    return round(ticket, 2), meta
 
 
 # ============================================================
@@ -683,6 +837,178 @@ class BusinessEngine:
         )
 
         # Recalculate percentages with precise total
+        for f in families:
+            if totals.ingresos_brutos > 0:
+                f.porcentaje = round((f.ingresos_brutos / totals.ingresos_brutos) * 100, 4)
+
+        return families, totals
+
+    def compute_box_prime_by_skus(
+        self,
+        product_ids: list[int],
+        stock_by_product: dict[int, float],
+        product_details: dict[int, dict],
+        pos_lines: list[dict],
+        date_from: str | None,
+        date_to: str | None,
+        pos_orders: list[dict] | None,
+        variant_by_pid: dict[int, int] | None = None,
+    ) -> tuple[list[FamilyData], DashboardTotals]:
+        """
+        Una fila por producto con referencia BOXP_* (electrónica / catálogo Box Prime).
+        Ticket de proyección: list_price del producto o fallback comercial.
+        """
+        if not product_ids:
+            return [], DashboardTotals()
+
+        pid_sales_qty: defaultdict[int, float] = defaultdict(float)
+        pid_sales_sub: defaultdict[int, float] = defaultdict(float)
+        pid_order_qty: defaultdict[int, defaultdict[int, float]] = defaultdict(lambda: defaultdict(float))
+
+        for ln in pos_lines:
+            pid_t = ln.get("product_id")
+            pid = pid_t[0] if isinstance(pid_t, (list, tuple)) else int(pid_t or 0)
+            if pid not in product_details:
+                continue
+            oid_t = ln.get("order_id")
+            oid = oid_t[0] if isinstance(oid_t, (list, tuple)) else int(oid_t or 0)
+            qty = float(ln.get("qty", 0))
+            sub = float(ln.get("price_subtotal", 0) or ln.get("price_subtotal_incl", 0))
+            if qty <= 0:
+                continue
+            pid_sales_qty[pid] += qty
+            pid_sales_sub[pid] += sub
+            pid_order_qty[pid][oid] += qty
+
+        days_in_period = 1
+        if pos_orders:
+            dates = []
+            for o in pos_orders:
+                d = o.get("date_order", "")
+                if d:
+                    try:
+                        dates.append(datetime.fromisoformat(str(d).replace("Z", "+00:00")).date())
+                    except Exception:
+                        pass
+            if dates:
+                min_date = min(dates)
+                max_date = max(dates)
+                days_in_period = max((max_date - min_date).days, 1)
+        elif date_from and date_to:
+            try:
+                d1 = datetime.strptime(date_from, "%Y-%m-%d").date()
+                d2 = datetime.strptime(date_to, "%Y-%m-%d").date()
+                days_in_period = max((d2 - d1).days, 1)
+            except Exception:
+                days_in_period = 30
+
+        today = date.today()
+        if today.month == 12:
+            end_of_month = date(today.year + 1, 1, 1) - timedelta(days=1)
+        else:
+            end_of_month = date(today.year, today.month + 1, 1) - timedelta(days=1)
+        days_remaining = max((end_of_month - today).days, 1)
+
+        pre_ingresos: dict[int, float] = {}
+        for pid in product_ids:
+            detail = product_details.get(pid, {})
+            stock = float(stock_by_product.get(pid, 0.0))
+            lp = float(detail.get("list_price") or 0)
+            ticket_u = lp if lp > 0 else TICKET_COMERCIAL_DEFAULT
+            orders_d = pid_order_qty.get(pid, {})
+            num_orders = len(orders_d)
+            total_qty_sold = pid_sales_qty.get(pid, 0.0)
+            cantidad = (total_qty_sold / num_orders) if num_orders > 0 and total_qty_sold > 0 else 1.0
+            cantidad = max(1.0, float(cantidad))
+            ventas_exactas = stock / cantidad if cantidad > 0 else 0.0
+            pre_ingresos[pid] = ventas_exactas * ticket_u
+
+        total_ingresos_pre = sum(pre_ingresos.values())
+        families: list[FamilyData] = []
+
+        for pid in sorted(
+            product_ids,
+            key=lambda p: _label_box_prime_product(product_details.get(p, {}), p).lower(),
+        ):
+            detail = product_details.get(pid, {})
+            stock = float(stock_by_product.get(pid, 0.0))
+            nombre = _label_box_prime_product(detail, pid)
+
+            orders_dict = pid_order_qty.get(pid, {})
+            num_orders = len(orders_dict)
+            total_qty_sold = pid_sales_qty.get(pid, 0.0)
+            subtotal = pid_sales_sub.get(pid, 0.0)
+
+            cantidad = (total_qty_sold / num_orders) if num_orders > 0 and total_qty_sold > 0 else 1.0
+            cantidad = max(1.0, float(cantidad))
+
+            ticket_real = subtotal / total_qty_sold if total_qty_sold > 0 else 0.0
+            lp = float(detail.get("list_price") or 0)
+            ticket_comercial = lp if lp > 0 else TICKET_COMERCIAL_DEFAULT
+            ticket_usado = ticket_comercial
+
+            ventas_exactas = stock / cantidad if cantidad > 0 else 0.0
+            ventas = round(ventas_exactas) if cantidad > 0 else 0
+            ingresos = ventas_exactas * ticket_usado if cantidad > 0 else 0.0
+
+            porcentaje = (ingresos / total_ingresos_pre * 100) if total_ingresos_pre > 0 else 0.0
+
+            daily_exit = total_qty_sold / days_in_period if days_in_period > 0 else 0.0
+            dias_agotar = stock / daily_exit if daily_exit > 0 else 9999.0
+
+            if daily_exit <= 0 or total_qty_sold == 0:
+                criticidad = "sin_historial"
+            elif dias_agotar <= 7:
+                criticidad = "critico"
+            elif dias_agotar <= 15:
+                criticidad = "atencion"
+            elif dias_agotar <= 30:
+                criticidad = "estable"
+            else:
+                criticidad = "sobrestock"
+
+            ventas_fin_mes = round(daily_exit * days_remaining) if daily_exit > 0 else 0
+            ingresos_fin_mes = (daily_exit * days_remaining / cantidad) * ticket_usado if cantidad > 0 else 0.0
+            riesgo = dias_agotar < days_remaining and daily_exit > 0
+
+            families.append(
+                FamilyData(
+                    nombre=nombre,
+                    cat_id=0,
+                    stock=stock,
+                    qty_vendida=total_qty_sold,
+                    subtotal_ventas=subtotal,
+                    num_ordenes=num_orders,
+                    num_productos=1,
+                    cantidad_promedio=round(cantidad, 2),
+                    ticket_real=round(ticket_real, 2),
+                    ticket_comercial=ticket_comercial,
+                    ticket_usado=ticket_usado,
+                    ventas_proyectadas=float(ventas),
+                    ingresos_brutos=round(ingresos, 2),
+                    porcentaje=round(porcentaje, 4),
+                    promedio_diario_salida=round(daily_exit, 2),
+                    dias_para_agotar=round(dias_agotar, 1),
+                    clasificacion_criticidad=criticidad,
+                    ventas_proyectadas_fin_mes=round(ventas_fin_mes, 2),
+                    ingresos_proyectados_fin_mes=round(ingresos_fin_mes, 2),
+                    riesgo_quiebre_fin_mes=riesgo,
+                    list_price_avg=round(lp, 2),
+                    variant_count=int(variant_by_pid.get(pid, 0)) if variant_by_pid else 0,
+                )
+            )
+
+        totals = DashboardTotals(
+            stock=sum(f.stock for f in families),
+            ventas_proyectadas=sum(f.ventas_proyectadas for f in families),
+            ingresos_brutos=sum(f.ingresos_brutos for f in families),
+            ticket_global=TICKET_COMERCIAL_DEFAULT,
+            familias_activas=len(families),
+            ventas_fin_mes=sum(f.ventas_proyectadas_fin_mes for f in families),
+            ingresos_fin_mes=sum(f.ingresos_proyectados_fin_mes for f in families),
+            familias_riesgo=sum(1 for f in families if f.riesgo_quiebre_fin_mes),
+        )
+
         for f in families:
             if totals.ingresos_brutos > 0:
                 f.porcentaje = round((f.ingresos_brutos / totals.ingresos_brutos) * 100, 4)
@@ -966,11 +1292,13 @@ class QAValidator:
             f"sum={sum_pct:.4f}%"
         ))
 
-        # 5. Ticket global fixed by business rule
+        # 5. Ticket global: calculado desde Odoo (venta+POS por empresa) o fallback comercial
         checks.append(QACheck(
-            "ticket_global_fijo", abs(totals.ticket_global - TICKET_COMERCIAL_DEFAULT) < 0.01,
-            TICKET_COMERCIAL_DEFAULT, totals.ticket_global,
-            "ticket global comercial fijo"
+            "ticket_global_valido",
+            totals.ticket_global >= 0,
+            ">= 0",
+            totals.ticket_global,
+            "ticket promedio por empresa y periodo, o fallback S/ 99 si no hay pedidos"
         ))
 
         # 6. No negative values
@@ -1077,6 +1405,32 @@ def _is_bravos_prueba_name(name: str | None) -> bool:
     return "PRUEBA" in (name or "").upper()
 
 
+def resolve_box_prime_company_id(
+    companies: list[dict[str, Any]],
+    bravos_id: int | None,
+) -> int | None:
+    """
+    Compañía Box Prime: ODOO_BOX_PRIME_COMPANY_ID, o nombre que contenga BOX PRIME
+    (no reutiliza el id de Bravos).
+    """
+    if not companies:
+        return None
+    allowed = {int(c["id"]) for c in companies}
+    raw = os.environ.get("ODOO_BOX_PRIME_COMPANY_ID", "").strip()
+    if raw.isdigit():
+        bid = int(raw)
+        if bid in allowed:
+            return bid
+    for c in companies:
+        n = (c.get("name") or "").strip().upper()
+        if "BOX PRIME" in n or n.replace(" ", "") == "BOXPRIME":
+            cid = int(c["id"])
+            if bravos_id is not None and cid == int(bravos_id):
+                continue
+            return cid
+    return None
+
+
 def resolve_bravos_company_id(companies: list[dict[str, Any]], default_id: int | None) -> int | None:
     """
     Compañía de la línea Bravos: ODOO_BRAVOS_COMPANY_ID, o nombre exacto BRAVOS,
@@ -1120,13 +1474,34 @@ def get_companies_for_dashboard_user() -> dict[str, Any]:
             except Exception:
                 pass
 
+    allowed_ids = {int(c["id"]) for c in companies}
+    raw_box = os.environ.get("ODOO_BOX_PRIME_COMPANY_ID", "").strip()
+    if raw_box.isdigit():
+        bxid = int(raw_box)
+        if bxid not in allowed_ids:
+            try:
+                crow = ext._sr("res.company", [("id", "=", bxid)], ["id", "name"])
+                if crow:
+                    companies.append({
+                        "id": bxid,
+                        "name": (crow[0].get("name") or "").strip(),
+                    })
+            except Exception:
+                pass
+
     bravos_id = resolve_bravos_company_id(companies, default_id)
     bravos_name = next((c["name"] for c in companies if int(c["id"]) == bravos_id), None) if bravos_id else None
+    box_prime_id = resolve_box_prime_company_id(companies, bravos_id)
+    box_prime_name = (
+        next((c["name"] for c in companies if int(c["id"]) == box_prime_id), None) if box_prime_id else None
+    )
     return {
         "companies": companies,
         "default_company_id": default_id,
         "bravos_company_id": bravos_id,
         "bravos_name": bravos_name,
+        "box_prime_company_id": box_prime_id,
+        "box_prime_name": box_prime_name,
     }
 
 
@@ -1141,6 +1516,17 @@ def is_bravos_dashboard_company(company_id: int | None) -> bool:
     ctx = get_companies_for_dashboard_user()
     bid = resolve_bravos_company_id(ctx["companies"], ctx["default_company_id"])
     return bid is not None and int(bid) == int(company_id)
+
+
+def is_box_prime_dashboard_company(company_id: int | None) -> bool:
+    """True si company_id es la empresa Box Prime resuelta (catálogo BOXP_*)."""
+    if company_id is None:
+        return False
+    ctx = get_companies_for_dashboard_user()
+    companies = ctx["companies"]
+    bravos_id = resolve_bravos_company_id(companies, ctx["default_company_id"])
+    box_id = resolve_box_prime_company_id(companies, bravos_id)
+    return box_id is not None and int(box_id) == int(company_id)
 
 
 def generate_dashboard_payload(
@@ -1178,9 +1564,15 @@ def generate_dashboard_payload(
     bravos_template_ids_meta: list[int] | None = None
     bravos_template_metrics_ids_meta: list[int] | None = None
     products_with_stock_count = 0
+    box_pids: list[int] = []
 
     use_bravos_templates = extractor.company_id is not None and (
         bravos_tab or is_bravos_dashboard_company(extractor.company_id)
+    )
+    use_box_prime = (
+        extractor.company_id is not None
+        and not use_bravos_templates
+        and is_box_prime_dashboard_company(extractor.company_id)
     )
 
     if use_bravos_templates:
@@ -1259,6 +1651,60 @@ def generate_dashboard_payload(
             date_to,
             pos_orders,
         )
+        ticket_promedio, ticket_promedio_meta = compute_ticket_promedio_por_empresa(
+            extractor, date_from, date_to
+        )
+        totals.ticket_global = ticket_promedio
+    elif use_box_prime:
+        dashboard_aggregation = "box_prime_productos"
+        box_pids = extractor.get_box_prime_product_ids()
+        if box_pids:
+            stock_by_product = {pid: float(stock_all.get(pid, 0.0)) for pid in box_pids}
+            product_details = extractor.get_product_details(box_pids)
+            pos_lines = extractor.get_pos_lines(box_pids, date_from, date_to)
+            products_with_stock_count = len([p for p in box_pids if stock_all.get(p, 0) > 0])
+        else:
+            stock_by_product = {}
+            product_details = {}
+            pos_lines = []
+            products_with_stock_count = 0
+        pos_orders = extractor.get_pos_orders_dates(date_from, date_to)
+        variant_by_pid: dict[int, int] = {}
+        if box_pids and product_details:
+            tmpl_ids_u = sorted(
+                {int(product_details[p].get("tmpl_id") or 0) for p in box_pids if product_details.get(p)}
+            )
+            tmpl_ids_u = [t for t in tmpl_ids_u if t > 0]
+            if tmpl_ids_u:
+                vrows = extractor._sr(
+                    "product.product",
+                    [("product_tmpl_id", "in", tmpl_ids_u)],
+                    ["product_tmpl_id"],
+                )
+                vc_tmpl: Counter[int] = Counter()
+                for r in vrows:
+                    t = r.get("product_tmpl_id")
+                    tidp = t[0] if isinstance(t, (list, tuple)) else int(t or 0)
+                    if tidp:
+                        vc_tmpl[tidp] += 1
+                for pid in box_pids:
+                    det = product_details.get(pid, {})
+                    tidp = int(det.get("tmpl_id") or 0)
+                    variant_by_pid[pid] = int(vc_tmpl[tidp]) if tidp and tidp in vc_tmpl else 1
+        families, totals = engine.compute_box_prime_by_skus(
+            box_pids,
+            stock_by_product,
+            product_details,
+            pos_lines,
+            date_from,
+            date_to,
+            pos_orders,
+            variant_by_pid=variant_by_pid or None,
+        )
+        ticket_promedio, ticket_promedio_meta = compute_ticket_promedio_por_empresa(
+            extractor, date_from, date_to
+        )
+        totals.ticket_global = ticket_promedio
     else:
         stock_by_product = stock_all
         product_ids = sorted(stock_by_product.keys())
@@ -1270,6 +1716,10 @@ def generate_dashboard_payload(
             stock_by_product, product_details, pos_lines,
             categ_names, date_from, date_to, pos_orders
         )
+        ticket_promedio, ticket_promedio_meta = compute_ticket_promedio_por_empresa(
+            extractor, date_from, date_to
+        )
+        totals.ticket_global = ticket_promedio
 
     # Phase 8: QA
     qa_checks = QAValidator.validate(families, totals)
@@ -1311,32 +1761,465 @@ def generate_dashboard_payload(
             "products_with_stock": products_with_stock_count,
             "days_remaining_month": max((date(date.today().year, date.today().month % 12 + 1, 1) - timedelta(days=1) - date.today()).days, 1) if date.today().month < 12 else max((date(date.today().year, 12, 31) - date.today()).days, 1),
             "ticket_rule": "S/ 99 general, S/ 60 medias, OVERSIZE nulo",
+            "ticket_promedio": ticket_promedio_meta,
+            "box_prime_sku_count": len(box_pids) if dashboard_aggregation == "box_prime_productos" else None,
             "definition_total_ventas": (
                 "ventas proyectadas = round(stock / uds_promedio_por_pedido_pos); uds_promedio = qty_vendida/num_ordenes (Bravos)"
                 if dashboard_aggregation == "bravos_product_templates"
-                else "ventas proyectadas = round(stock_actual / cantidad_fija_por_familia)"
+                else (
+                    "Box Prime: productos default_code BOXP%; ventas proyectadas = round(stock/cant_prom); "
+                    "cant_prom = max(1, qty_vendida/num_pedidos_POS)"
+                    if dashboard_aggregation == "box_prime_productos"
+                    else "ventas proyectadas = round(stock_actual / cantidad_fija_por_familia)"
+                )
             ),
         },
         "formulas": {
             "cantidad_promedio": (
                 "Bravos: promedio uds por pedido POS en el periodo; si no hay pedidos, 1"
                 if dashboard_aggregation == "bravos_product_templates"
-                else "cantidad fija por familia (tabla negocio)"
+                else (
+                    "Box Prime: uds por pedido en POS en el periodo; minimo 1"
+                    if dashboard_aggregation == "box_prime_productos"
+                    else "cantidad fija por familia (tabla negocio)"
+                )
             ),
             "ventas_proyectadas": (
                 "round(stock / cantidad_promedio)"
                 if dashboard_aggregation == "bravos_product_templates"
-                else "round(stock_actual / cantidad_fija)"
+                else (
+                    "round(stock / cantidad_promedio)"
+                    if dashboard_aggregation == "box_prime_productos"
+                    else "round(stock_actual / cantidad_fija)"
+                )
             ),
             "ingresos_brutos": (
                 "(stock / cantidad_promedio) * ticket_comercial"
                 if dashboard_aggregation == "bravos_product_templates"
-                else "(stock_actual / cantidad_fija) * ticket_comercial"
+                else (
+                    "(stock / cantidad_promedio) * list_price (o S/ 99 si sin precio)"
+                    if dashboard_aggregation == "box_prime_productos"
+                    else "(stock_actual / cantidad_fija) * ticket_comercial"
+                )
             ),
-            "ticket_global": "valor comercial fijo = 99",
+            "ticket_global": (
+                "sum(price_subtotal líneas sale.order.line + pos.order.line) / "
+                "(#pedidos únicos venta + #pedidos únicos TPV), por company_id y periodo; "
+                "si no hay datos, fallback S/ 99"
+            ),
             "porcentaje_familia": "(ingresos_familia / ingresos_total) * 100",
             "dias_para_agotar": "stock_actual / promedio_diario_salida",
             "promedio_diario_salida": "total_qty_vendida / dias_periodo_historico",
+        },
+    }
+
+
+def _days_in_period_inv(df: str | None, dt: str | None) -> int:
+    if not df or not dt:
+        return 30
+    try:
+        d1 = datetime.strptime(df[:10], "%Y-%m-%d").date()
+        d2 = datetime.strptime(dt[:10], "%Y-%m-%d").date()
+        return max((d2 - d1).days + 1, 1)
+    except Exception:
+        return 30
+
+
+def _risk_stock_bajo_max() -> float:
+    try:
+        return max(1.0, float(os.environ.get("ODOO_RISK_STOCK_BAJO_MAX", "10")))
+    except ValueError:
+        return 10.0
+
+
+def _inventory_resolve_product_ids(
+    extractor: OdooRealExtractor,
+    stock_sum: dict[int, float],
+    date_from: str | None,
+    date_to: str | None,
+    bravos_tab: bool,
+) -> list[int]:
+    """Misma lógica de alcance que el dashboard: Bravos por plantillas, Box por BOXP%, resto stock+moving."""
+    use_bravos = extractor.company_id is not None and (
+        bravos_tab or is_bravos_dashboard_company(extractor.company_id)
+    )
+    use_box = (
+        extractor.company_id is not None
+        and not use_bravos
+        and is_box_prime_dashboard_company(extractor.company_id)
+    )
+
+    moving: set[int] = set()
+    pos_states = _pos_order_states_from_env()
+    pos_domain: list[Any] = [("order_id.state", "in", pos_states)]
+    if date_from:
+        pos_domain.append(("order_id.date_order", ">=", date_from + " 00:00:00"))
+    if date_to:
+        pos_domain.append(("order_id.date_order", "<=", date_to + " 23:59:59"))
+    if extractor.company_id:
+        pos_domain.append(("order_id.company_id", "=", extractor.company_id))
+    for ln in extractor._sr("pos.order.line", pos_domain, ["product_id"]):
+        pid_t = ln.get("product_id")
+        if isinstance(pid_t, (list, tuple)) and pid_t:
+            moving.add(int(pid_t[0]))
+
+    sale_states = _sale_order_states_from_env()
+    sol_domain: list[Any] = [("order_id.state", "in", sale_states)]
+    if date_from:
+        sol_domain.append(("order_id.date_order", ">=", date_from + " 00:00:00"))
+    if date_to:
+        sol_domain.append(("order_id.date_order", "<=", date_to + " 23:59:59"))
+    if extractor.company_id:
+        sol_domain.append(("order_id.company_id", "=", extractor.company_id))
+    for ln in extractor._sr("sale.order.line", sol_domain, ["product_id"]):
+        pid_t = ln.get("product_id")
+        if isinstance(pid_t, (list, tuple)) and pid_t:
+            moving.add(int(pid_t[0]))
+
+    if use_bravos:
+        tmpl_ids_cfg = parse_bravos_template_ids_from_env()
+        tmpl_metrics_ids = sorted(parse_bravos_template_metrics_ids_from_env(tmpl_ids_cfg))
+        if not tmpl_metrics_ids and tmpl_ids_cfg:
+            tmpl_metrics_ids = [tmpl_ids_cfg[0]]
+        # Inventario: todas las variantes de las plantillas configuradas (no solo las de métricas KPI)
+        tmpl_for_variants = list(tmpl_ids_cfg) if tmpl_ids_cfg else list(tmpl_metrics_ids)
+        variant_domain: list = [
+            "&",
+            ("product_tmpl_id", "in", tmpl_for_variants),
+            "|",
+            ("company_id", "=", False),
+            ("company_id", "=", extractor.company_id),
+        ]
+        variant_rows = extractor._sr("product.product", variant_domain, ["id"])
+        if not variant_rows and extractor.company_id:
+            variant_rows = extractor._sr(
+                "product.product",
+                [("product_tmpl_id", "in", tmpl_for_variants)],
+                ["id"],
+            )
+        return sorted({int(r["id"]) for r in variant_rows})
+
+    if use_box:
+        return sorted(set(extractor.get_box_prime_product_ids()))
+
+    return sorted(set(stock_sum.keys()) | moving)
+
+
+def _read_templates_brand_map(
+    extractor: OdooRealExtractor,
+    tmpl_ids: list[int],
+    categ_names: dict[int, str],
+) -> dict[int, dict[str, Any]]:
+    """Marca desde product_brand/brand en plantilla; fallback nombre de categoría."""
+    out: dict[int, dict[str, Any]] = {}
+    if not tmpl_ids:
+        return out
+    brand_field: str | None = None
+    for fld in ("brand_id", "product_brand_id"):
+        try:
+            probe = extractor._sr("product.template", [("id", "=", tmpl_ids[0])], ["id", fld])
+            if probe:
+                brand_field = fld
+                break
+        except Exception:
+            continue
+    fields = ["id", "name", "display_name", "categ_id"]
+    if brand_field:
+        fields.append(brand_field)
+    for chunk in _chunks(sorted(set(tmpl_ids)), 250):
+        try:
+            rows = extractor._sr("product.template", [("id", "in", chunk)], fields)
+        except Exception:
+            rows = extractor._sr("product.template", [("id", "in", chunk)], ["id", "name", "display_name", "categ_id"])
+            brand_field = None
+        for r in rows:
+            tid = int(r["id"])
+            marca = ""
+            if brand_field:
+                b = r.get(brand_field)
+                if isinstance(b, (list, tuple)) and len(b) >= 2:
+                    marca = (b[1] or "").strip()
+            cat = r.get("categ_id")
+            cat_id = int(cat[0]) if isinstance(cat, (list, tuple)) and cat else 0
+            if not marca:
+                marca = (categ_names.get(cat_id) or "").split("/")[0].strip() or "—"
+            out[tid] = {
+                "tmpl_name": (r.get("display_name") or r.get("name") or f"Plantilla {tid}").strip(),
+                "marca": marca,
+                "categ_id": cat_id,
+            }
+    return out
+
+
+def _aggregate_qty_by_product(
+    extractor: OdooRealExtractor,
+    product_ids: list[int],
+    date_from: str | None,
+    date_to: str | None,
+) -> tuple[dict[int, float], dict[int, float], dict[int, float]]:
+    """Devuelve (qty_pos, qty_sale, qty_purchase) por product_id en el periodo."""
+    pos_qty: dict[int, float] = defaultdict(float)
+    sale_qty: dict[int, float] = defaultdict(float)
+    pur_qty: dict[int, float] = defaultdict(float)
+    if not product_ids:
+        return {}, {}, {}
+
+    pos_states = _pos_order_states_from_env()
+    sale_states = _sale_order_states_from_env()
+
+    for chunk in _chunks(product_ids, 450):
+        pdomain: list[Any] = [("product_id", "in", chunk), ("order_id.state", "in", pos_states)]
+        if date_from:
+            pdomain.append(("order_id.date_order", ">=", date_from + " 00:00:00"))
+        if date_to:
+            pdomain.append(("order_id.date_order", "<=", date_to + " 23:59:59"))
+        if extractor.company_id:
+            pdomain.append(("order_id.company_id", "=", extractor.company_id))
+        # pos.order.line: cantidad en `qty` (no existe product_uom_qty como en sale.order.line)
+        for ln in extractor._sr("pos.order.line", pdomain, ["product_id", "qty"]):
+            pid_t = ln.get("product_id")
+            if not isinstance(pid_t, (list, tuple)) or not pid_t:
+                continue
+            pid = int(pid_t[0])
+            q = float(ln.get("qty") or 0)
+            pos_qty[pid] += q
+
+        sdomain: list[Any] = [("product_id", "in", chunk), ("order_id.state", "in", sale_states)]
+        if date_from:
+            sdomain.append(("order_id.date_order", ">=", date_from + " 00:00:00"))
+        if date_to:
+            sdomain.append(("order_id.date_order", "<=", date_to + " 23:59:59"))
+        if extractor.company_id:
+            sdomain.append(("order_id.company_id", "=", extractor.company_id))
+        for ln in extractor._sr("sale.order.line", sdomain, ["product_id", "product_uom_qty"]):
+            pid_t = ln.get("product_id")
+            if not isinstance(pid_t, (list, tuple)) or not pid_t:
+                continue
+            pid = int(pid_t[0])
+            sale_qty[pid] += float(ln.get("product_uom_qty") or 0)
+
+        try:
+            podomain: list[Any] = [
+                ("product_id", "in", chunk),
+                ("order_id.state", "in", ["purchase", "done"]),
+            ]
+            if date_from:
+                podomain.append(("order_id.date_order", ">=", date_from + " 00:00:00"))
+            if date_to:
+                podomain.append(("order_id.date_order", "<=", date_to + " 23:59:59"))
+            if extractor.company_id:
+                podomain.append(("order_id.company_id", "=", extractor.company_id))
+            for ln in extractor._sr(
+                "purchase.order.line",
+                podomain,
+                ["product_id", "product_qty", "qty_received"],
+            ):
+                pid_t = ln.get("product_id")
+                if not isinstance(pid_t, (list, tuple)) or not pid_t:
+                    continue
+                pid = int(pid_t[0])
+                pq = ln.get("product_qty")
+                if pq is None:
+                    pq = ln.get("qty_received")
+                pur_qty[pid] += float(pq or 0)
+        except Exception:
+            pass
+
+    return dict(pos_qty), dict(sale_qty), dict(pur_qty)
+
+
+def generate_inventory_risks_payload(
+    date_from: str | None = None,
+    date_to: str | None = None,
+    company_id: int | None = None,
+    *,
+    bravos_tab: bool = False,
+) -> dict[str, Any]:
+    """
+    Tabla de inventario por variante (stock, marca, compras/ventas periodo) y buckets de riesgo.
+    """
+    if not date_from:
+        date_from = "2026-01-02"
+    if not date_to:
+        date_to = "2026-04-04"
+
+    extractor = OdooRealExtractor(company_id=company_id)
+    company_label = ""
+    if extractor.company_id:
+        crow = extractor._sr("res.company", [("id", "=", extractor.company_id)], ["name"])
+        if crow:
+            company_label = (crow[0].get("name") or "").strip()
+
+    categ_names = extractor.get_categories()
+    stock_sum = extractor.get_stock_by_product_internal_all()
+    product_ids = _inventory_resolve_product_ids(
+        extractor, stock_sum, date_from, date_to, bravos_tab
+    )
+    days_p = _days_in_period_inv(date_from, date_to)
+
+    tmpl_ids_u: set[int] = set()
+    details = extractor.get_product_details(product_ids) if product_ids else {}
+    for pid in product_ids:
+        t = int(details.get(pid, {}).get("tmpl_id") or 0)
+        if t:
+            tmpl_ids_u.add(t)
+    tmpl_map = _read_templates_brand_map(extractor, sorted(tmpl_ids_u), categ_names)
+
+    pos_q, sale_q, pur_q = _aggregate_qty_by_product(extractor, product_ids, date_from, date_to)
+
+    rows_out: list[dict[str, Any]] = []
+    for pid in sorted(product_ids, key=lambda x: (
+        (details.get(x) or {}).get("default_code") or "",
+        (details.get(x) or {}).get("name") or "",
+    )):
+        det = details.get(pid, {})
+        tmpl_id = int(det.get("tmpl_id") or 0)
+        tm = tmpl_map.get(tmpl_id, {})
+        stock = float(stock_sum.get(pid, 0.0))
+        vpos = float(pos_q.get(pid, 0.0))
+        vsale = float(sale_q.get(pid, 0.0))
+        vpur = float(pur_q.get(pid, 0.0))
+        ventas_u = vpos + vsale
+        salida_d = ventas_u / float(days_p) if days_p else 0.0
+        if salida_d > 0 and stock > 0:
+            dias_ag = int(stock / salida_d)
+        elif stock <= 0:
+            dias_ag = 0
+        else:
+            dias_ag = 99999
+
+        rows_out.append({
+            "product_id": pid,
+            "default_code": (det.get("default_code") or "").strip(),
+            "nombre_variante": (det.get("name") or "").strip(),
+            "nombre_plantilla": tm.get("tmpl_name") or "",
+            "marca": tm.get("marca") or "—",
+            "categoria": categ_names.get(int(det.get("cat_id") or 0), "") or "—",
+            "stock": round(stock, 4),
+            "compras_periodo": round(vpur, 4),
+            "ventas_periodo": round(ventas_u, 4),
+            "ventas_pos": round(vpos, 4),
+            "ventas_sale": round(vsale, 4),
+            "salida_diaria_estimada": round(salida_d, 6),
+            "dias_para_agotar": dias_ag if dias_ag < 99999 else None,
+            "product_tmpl_id": tmpl_id,
+        })
+
+    thr = _risk_stock_bajo_max()
+    stock_bajo = [r for r in rows_out if 0 < r["stock"] <= thr]
+    stock_agotado = [r for r in rows_out if r["stock"] <= 0]
+
+    compras_vals = [r["compras_periodo"] for r in rows_out if r["ventas_periodo"] >= 1]
+    compras_sorted = sorted(compras_vals)
+    cut_idx = max(0, int(len(compras_sorted) * 0.15)) if compras_sorted else 0
+    cut_val = compras_sorted[cut_idx] if compras_sorted else 0.0
+    baja_compra = [
+        r for r in rows_out
+        if r["ventas_periodo"] >= 1 and r["compras_periodo"] <= cut_val and r["stock"] > 0
+    ]
+    baja_compra.sort(key=lambda x: (x["compras_periodo"], -x["ventas_periodo"]))
+
+    dias_list = [
+        r for r in rows_out
+        if r["stock"] > 0 and r.get("dias_para_agotar") is not None and (r["dias_para_agotar"] or 0) < 99999
+    ]
+    dias_list.sort(key=lambda x: (x.get("dias_para_agotar") or 99999, -x["ventas_periodo"]))
+
+    return {
+        "inventory": rows_out,
+        "risks": {
+            "stock_bajo": stock_bajo[:200],
+            "stock_agotado": stock_agotado[:200],
+            "baja_compra": baja_compra[:80],
+            "dias_agotar": dias_list[:120],
+        },
+        "meta": {
+            "generated_at": datetime.now().isoformat(timespec="seconds"),
+            "date_from": date_from,
+            "date_to": date_to,
+            "company_id": extractor.company_id,
+            "company_name": company_label,
+            "days_in_period": days_p,
+            "stock_bajo_max": thr,
+            "product_count": len(rows_out),
+            "refresh_hint_sec": 300,
+            "definition": {
+                "inventario": "stock en ubicaciones internas por variante; marca desde plantilla o categoría",
+                "salida_diaria": "(uds POS + uds ventas) / días del periodo",
+                "dias_agotar": "stock / salida_diaria si salida_diaria > 0",
+                "baja_compra": "entre productos con ventas en periodo, compras en percentil bajo (~15%)",
+            },
+        },
+    }
+
+
+def generate_consolidado_ingresos_payload(
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> dict[str, Any]:
+    """
+    Tres vistas de negocio (producción / Bravos / Box Prime) con ingresos proyectados
+    y familias para desglose en UI. Ejecuta hasta 3 veces el pipeline del dashboard.
+    """
+    if not date_from:
+        date_from = "2026-01-02"
+    if not date_to:
+        date_to = "2026-04-04"
+
+    ctx = get_companies_for_dashboard_user()
+    companies = ctx["companies"]
+    default_id = ctx.get("default_company_id")
+    bravos_id = resolve_bravos_company_id(companies, default_id)
+    box_id = resolve_box_prime_company_id(companies, bravos_id)
+
+    rows: list[dict[str, Any]] = []
+
+    p_main = generate_dashboard_payload(date_from, date_to, company_id=None, bravos_tab=False)
+    meta0 = p_main.get("meta") or {}
+    rows.append(
+        {
+            "key": "produccion",
+            "label": (meta0.get("company_name") or "Producción").strip() or "Producción",
+            "company_id": meta0.get("company_id"),
+            "ingresos_brutos": float(p_main["totals"]["ingresos_brutos"]),
+            "families": p_main["families"],
+        }
+    )
+
+    if bravos_id is not None:
+        pb = generate_dashboard_payload(date_from, date_to, company_id=bravos_id, bravos_tab=True)
+        metab = pb.get("meta") or {}
+        rows.append(
+            {
+                "key": "bravos",
+                "label": (metab.get("company_name") or "Bravos").strip() or "Bravos",
+                "company_id": bravos_id,
+                "ingresos_brutos": float(pb["totals"]["ingresos_brutos"]),
+                "families": pb["families"],
+            }
+        )
+
+    if box_id is not None:
+        px = generate_dashboard_payload(date_from, date_to, company_id=box_id, bravos_tab=False)
+        metax = px.get("meta") or {}
+        rows.append(
+            {
+                "key": "box_prime",
+                "label": (metax.get("company_name") or "Box Prime").strip() or "Box Prime",
+                "company_id": box_id,
+                "ingresos_brutos": float(px["totals"]["ingresos_brutos"]),
+                "families": px["families"],
+            }
+        )
+
+    total = sum(float(r["ingresos_brutos"]) for r in rows)
+    return {
+        "rows": rows,
+        "total": total,
+        "meta": {
+            "generated_at": datetime.now().isoformat(timespec="seconds"),
+            "date_from": date_from,
+            "date_to": date_to,
         },
     }
 

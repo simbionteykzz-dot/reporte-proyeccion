@@ -20,7 +20,9 @@ from odoo_connector import (
 
 from analytics import (
     company_id_allowed,
+    generate_consolidado_ingresos_payload,
     generate_dashboard_payload,
+    generate_inventory_risks_payload,
     get_companies_for_dashboard_user,
 )
 
@@ -273,6 +275,32 @@ def api_companies():
         return jsonify({"error": f"Error interno: {e}"}), 500
 
 
+@app.route("/api/dashboard/consolidado-ingresos")
+def api_dashboard_consolidado_ingresos():
+    """Ingresos proyectados por empresa (producción, Bravos, Box Prime) + familias para desglose."""
+    if not is_configured():
+        return jsonify({
+            "error": "Faltan variables ODOO en .env",
+            "missing_keys": missing_config_keys(),
+        }), 503
+    try:
+        date_from, date_to = _request_dates()
+        payload = generate_consolidado_ingresos_payload(date_from, date_to)
+        resp = jsonify(payload)
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 502
+    except xmlrpc.client.Fault as e:
+        return jsonify({"error": f"Odoo: {e.faultString}"}), 502
+    except OSError as e:
+        return jsonify({"error": f"Red / conexion: {e}"}), 502
+    except Exception as e:
+        return jsonify({"error": f"Error interno: {e}"}), 500
+
+
 @app.route("/api/dashboard")
 def api_dashboard():
     """Main endpoint: returns full dashboard payload with real Odoo data."""
@@ -295,6 +323,42 @@ def api_dashboard():
             bravos_tab=_request_bravos_tab(),
         )
         return jsonify(payload)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 502
+    except xmlrpc.client.Fault as e:
+        return jsonify({"error": f"Odoo: {e.faultString}"}), 502
+    except OSError as e:
+        return jsonify({"error": f"Red / conexion: {e}"}), 502
+    except Exception as e:
+        return jsonify({"error": f"Error interno: {e}"}), 500
+
+
+@app.route("/api/inventory-risks")
+def api_inventory_risks():
+    """Stock por variante + marca y buckets de riesgo (mismos filtros que /api/dashboard)."""
+    if not is_configured():
+        return jsonify({
+            "error": "Faltan variables ODOO en .env",
+            "missing_keys": missing_config_keys(),
+        }), 503
+    try:
+        date_from, date_to = _request_dates()
+        company_id = _request_company_id()
+        if company_id is not None:
+            ctx = get_companies_for_dashboard_user()
+            if not company_id_allowed(company_id, ctx["companies"]):
+                return jsonify({"error": "company_id no permitido para este usuario"}), 403
+        payload = generate_inventory_risks_payload(
+            date_from,
+            date_to,
+            company_id=company_id,
+            bravos_tab=_request_bravos_tab(),
+        )
+        resp = jsonify(payload)
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     except RuntimeError as e:

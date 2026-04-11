@@ -221,5 +221,3 @@ No comparte el mismo motor dinámico que `dashboard.html`; sirve para **document
 
 
 ---
-
-*Para el alcance del producto y arquitectura, ver [PROYECCION_INVENTARIO.md](./PROYECCION_INVENTARIO.md) y [ARQUITECTURA.md](./ARQUITECTURA.md).*

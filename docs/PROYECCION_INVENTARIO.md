@@ -66,5 +66,3 @@ No sustituye a Odoo: **lee** datos y **calcula** indicadores para apoyar decisio
 - Revisión periódica de **umbrales de negocio** (`BUSINESS_QTY_BY_FAMILY`, tickets, exclusiones) cuando cambien las reglas comerciales.
 
 ---
-
-*Documento orientado a presentación ejecutiva y de producto. Detalle técnico: ver [ARQUITECTURA.md](./ARQUITECTURA.md) y [VARIABLES_ENTORNO.md](./VARIABLES_ENTORNO.md).*

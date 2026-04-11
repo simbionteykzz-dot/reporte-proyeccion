@@ -27,15 +27,56 @@
           </div>
         </div>
       </div>
-      <nav class="sidebar-nav">
-        <button class="nav-item active" data-nav="produccion" type="button">
-          <img class="nav-icon" src="/assets/iconos-barra/icono-over.png" alt="" width="20" height="20" decoding="async">
-          <span class="nav-text">Overshark</span>
-        </button>
-        <button class="nav-item" data-nav="bravos" type="button">
-          <img class="nav-icon" src="/assets/iconos-barra/icono-brav.png" alt="" width="20" height="20" decoding="async">
-          <span class="nav-text">Bravos</span>
-        </button>
+      <nav class="sidebar-nav" aria-label="Secciones del panel">
+        <div class="nav-section">
+          <div class="nav-section-label">Empresas</div>
+          <button class="nav-item active" data-nav="produccion" data-panel="dashboard" type="button">
+            <img class="nav-icon" src="/assets/iconos-barra/over-icon.png" alt="" width="20" height="20" decoding="async">
+            <span class="nav-text">Overshark</span>
+          </button>
+          <button class="nav-item" data-nav="bravos" data-panel="dashboard" type="button">
+            <img class="nav-icon" src="/assets/iconos-barra/brav-icon.png" alt="" width="20" height="20" decoding="async">
+            <span class="nav-text">Bravos</span>
+          </button>
+          <button class="nav-item" data-nav="boxprime" data-panel="dashboard" type="button">
+            <img class="nav-icon" src="/assets/iconos-barra/box.icon.png" alt="" width="20" height="20" decoding="async">
+            <span class="nav-text">Box Prime</span>
+          </button>
+        </div>
+        <div class="nav-section">
+          <div class="nav-section-label">Inventario</div>
+          <button class="nav-item nav-item--inv" data-nav="produccion" data-panel="inventory" type="button" title="Stock por variante y marca — Overshark">
+            <img class="nav-icon" src="/assets/iconos-barra/over-icon.png" alt="" width="20" height="20" decoding="async">
+            <span class="nav-text">Overshark</span>
+          </button>
+          <button class="nav-item nav-item--inv" data-nav="bravos" data-panel="inventory" type="button" title="Stock por variante y marca — Bravos">
+            <img class="nav-icon" src="/assets/iconos-barra/brav-icon.png" alt="" width="20" height="20" decoding="async">
+            <span class="nav-text">Bravos</span>
+          </button>
+          <button class="nav-item nav-item--inv" data-nav="boxprime" data-panel="inventory" type="button" title="Stock por variante y marca — Box Prime">
+            <img class="nav-icon" src="/assets/iconos-barra/box.icon.png" alt="" width="20" height="20" decoding="async">
+            <span class="nav-text">Box Prime</span>
+          </button>
+        </div>
+        <div class="nav-section">
+          <div class="nav-section-label">Riesgos</div>
+          <button class="nav-item nav-item--risk" type="button" data-panel="risks" data-risk-focus="bajo" title="Alertas de stock bajo">
+            <span class="nav-risk-dot" aria-hidden="true"></span>
+            <span class="nav-text">Stock por agotarse</span>
+          </button>
+          <button class="nav-item nav-item--risk" type="button" data-panel="risks" data-risk-focus="agotado" title="Sin stock">
+            <span class="nav-risk-dot nav-risk-dot--danger" aria-hidden="true"></span>
+            <span class="nav-text">Stock agotado</span>
+          </button>
+          <button class="nav-item nav-item--risk" type="button" data-panel="risks" data-risk-focus="compra" title="Pocas compras vs ventas">
+            <span class="nav-risk-dot nav-risk-dot--warn" aria-hidden="true"></span>
+            <span class="nav-text">Baja compra</span>
+          </button>
+          <button class="nav-item nav-item--risk nav-item--risk-long" type="button" data-panel="risks" data-risk-focus="dias" title="Días hasta agotar y salida diaria">
+            <span class="nav-risk-dot nav-risk-dot--accent" aria-hidden="true"></span>
+            <span class="nav-text">Días por agotarse / estimado compra por día</span>
+          </button>
+        </div>
       </nav>
       <div class="sidebar-footer">
         <button type="button" class="btn btn-ghost" id="theme-toggle" data-theme-toggle style="width:100%">
@@ -117,50 +158,59 @@
                 <div>
                   <div class="kpi-label">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                    Ingresos Brutos Proyectados
+                    Valoración proyectada de Inventario
                   </div>
                   <div class="kpi-value kpi-value-accent" id="kpi-ingresos">--</div>
-                  <div class="kpi-subtitle">Basado en stock actual y ticket comercial</div>
+                  <div class="kpi-subtitle">Proyección desde stock y reglas de ticket por familia</div>
+                  <div class="kpi-projection-toolbar" id="kpi-projection-toolbar" hidden>
+                    <span class="kpi-projection-toolbar-label">Incluir en proyección</span>
+                    <span class="kpi-projection-toolbar-actions">
+                      <button type="button" class="kpi-projection-link" id="kpi-projection-all" title="Marcar todas">Todas</button>
+                      <button type="button" class="kpi-projection-link" id="kpi-projection-none" title="Desmarcar todas">Ninguna</button>
+                    </span>
+                  </div>
+                  <div class="kpi-projection-filters" id="kpi-projection-filters" aria-label="Líneas incluidas en valoración proyectada"></div>
+                  <p class="kpi-projection-note" id="kpi-projection-note" hidden></p>
                 </div>
                 <div style="display:flex;gap:24px;padding-top:20px;border-top:1px solid var(--color-border);">
-                  <div><div class="kpi-micro-label">Ticket Ponderado</div><div style="font-family:var(--font-mono);font-size:1.125rem;font-weight:600" id="kpi-ticket-mini">--</div></div>
+                  <div><div class="kpi-micro-label">Ticket medio (empresa)</div><div style="font-family:var(--font-mono);font-size:1.125rem;font-weight:600" id="kpi-ticket-mini">--</div></div>
                   <div><div class="kpi-micro-label">Familias</div><div style="font-family:var(--font-mono);font-size:1.125rem;font-weight:600" id="kpi-familias-mini">--</div></div>
-                  <div><div class="kpi-micro-label">Regla Ticket</div><div style="font-size:0.8125rem;color:var(--color-text-secondary)">S/ 99 | Medias S/ 60</div></div>
+                  <div><div class="kpi-micro-label">Ventas / TPV</div><div style="font-size:0.8125rem;color:var(--color-text-secondary)" id="kpi-ticket-pedidos">--</div></div>
                 </div>
               </div>
               <div class="kpi-card"><div class="kpi-label">Ventas Proyectadas</div><div class="kpi-value" style="font-size:2.5rem" id="kpi-ventas">--</div><div class="kpi-subtitle">Unidades estimadas a vender</div></div>
-              <div class="kpi-card"><div class="kpi-label">Ticket Promedio Global</div><div class="kpi-value" style="font-size:2.5rem" id="kpi-ticket">--</div><div class="kpi-subtitle">Ponderado por volumen</div></div>
+              <div class="kpi-card"><div class="kpi-label">Ticket Promedio Global</div><div class="kpi-value" style="font-size:2.5rem" id="kpi-ticket">--</div><div class="kpi-subtitle">Notas de venta y TPV del periodo (por empresa)</div></div>
               <div class="kpi-card kpi-card-small"><div><div class="kpi-label">Stock Total</div><div class="kpi-value-small" id="kpi-stock">--</div></div><div class="kpi-subtitle" id="kpi-stock-sub">unidades en inventario</div></div>
             </section>
 
             <!-- Tabs -->
             <section class="tabs-container">
               <div class="tabs-header">
-                <button class="tab-button active" data-tab="stock">Stock por Familia</button>
-                <button class="tab-button" data-tab="income">Distribucion Ingresos</button>
+                <button class="tab-button active" data-tab="income">Distribucion Ingresos</button>
                 <button class="tab-button" data-tab="analysis">Ticket vs Ventas</button>
                 <button class="tab-button" data-tab="table">Tabla Detallada</button>
                 <button class="tab-button" data-tab="depletion">Agotamiento</button>
               </div>
-              <div class="tab-content active" id="tab-stock">
-                <div class="chart-container" style="height:420px"><canvas id="chart-stock"></canvas></div>
-                <div style="margin-top:12px;padding:12px;background:var(--color-surface-2);border-radius:var(--radius-lg);font-size:0.8125rem;color:var(--color-text-secondary)">
-                  <strong style="color:var(--color-text)">Lectura:</strong> Compara el stock actual por familia. Barra mas larga = mayor inventario disponible.
+              <div class="tab-content active" id="tab-income">
+                <div class="income-distribution-panel">
+                  <div class="income-distribution-head">
+                    <h3 class="income-distribution-title">Participación por familia (empresa actual)</h3>
+                    <p class="income-distribution-desc">Dona = reparto de <strong>ingresos proyectados</strong> entre familias con métricas. El centro muestra el total del API; la leyenda detalla cada franja.</p>
+                  </div>
+                  <div class="chart-grid chart-grid-income">
+                    <div class="chart-container chart-container-donut" style="min-height:400px;height:420px"><canvas id="chart-income" aria-label="Gráfico dona ingresos por familia"></canvas></div>
+                    <div class="chart-legend chart-legend-income" id="income-legend"></div>
+                  </div>
                 </div>
-              </div>
-              <div class="tab-content" id="tab-income">
-                <div class="chart-grid">
-                  <div class="chart-container" style="height:400px"><canvas id="chart-income"></canvas></div>
-                  <div class="chart-legend" id="income-legend"></div>
-                </div>
-                <div style="margin-top:12px;padding:12px;background:var(--color-surface-2);border-radius:var(--radius-lg);font-size:0.8125rem;color:var(--color-text-secondary)">
-                  <strong style="color:var(--color-text)">Lectura:</strong> Muestra la participacion de ingresos por familia sobre el total proyectado.
+                <div id="income-hint" style="margin-top:12px;padding:12px;background:var(--color-surface-2);border-radius:var(--radius-lg);font-size:0.8125rem;color:var(--color-text-secondary)">
+                  <strong style="color:var(--color-text)">Lectura:</strong> Dona de ingresos proyectados por familía en esta vista. Para el total del KPI, marca filas en <strong>Tabla detallada</strong> (columna Incl.).
                 </div>
               </div>
               <div class="tab-content" id="tab-analysis">
-                <div class="chart-container" style="height:450px"><canvas id="chart-analysis"></canvas></div>
-                <div style="margin-top:12px;padding:12px;background:var(--color-surface-2);border-radius:var(--radius-lg);font-size:0.8125rem;color:var(--color-text-secondary)">
-                  <strong style="color:var(--color-text)">Lectura:</strong> Pareto de ventas proyectadas: barras por familia (ordenadas de mayor a menor) y linea de porcentaje acumulado.
+                <p class="chart-explainer"><strong>Barras (verde)</strong> = unidades que el modelo proyecta vender. <strong>Línea (ámbar)</strong> = ticket comercial usado en la regla (S/). Así se comparan volumen y precio por familia sin mezclar ambos en un solo color.</p>
+                <div class="chart-container chart-container-fixed" id="chart-analysis-wrap"><canvas id="chart-analysis"></canvas></div>
+                <div id="analysis-hint" style="margin-top:12px;padding:12px;background:var(--color-surface-2);border-radius:var(--radius-lg);font-size:0.8125rem;color:var(--color-text-secondary)">
+                  <strong style="color:var(--color-text)">Lectura:</strong> Dos ejes: izquierda unidades, derecha soles de ticket. Misma fila = misma familía.
                 </div>
               </div>
               <div class="tab-content" id="tab-table">
@@ -172,6 +222,7 @@
                 <div class="table-container">
                   <table class="data-table">
                     <thead><tr>
+                      <th class="th-proj-check" scope="col" title="Incluir fila en valoración y ventas proyectadas (KPI superior)"><abbr title="Incluir en proyección">Incl.</abbr></th>
                       <th data-sort="nombre" class="sortable">Familia</th>
                       <th data-sort="stock" class="sortable">Stock</th>
                       <th data-sort="cantidad_promedio" class="sortable">Cant/Orden</th>
@@ -188,6 +239,7 @@
                 </div>
               </div>
               <div class="tab-content" id="tab-depletion">
+                <p class="chart-explainer">Días hasta agotar stock con la <strong>salida diaria estimada</strong> del periodo; prioriza reposición donde la barra es más corta.</p>
                 <div class="chart-container" style="height:420px"><canvas id="chart-depletion"></canvas></div>
                 <div style="margin-top:12px;padding:12px;background:var(--color-surface-2);border-radius:var(--radius-lg);font-size:0.8125rem;color:var(--color-text-secondary)">
                   <strong style="color:var(--color-text)">Lectura:</strong> Estima los dias para agotar stock segun salida historica. Menos dias = mayor prioridad de reposicion.
@@ -206,6 +258,90 @@
               <h2 style="font-size:0.875rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--color-text-muted);margin-bottom:16px;font-weight:600">Alertas y Oportunidades</h2>
               <div class="alerts-container" id="alerts-container"></div>
             </section>
+            </div>
+          </div>
+
+          <!-- Inventario: stock por variante (API /api/inventory-risks) -->
+          <div id="panel-inventory" class="app-panel" hidden>
+            <div class="app-panel-head">
+              <div>
+                <h2 class="app-panel-title">Inventario en tiempo real</h2>
+                <p class="app-panel-desc">Stock por variante, plantilla y marca. Se actualiza al cambiar fechas o cada 5 minutos.</p>
+              </div>
+              <span class="badge badge-accent" id="inv-meta-badge">—</span>
+            </div>
+            <div id="inv-loading" class="app-panel-loading" hidden>
+              <div class="spinner-inline"></div>
+              <span>Cargando inventario desde Odoo…</span>
+            </div>
+            <div id="inv-error" class="app-panel-error" hidden></div>
+            <div class="inv-filters" id="inv-filters-block">
+              <div class="inv-filter-row">
+                <label class="inv-filter-label" for="inv-filter-grupo">Familia / tipo de prenda</label>
+                <select id="inv-filter-grupo" class="inv-filter-select" title="Filtra por la primera palabra del nombre de plantilla (ej. CLASICO)">
+                  <option value="__ALL__">Todas las familias</option>
+                </select>
+              </div>
+              <p class="inv-filter-hint">La <strong>matriz</strong> agrupa por línea de plantilla (ej. CLASICO PERLA, CLASICO BOTELLA) y reparte el stock en columnas de <strong>talla</strong> (detectada en variante o código). El detalle completo sigue abajo.</p>
+            </div>
+            <div class="inv-matrix-block">
+              <h3 class="inv-subtitle">Stock por talla (matriz)</h3>
+              <div class="table-container inv-matrix-scroll" id="inv-matrix-wrap"></div>
+            </div>
+            <hr class="inv-sep" />
+            <h3 class="inv-subtitle">Detalle por variante</h3>
+            <div class="table-container inv-table-wrap">
+              <table class="data-table inv-table">
+                <thead>
+                  <tr>
+                    <th>Código</th>
+                    <th>Variante</th>
+                    <th>Plantilla</th>
+                    <th>Marca</th>
+                    <th>Categoría</th>
+                    <th class="th-num">Stock</th>
+                    <th class="th-num">Compras (periodo)</th>
+                    <th class="th-num">Ventas (periodo)</th>
+                    <th class="th-num">Salida / día</th>
+                    <th class="th-num">Días agotar</th>
+                  </tr>
+                </thead>
+                <tbody id="inv-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Riesgos: alertas por producto -->
+          <div id="panel-risks" class="app-panel" hidden>
+            <div class="app-panel-head">
+              <div>
+                <h2 class="app-panel-title">Riesgos de inventario</h2>
+                <p class="app-panel-desc">Alertas por producto según stock, compras y ritmo de salida. Misma empresa que el menú lateral.</p>
+              </div>
+              <span class="badge" id="risk-meta-badge">—</span>
+            </div>
+            <div id="risk-loading" class="app-panel-loading" hidden>
+              <div class="spinner-inline"></div>
+              <span>Analizando riesgos…</span>
+            </div>
+            <div id="risk-error" class="app-panel-error" hidden></div>
+            <div class="risk-sections" id="risk-sections">
+              <section class="risk-block" id="risk-section-bajo">
+                <h3 class="risk-block-title">Stock bajo (por agotarse)</h3>
+                <div class="table-container"><table class="data-table risk-mini-table"><thead><tr><th>Código</th><th>Producto</th><th>Marca</th><th>Stock</th><th>Días</th><th>Venta /día</th></tr></thead><tbody id="risk-tbody-bajo"></tbody></table></div>
+              </section>
+              <section class="risk-block" id="risk-section-agotado">
+                <h3 class="risk-block-title">Stock agotado</h3>
+                <div class="table-container"><table class="data-table risk-mini-table"><thead><tr><th>Código</th><th>Producto</th><th>Marca</th><th>Compras período</th><th>Ventas período</th></tr></thead><tbody id="risk-tbody-agotado"></tbody></table></div>
+              </section>
+              <section class="risk-block" id="risk-section-compra">
+                <h3 class="risk-block-title">Baja compra (vs ventas)</h3>
+                <div class="table-container"><table class="data-table risk-mini-table"><thead><tr><th>Código</th><th>Producto</th><th>Marca</th><th>Compras</th><th>Ventas</th><th>Stock</th></tr></thead><tbody id="risk-tbody-compra"></tbody></table></div>
+              </section>
+              <section class="risk-block" id="risk-section-dias">
+                <h3 class="risk-block-title">Días por agotarse (detalle)</h3>
+                <div class="table-container"><table class="data-table risk-mini-table"><thead><tr><th>Código</th><th>Producto</th><th>Marca</th><th>Stock</th><th>Días</th><th>Salida / día</th><th>Compras</th></tr></thead><tbody id="risk-tbody-dias"></tbody></table></div>
+              </section>
             </div>
           </div>
         </div>
