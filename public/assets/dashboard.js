@@ -508,6 +508,16 @@
       </tr>
     `).join('');
 
+    // Preparar el bloque de info de orden para que incluya Nota de Venta si existe
+    let orderInfoHtml = `
+      <div>
+        <div style="color: #888; text-transform: uppercase; font-size: 10px; font-weight: bold; margin-bottom: 4px;">Detalles de Orden</div>
+        <div style="font-weight: 600;">${data.name}</div>
+        ${data.number_zazu && data.number_zazu !== data.name ? `<div style="color: #333; font-size: 11px;">Nota: ${data.number_zazu}</div>` : ''}
+        <div style="color: #444;">${data.date_order}</div>
+      </div>
+    `;
+
     body.innerHTML = `
       <div style="font-family: 'Inter', sans-serif; color: #000;">
         <div style="text-align: center; margin-bottom: 25px;">
@@ -517,11 +527,7 @@
         </div>
         
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 25px; font-size: 12px;">
-          <div>
-            <div style="color: #888; text-transform: uppercase; font-size: 10px; font-weight: bold; margin-bottom: 4px;">Detalles de Orden</div>
-            <div style="font-weight: 600;">${data.name}</div>
-            <div style="color: #444;">${data.date_order}</div>
-          </div>
+          ${orderInfoHtml}
           <div style="text-align: right;">
             <div style="color: #888; text-transform: uppercase; font-size: 10px; font-weight: bold; margin-bottom: 4px;">Cliente / Destino</div>
             <div style="font-weight: 600;">${data.partner}</div>
@@ -1041,6 +1047,38 @@
   }
 
   /**
+   * Dispara la sincronización manual en el servidor.
+   */
+  async function triggerZazuSync() {
+    const btn = d.getElementById('zazu-refresh-data');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<svg class="icon-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;vertical-align:text-bottom"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg> Sincronizando...';
+    }
+    zazuDevConsolePush('Enviando petición de sincronización al servidor...', 'info');
+    renderZazuDevPanel();
+    try {
+      const resp = await fetch('/api/zazu/sync', { method: 'POST' });
+      const j = await resp.json();
+      if (!resp.ok) throw new Error(j.error || `HTTP ${resp.status}`);
+      zazuDevConsolePush(`Sincronización exitosa: ${j.message || 'OK'}`, 'ok');
+      renderZazuDevPanel();
+      // Recargar la tabla actual tras sincronizar
+      await fetchZazuEnvios(true);
+    } catch (e) {
+      const msg = e.message || String(e);
+      zazuDevConsolePush(`Fallo en sincronización: ${msg}`, 'err');
+      renderZazuDevPanel();
+      alert(`Error al sincronizar: ${msg}`);
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;vertical-align:text-bottom"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg> Actualizar';
+      }
+    }
+  }
+
+  /**
    * @param {boolean} [forceFetch=true] Si false, reutiliza la última respuesta de la misma pestaña y solo aplica filtros en el navegador.
    */
   async function fetchZazuEnvios(forceFetch) {
@@ -1054,20 +1092,39 @@
     if (wrap) wrap.hidden = true;
     if (load) load.hidden = false;
     syncZazuTabsActive();
+    
+    // Mejoramos la lógica de inicialización de fechas
     initZazuDateInputsIfEmpty();
+    
     try {
       const tab = S.zazuTab || 'entregados';
+      // Obtenemos los valores de los filtros actuales
+      const df = d.getElementById('zazu-date-from')?.value || '';
+      const dt = d.getElementById('zazu-date-to')?.value || '';
+      const zona = d.getElementById('zazu-zona')?.value || 'all';
+
       let rawRows;
       let serverWarns = [];
       const useCache = !force && S.zazuCache && S.zazuCache.tab === tab && Array.isArray(S.zazuCache.rows);
+      
       if (useCache) {
         rawRows = S.zazuCache.rows;
-        zazuDevConsolePush(`Filtros en navegador (${tab}, ${rawRows.length} filas en memoria)…`, 'info');
+        zazuDevConsolePush(`Filtros locales (${tab}, ${rawRows.length} filas)…`, 'info');
         renderZazuDevPanel();
       } else {
-        zazuDevConsolePush(`Cargando envíos: ${tab}…`, 'info');
+        zazuDevConsolePush(`Cargando envíos (${tab}) desde el servidor…`, 'info');
         renderZazuDevPanel();
-        const url = `/api/zazu/envios-diarios?${new URLSearchParams({ tab, limit: '2000' }).toString()}`;
+        
+        // Pasamos los filtros al servidor para que el filtrado sea más preciso y eficiente
+        const params = new URLSearchParams({ 
+          tab, 
+          limit: '2000'
+        });
+        if (df) params.set('date_from', df);
+        if (dt) params.set('date_to', dt);
+        if (zona !== 'all') params.set('zona', zona);
+
+        const url = `/api/zazu/envios-diarios?${params.toString()}`;
         const resp = await apiFetch(url);
         const j = await resp.json();
         if (!resp.ok) throw new Error(j.error || `HTTP ${resp.status}`);
@@ -1075,6 +1132,7 @@
         rawRows = Array.isArray(j.rows) ? j.rows : [];
         S.zazuCache = { tab, rows: rawRows };
       }
+      
       const applied = zazuApplyClientFilters(rawRows);
       const hintParts = (applied.hints || []).concat(serverWarns);
       if (warnBox && hintParts.length) {
@@ -1085,7 +1143,7 @@
       if (wrap) wrap.hidden = false;
       const vis = applied.filtered.length;
       const tot = applied.total;
-      zazuDevConsolePush(useCache ? `Listo: ${vis} visibles (${tot} en esta carga).` : `Listo: ${tot} filas (${tab}), ${vis} tras filtros.`, 'ok');
+      zazuDevConsolePush(useCache ? `Listo: ${vis} visibles.` : `Listo: ${tot} filas, ${vis} filtradas.`, 'ok');
       renderZazuDevPanel();
     } catch (e) {
       S.zazuCache = null;
@@ -2932,7 +2990,11 @@
     });
 
     d.getElementById('zazu-apply-filters')?.addEventListener('click', () => {
-      fetchZazuEnvios(false);
+      fetchZazuEnvios(true); // Siempre forzamos fetch si pulsa aplicar filtros
+    });
+
+    d.getElementById('zazu-refresh-data')?.addEventListener('click', () => {
+      triggerZazuSync();
     });
 
     d.getElementById('zazu-dev-clear')?.addEventListener('click', () => {

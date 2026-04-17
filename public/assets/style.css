@@ -3607,3 +3607,70 @@ button.risk-overview__card:focus-visible {
     display: block !important;
   }
 }
+
+/* --------------------------------------------------
+   Zazu Express Panel Styles
+   -------------------------------------------------- */
+.zazu-data-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.zazu-th {
+  white-space: nowrap;
+}
+
+.zazu-cell {
+  white-space: nowrap;
+}
+
+.zazu-cell-nested {
+  max-width: 400px;
+  white-space: normal !important;
+  word-break: break-word;
+  line-height: 1.4;
+  font-size: 0.8125rem;
+}
+
+.zazu-envio-name {
+  display: inline-block;
+  min-width: 180px;
+  font-weight: 500;
+  color: var(--color-text);
+  white-space: normal;
+}
+
+.zazu-filter-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+/* Icon spin animation for sync */
+.icon-spin {
+  animation: svg-spin 1.2s linear infinite;
+}
+
+@keyframes svg-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.zazu-empty {
+  padding: 48px;
+  text-align: center;
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+/* Responsive adjustment for filters */
+@media (max-width: 768px) {
+  .zazu-filters__grid {
+    grid-template-columns: 1fr !important;
+  }
+  .zazu-filter-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

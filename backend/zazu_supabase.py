@@ -131,33 +131,29 @@ def fetch_envios_diarios(
             except ValueError as e:
                 raise ValueError(str(e)) from e
 
+    # LIMA_DISTRICTS: Master list for filtering. Includes Lima Metropolitana and Callao districts.
+    LIMA_DISTRICTS = (
+        "Lima", "Ancon", "Ate", "Barranco", "Breña", "Carabayllo", "Chaclacayo", "Chorrillos", "Cieneguilla",
+        "Comas", "El Agustino", "Independencia", "Jesus Maria", "La Molina", "La Victoria", "Lince",
+        "Los Olivos", "Lurigancho", "Lurin", "Magdalena del Mar", "Miraflores", "Pachacamac", "Pucusana",
+        "Pueblo Libre", "Puente Piedra", "Punta Hermosa", "Punta Negra", "Rimac", "San Bartolo",
+        "San Borja", "San Isidro", "San Juan de Lurigancho", "San Juan de Miraflores", "San Luis",
+        "San Martin de Porres", "San Miguel", "Santa Anita", "Santa Maria del Mar", "Santa Rosa",
+        "Santiago de Surco", "Surquillo", "Villa El Salvador", "Villa Maria del Triunfo",
+        "Bellavista", "Callao", "Carmen de la Legua", "La Perla", "La Punta", "Ventanilla", "Mi Peru"
+    )
+
     zraw = (zona or "all").strip().lower()
-    zcol = _strip("ZAZU_ZONA_COLUMN")
-    lima_v = _strip("ZAZU_ZONA_VALOR_LIMA")
-    prov_v = _strip("ZAZU_ZONA_VALOR_PROVINCIA")
+    zcol = _strip("ZAZU_ZONA_COLUMN", "envio.distrito")
+    
+    # Logic for Lima/Provincia based on a fixed list of districts
     if zraw in ("lima", "provincia"):
-        if not zcol:
-            warnings.append(
-                "Filtro Lima/Provincia no aplicado: defina ZAZU_ZONA_COLUMN en el servidor "
-                "(nombre exacto de la columna en tb_envios_diarios_lina, ej. tipo_envio o zona)."
-            )
-        elif zraw == "lima":
-            if lima_v:
-                q.append((zcol, f"eq.{lima_v}"))
-            else:
-                warnings.append(
-                    "Filtro Lima no aplicado: defina ZAZU_ZONA_VALOR_LIMA con el valor exacto en la BD."
-                )
-        elif zraw == "provincia":
-            if prov_v:
-                q.append((zcol, f"eq.{prov_v}"))
-            elif lima_v:
-                q.append((zcol, f"neq.{lima_v}"))
-            else:
-                warnings.append(
-                    "Filtro Provincia no aplicado: defina ZAZU_ZONA_VALOR_PROVINCIA "
-                    "o al menos ZAZU_ZONA_VALOR_LIMA para usar exclusión."
-                )
+        # We build the PostgREST 'in' filter: envio.distrito=in.("Lima","Miraflores",...)
+        dist_list_str = ",".join(f'"{d}"' for d in LIMA_DISTRICTS)
+        if zraw == "lima":
+            q.append((zcol, f"in.({dist_list_str})"))
+        else:
+            q.append((zcol, f"not.in.({dist_list_str})"))
 
     url = f"{base}/rest/v1/tb_envios_diarios_lina?{urlencode(q)}"
 

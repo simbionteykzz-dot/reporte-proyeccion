@@ -1214,19 +1214,31 @@ def sale_order_nota_pdf_bytes(
     ctx_candidates.append({"active_test": False})
     
     po_ids = []
+    # Usamos una búsqueda robusta que incluya number_zazu si existe
     for ctx in ctx_candidates:
         try:
-            # En pos.order, el número de ticket suele estar en pos_reference
+            # Intentar búsqueda triple (name, pos_reference, number_zazu)
             po_chunk = models.execute_kw(
                 cfg.db, uid, cfg.password, "pos.order", "search",
-                [["|", ["name", "ilike", name], ["pos_reference", "ilike", name]]],
+                [["|", "|", ["name", "ilike", name], ["pos_reference", "ilike", name], ["number_zazu", "ilike", name]]],
                 {"limit": 5, "context": ctx}
             )
             if po_chunk:
                 po_ids = po_chunk
                 break
         except Exception:
-            pass
+            # Fallback a búsqueda doble si number_zazu no existe en este Odoo
+            try:
+                po_chunk = models.execute_kw(
+                    cfg.db, uid, cfg.password, "pos.order", "search",
+                    [["|", ["name", "ilike", name], ["pos_reference", "ilike", name]]],
+                    {"limit": 5, "context": ctx}
+                )
+                if po_chunk:
+                    po_ids = po_chunk
+                    break
+            except Exception:
+                pass
 
     if po_ids:
         return _render_record_pdf_for_id(models, cfg, uid, po_ids[0], name, "pos.order", nctx)
@@ -1320,16 +1332,28 @@ def order_details_for_receipt_by_name(
     po_ids = []
     for ctx in ctx_candidates:
         try:
+            # Intentar búsqueda incluyendo number_zazu
             po_chunk = models.execute_kw(
                 cfg.db, uid, cfg.password, "pos.order", "search",
-                [["|", ["name", "ilike", name], ["pos_reference", "ilike", name]]],
+                [["|", "|", ["name", "ilike", name], ["pos_reference", "ilike", name], ["number_zazu", "ilike", name]]],
                 {"limit": 1, "context": ctx}
             )
             if po_chunk:
                 po_ids = po_chunk
                 break
         except Exception:
-            pass
+            # Fallback
+            try:
+                po_chunk = models.execute_kw(
+                    cfg.db, uid, cfg.password, "pos.order", "search",
+                    [["|", ["name", "ilike", name], ["pos_reference", "ilike", name]]],
+                    {"limit": 1, "context": ctx}
+                )
+                if po_chunk:
+                    po_ids = po_chunk
+                    break
+            except Exception:
+                pass
 
     if po_ids:
         poContext = dict(nctx) if nctx else {}
@@ -1337,7 +1361,11 @@ def order_details_for_receipt_by_name(
         orders = models.execute_kw(
             cfg.db, uid, cfg.password, "pos.order", "search_read",
             [[["id", "=", po_ids[0]]]],
-            {"limit": 1, "fields": ["name", "pos_reference", "lines", "amount_total", "amount_tax", "date_order", "partner_id"], "context": poContext}
+            {
+                "limit": 1, 
+                "fields": ["name", "pos_reference", "number_zazu", "lines", "amount_total", "amount_tax", "date_order", "partner_id"], 
+                "context": poContext
+            }
         )
         if not orders:
             raise ValueError("No se pudo extraer data de pos.order id=" + str(po_ids[0]))
@@ -1353,7 +1381,8 @@ def order_details_for_receipt_by_name(
             
         return {
             "type": "pos.order",
-            "name": o.get("pos_reference", o.get("name", name)),
+            "name": o.get("pos_reference") or o.get("name") or name,
+            "number_zazu": o.get("number_zazu", ""),
             "date_order": o.get("date_order", ""),
             "partner": o.get("partner_id", [0, "C/F"])[1] if isinstance(o.get("partner_id"), list) else "C/F",
             "amount_total": o.get("amount_total", 0.0),

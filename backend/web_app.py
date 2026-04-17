@@ -591,6 +591,21 @@ def api_zazu_envios_diarios():
         return jsonify({"error": f"Error interno: {e}"}), 500
 
 
+@app.route("/api/zazu/sync", methods=["POST"])
+def api_zazu_sync():
+    """
+    Endpoint manual para disparar la sincronización de Zazu Express a Supabase.
+    """
+    from zazu_sync_task import sync_zazu_data_to_supabase
+    try:
+        result = sync_zazu_data_to_supabase()
+        if not result.get("success"):
+            return jsonify(result), 400
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 def main():
     port = int(os.environ.get("PORT", "5000"))
     host = os.environ.get("HOST", "127.0.0.1")
