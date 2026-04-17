@@ -17,8 +17,20 @@ def sync_zazu_data_to_supabase():
     password = os.environ.get("ZAZU_WEB_PASSWORD", "").strip()
     base_url = os.environ.get("ZAZU_WEB_URL", "https://zazu.com.pe").strip().rstrip('/')
 
+    # Cargar .env local si existe (para pruebas fuera de Vercel)
+    try:
+        from dotenv import load_dotenv
+        # Intentamos cargar el archivo específico que el usuario creó
+        creds_path = os.path.join(os.path.dirname(__file__), "zazu_credentials.env")
+        if os.path.exists(creds_path):
+            load_dotenv(creds_path)
+            user = user or os.environ.get("ZAZU_WEB_USER", "").strip()
+            password = password or os.environ.get("ZAZU_WEB_PASSWORD", "").strip()
+    except ImportError:
+        pass
+
     if not user or not password:
-        return {"success": False, "error": "Faltan credenciales de Zazu (ZAZU_WEB_USER/PASS)."}
+        return {"success": False, "error": "Faltan credenciales de Zazu (ZAZU_WEB_USER/PASS). Si estás en Vercel, agrégalas en el Dashboard de Vercel."}
 
     urls = [
         f"{base_url}/lima/envios-diarios",
@@ -30,17 +42,18 @@ def sync_zazu_data_to_supabase():
 
     session = requests.Session()
     
-    # 1. Intento de Login (Asumiendo patrón estándar de WP o similar si es portal web)
+    # 1. Intento de Login con campos reales identificados: email y password
     try:
-        # Nota: Aquí asumo campos típicos. Si fallan, el usuario deberá indicar los campos reales.
-        login_url = f"{base_url}/login" 
-        login_data = {"user": user, "pass": password, "submit": "login"} 
+        # El subagente identificó la URL de login correcta
+        login_url = f"{base_url}/auth/login" 
+        login_data = {"email": user, "password": password} 
         
-        # Primero una petición GET para cookies
-        session.get(base_url, timeout=15)
+        # Petición inicial para cookies y tokens si hubiese
+        session.get(login_url, timeout=15)
         
         # POST Login
         res = session.post(login_url, data=login_data, timeout=15)
+        # Algunos sitios redirigen tras login exitoso
         if res.status_code != 200:
             # Si no hay un endpoint de login claro, intentamos acceder directamente 
             # (algunos portales usan Auth básica o cookies previas)
