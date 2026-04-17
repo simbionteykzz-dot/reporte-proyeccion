@@ -619,6 +619,12 @@ img.nav-icon {
   gap: var(--space-8);
 }
 
+/* Vista Zazu: más ancho (similar a panel tipo “control” con muchas columnas) */
+.content-inner--zazu-wide {
+  max-width: min(1920px, 100%);
+  width: 100%;
+}
+
 /* --------------------------------------------------
    Status Bar
    -------------------------------------------------- */
@@ -1091,6 +1097,783 @@ img.nav-icon {
 .chart-explainer strong {
   color: var(--color-text);
   font-weight: 600;
+}
+
+.analysis-line-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-2);
+}
+
+.analysis-line-toolbar__label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-secondary);
+}
+
+.analysis-line-toolbar__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* Panel Zazu / envíos diarios (Supabase) */
+.app-panel--zazu .app-panel-desc code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.75rem;
+}
+
+.zazu-scope-note {
+  margin: var(--space-3) 0 0;
+  max-width: 72ch;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+
+.zazu-scope-note strong {
+  color: var(--color-text-secondary);
+}
+
+.zazu-api-warnings {
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 45%, var(--color-border));
+  background: color-mix(in srgb, var(--color-warning) 12%, var(--color-surface-2));
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.zazu-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+
+.zazu-toolbar--tabs {
+  gap: var(--space-2);
+}
+
+.zazu-filters {
+  margin-bottom: var(--space-5);
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-2);
+}
+
+.zazu-filters-hint {
+  margin: 0 0 var(--space-3);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--color-text-muted);
+}
+
+.zazu-filters-hint strong {
+  color: var(--color-text-secondary);
+}
+
+.zazu-filters__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.4fr) auto;
+  gap: var(--space-4);
+  align-items: end;
+}
+
+@media (max-width: 900px) {
+  .zazu-filters__grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .zazu-filter-actions {
+    grid-column: 1 / -1;
+  }
+}
+
+.zazu-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.zazu-filter-field--grow {
+  min-width: 140px;
+}
+
+.zazu-filter-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-secondary);
+}
+
+.zazu-filter-input,
+.zazu-filter-select {
+  width: 100%;
+  min-height: 40px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.875rem;
+}
+
+.zazu-filter-select {
+  cursor: pointer;
+}
+
+.zazu-filter-actions {
+  display: flex;
+  align-items: flex-end;
+  padding-bottom: 1px;
+}
+
+.zazu-filter-actions .btn {
+  white-space: nowrap;
+}
+
+.zazu-tab {
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-2);
+  color: var(--color-text-secondary);
+  font: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.zazu-tab:hover {
+  color: var(--color-text);
+  border-color: color-mix(in srgb, var(--color-accent) 35%, var(--color-border));
+}
+
+.zazu-tab--active {
+  background: color-mix(in srgb, var(--color-accent) 14%, var(--color-surface-2));
+  border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border));
+  color: var(--color-text);
+}
+
+.zazu-table-scroll {
+  max-height: min(720px, 78vh);
+  overflow: auto;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Consola + peticiones API (panel Zazu) */
+.zazu-dev-panel {
+  margin-top: var(--space-6);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-2);
+  overflow: hidden;
+}
+
+.zazu-dev-panel__summary {
+  list-style: none;
+  cursor: pointer;
+  padding: var(--space-4) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  background: color-mix(in srgb, var(--color-surface-3) 55%, var(--color-surface-2));
+  border-bottom: 1px solid transparent;
+}
+
+.zazu-dev-panel__summary::-webkit-details-marker {
+  display: none;
+}
+
+.zazu-dev-panel[open] .zazu-dev-panel__summary {
+  border-bottom-color: var(--color-border);
+}
+
+.zazu-dev-panel__summary-title {
+  font-weight: 600;
+  font-size: 0.9375rem;
+  color: var(--color-text);
+}
+
+.zazu-dev-panel__summary-hint {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+
+.zazu-dev-panel__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5) var(--space-5);
+}
+
+@media (max-width: 900px) {
+  .zazu-dev-panel__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.zazu-dev-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 0;
+}
+
+.zazu-dev-section__title {
+  margin: 0;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-secondary);
+}
+
+.zazu-dev-scroll {
+  min-height: 280px;
+  max-height: min(480px, 50vh);
+  overflow: auto;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-1);
+  padding: var(--space-3);
+  -webkit-overflow-scrolling: touch;
+}
+
+.zazu-dev-scroll--mono {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.zazu-dev-empty {
+  margin: 0;
+  padding: var(--space-4);
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.zazu-dev-panel__actions {
+  padding: 0 var(--space-5) var(--space-4);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.zazu-req-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+}
+
+.zazu-req-table th,
+.zazu-req-table td {
+  padding: var(--space-2) var(--space-2);
+  text-align: left;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+  vertical-align: top;
+}
+
+.zazu-req-table th {
+  position: sticky;
+  top: 0;
+  background: color-mix(in srgb, var(--color-surface-2) 90%, var(--color-surface-1));
+  color: var(--color-text-secondary);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.625rem;
+  z-index: 1;
+}
+
+.zazu-req-td-path {
+  max-width: 14rem;
+  word-break: break-all;
+}
+
+.zazu-req-td-time {
+  white-space: nowrap;
+  color: var(--color-text-muted);
+}
+
+.zazu-req-st--ok {
+  color: var(--color-success);
+  font-weight: 600;
+}
+
+.zazu-req-st--warn {
+  color: var(--color-warning);
+  font-weight: 600;
+}
+
+.zazu-req-st--fail {
+  color: var(--color-danger);
+  font-weight: 600;
+}
+
+.zazu-req-note-row td {
+  border-bottom: 1px solid var(--color-border);
+  padding-top: 0;
+}
+
+.zazu-req-note {
+  font-size: 0.6875rem;
+  color: var(--color-danger);
+}
+
+.zazu-con-line {
+  padding: 2px 0;
+  border-bottom: 1px dashed color-mix(in srgb, var(--color-border) 50%, transparent);
+}
+
+.zazu-con-line:last-child {
+  border-bottom: none;
+}
+
+.zazu-con-line--err {
+  color: var(--color-danger);
+}
+
+.zazu-con-line--ok {
+  color: var(--color-success);
+}
+
+.zazu-data-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.zazu-data-table thead th.zazu-th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: var(--space-3) var(--space-3);
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-secondary);
+  background: var(--color-surface-2);
+  border-bottom: 2px solid var(--color-border);
+  white-space: nowrap;
+  box-shadow: 0 1px 0 var(--color-border);
+}
+
+.zazu-data-table thead th.zazu-th--sticky-first {
+  left: 0;
+  z-index: 3;
+  box-shadow: 1px 0 0 var(--color-border), 0 1px 0 var(--color-border);
+}
+
+.zazu-data-table tbody td.zazu-cell {
+  padding: var(--space-3) var(--space-4);
+  vertical-align: middle;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 65%, transparent);
+  max-width: 14rem;
+  background: var(--color-surface);
+}
+
+.zazu-data-table tbody tr.zazu-row:nth-child(even) td.zazu-cell {
+  background: var(--color-surface-2);
+}
+
+.zazu-data-table tbody tr.zazu-row:hover td.zazu-cell {
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface-2));
+}
+
+.zazu-cell-strong {
+  font-weight: 600;
+  white-space: nowrap;
+  min-width: 6.5rem;
+  max-width: 11rem !important;
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--color-surface) !important;
+  box-shadow: 1px 0 0 color-mix(in srgb, var(--color-border) 70%, transparent);
+}
+
+.zazu-row:nth-child(even) .zazu-cell-strong {
+  background: var(--color-surface-2) !important;
+}
+
+.zazu-row:hover .zazu-cell-strong {
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface-2)) !important;
+}
+
+.zazu-cell-nested {
+  max-width: 13rem !important;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  word-break: break-word;
+}
+
+.zazu-cell-text {
+  display: inline-block;
+  max-width: 13rem;
+  word-break: break-word;
+}
+
+.zazu-cell-muted {
+  color: var(--color-text-muted);
+}
+
+/* Recuadro «Foto»: abre URL en nueva pestaña */
+a.zazu-photo-tile {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  min-width: 4.5rem;
+  padding: var(--space-2) var(--space-2);
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 40%, var(--color-border));
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface-2));
+  color: var(--color-text);
+  text-decoration: none;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.12s ease;
+}
+
+a.zazu-photo-tile:hover {
+  background: color-mix(in srgb, var(--color-accent) 18%, var(--color-surface-2));
+  border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-border));
+  transform: translateY(-1px);
+}
+
+a.zazu-photo-tile:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.zazu-photo-tile__preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-surface-1) 80%, transparent);
+  color: var(--color-accent);
+}
+
+.zazu-photo-tile__label {
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Enlace HTTP que no se detectó como imagen */
+a.zazu-link-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-2);
+  color: var(--color-accent);
+  text-decoration: none;
+  max-width: 8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+a.zazu-link-chip:hover {
+  border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border));
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface-2));
+}
+
+/* Nota de venta: texto de ID_ENVIO + botón PDF separado debajo */
+.zazu-envio-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  max-width: 13rem;
+}
+
+.zazu-envio-name {
+  font-weight: 600;
+  color: var(--color-text);
+  word-break: break-word;
+  line-height: 1.35;
+}
+
+button.zazu-pdf-download-btn.zazu-nota-pdf-btn.zazu-nota-pdf {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px 3px 8px;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 45%, var(--color-border));
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--color-surface-2));
+  color: var(--color-accent);
+  font: inherit;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.12s ease, box-shadow 0.15s ease;
+  position: relative;
+  z-index: 2;
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+button.zazu-pdf-download-btn.zazu-nota-pdf-btn.zazu-nota-pdf:hover {
+  background: color-mix(in srgb, var(--color-accent) 20%, var(--color-surface-2));
+  border-color: color-mix(in srgb, var(--color-accent) 65%, var(--color-border));
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(245, 158, 11, 0.15);
+}
+
+button.zazu-pdf-download-btn.zazu-nota-pdf-btn.zazu-nota-pdf:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+button.zazu-pdf-download-btn.zazu-nota-pdf-btn.zazu-nota-pdf:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.zazu-pdf-icon {
+  flex-shrink: 0;
+}
+
+td.zazu-cell-strong .zazu-pdf-download-btn {
+  z-index: 4;
+}
+
+td.zazu-empty {
+  text-align: center;
+  padding: var(--space-6);
+  color: var(--color-text-muted);
+}
+
+/* ── PDF por ID: widget de búsqueda directa ── */
+.zazu-pdf-search {
+  margin-top: var(--space-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 30%, var(--color-border));
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--color-accent) 6%, var(--color-surface)) 0%,
+    var(--color-surface) 100%
+  );
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.zazu-pdf-search:hover {
+  border-color: color-mix(in srgb, var(--color-accent) 50%, var(--color-border));
+  box-shadow: 0 2px 12px rgba(245, 158, 11, 0.08);
+}
+
+.zazu-pdf-search__inner {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+
+.zazu-pdf-search__icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-accent) 14%, var(--color-surface-2));
+  color: var(--color-accent);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 25%, var(--color-border));
+}
+
+.zazu-pdf-search__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.zazu-pdf-search__title {
+  margin: 0 0 var(--space-1) 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-text);
+  line-height: 1.3;
+}
+
+.zazu-pdf-search__desc {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
+.zazu-pdf-search__desc code {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--color-surface-3);
+  color: var(--color-text-muted);
+}
+
+.zazu-pdf-search__form {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.zazu-pdf-search__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex: 1 1 180px;
+  min-width: 140px;
+}
+
+.zazu-pdf-search__label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-secondary);
+}
+
+.zazu-pdf-search__input {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-1);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.9375rem;
+  font-family: var(--font-mono);
+  font-weight: 500;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  width: 100%;
+  -moz-appearance: textfield;
+}
+
+.zazu-pdf-search__input::-webkit-inner-spin-button,
+.zazu-pdf-search__input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.zazu-pdf-search__input::placeholder {
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+
+.zazu-pdf-search__input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15);
+}
+
+.zazu-pdf-search__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  padding: var(--space-2) var(--space-4);
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.zazu-pdf-search__btn-icon {
+  flex-shrink: 0;
+}
+
+/* Status messages */
+.zazu-pdf-search__status {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.45;
+  background: var(--color-surface-2);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  animation: zazuPdfStatusFadeIn 0.25s ease;
+}
+
+@keyframes zazuPdfStatusFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.zazu-pdf-search__status--err {
+  background: color-mix(in srgb, var(--color-danger) 10%, var(--color-surface));
+  border-color: color-mix(in srgb, var(--color-danger) 35%, var(--color-border));
+  color: var(--color-danger);
+}
+
+.zazu-pdf-search__status--ok {
+  background: color-mix(in srgb, var(--color-success) 10%, var(--color-surface));
+  border-color: color-mix(in srgb, var(--color-success) 35%, var(--color-border));
+  color: var(--color-success);
+}
+
+.zazu-pdf-search__status--loading {
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface));
+  border-color: color-mix(in srgb, var(--color-accent) 30%, var(--color-border));
+  color: var(--color-accent);
+}
+
+@media (max-width: 600px) {
+  .zazu-pdf-search__form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .zazu-pdf-search__btn {
+    justify-content: center;
+  }
+
+  .zazu-pdf-search__inner {
+    flex-direction: column;
+    gap: var(--space-2);
+  }
 }
 
 .kpi-projection-hint {
@@ -1991,6 +2774,12 @@ img.nav-icon {
   margin-bottom: var(--space-4);
 }
 
+/* display:flex ganaba a [hidden] y dejaba franjas vacías (carga / error) visibles */
+.app-panel-loading[hidden],
+.app-panel-error[hidden] {
+  display: none !important;
+}
+
 .app-panel-error {
   color: var(--color-danger);
   background: var(--color-danger-subtle);
@@ -2697,4 +3486,21 @@ button.risk-overview__card:focus-visible {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* --------------------------------------------------
+   Sidebar Icons
+   -------------------------------------------------- */
+.nav-icon {
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.nav-item:hover .nav-icon {
+  transform: scale(1.05);
+  border-color: var(--color-accent);
 }

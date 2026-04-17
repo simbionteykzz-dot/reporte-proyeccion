@@ -27,7 +27,516 @@
     invFilterGrupo: '__ALL__',
     /** `__ALL__` o valor de columna color (Odoo / atributo) */
     invFilterColor: '__ALL__',
+    /** Línea del gráfico: ticket de regla (S/) o ticket ÷ cantidad promedio por orden */
+    analysisLineMode: (() => {
+      const v = localStorage.getItem('soni-analysis-line');
+      if (v === 'commercial') return 'commercial';
+      return 'ratio';
+    })(),
+    /** pestaña activa en panel Zazu: entregados | anulados | activos | todos */
+    zazuTab: 'entregados',
+    /** últimas peticiones HTTP (todas las vistas), para panel Zazu */
+    apiRequestLog: [],
+    /** líneas de consola mientras la vista Zazu está activa + mensajes explícitos */
+    zazuDevConsole: [],
+    /** última respuesta cruda por pestaña (filtros fecha/zona solo en cliente) */
+    zazuCache: null,
   };
+
+  const ZAZU_API_LOG_MAX = 48;
+  const ZAZU_CONSOLE_MAX = 120;
+
+  const ZAZU_TAB_LABELS = {
+    entregados: 'Entregados (verif.)',
+    anulados: 'Anulados',
+    activos: 'En proceso',
+    todos: 'Todos (sin filtrar estado)',
+  };
+
+  function initZazuDateInputsIfEmpty() {
+    /* Sin rango por defecto: si no hay datos en ese mes, fecha + Lima dejaba 0 filas. El usuario elige fechas si las necesita. */
+  }
+
+  /** Parsea fechas ISO u otros formatos que entienda Date() */
+  function zazuParseFlexibleDate(val) {
+    if (val == null || val === '') return null;
+    if (typeof val === 'number' && Number.isFinite(val)) {
+      const d0 = new Date(val);
+      return isNaN(d0.getTime()) ? null : d0;
+    }
+    const s = String(val).trim();
+    if (!s) return null;
+    const d0 = new Date(s);
+    return isNaN(d0.getTime()) ? null : d0;
+  }
+
+  /** Compara solo día calendario local (evita desfaces UTC al filtrar). */
+  function zazuDateInCalendarRange(rd, fromD, toD) {
+    if (!rd || isNaN(rd.getTime())) return false;
+    const rDay = new Date(rd.getFullYear(), rd.getMonth(), rd.getDate()).getTime();
+    if (fromD) {
+      const fDay = new Date(fromD.getFullYear(), fromD.getMonth(), fromD.getDate()).getTime();
+      if (rDay < fDay) return false;
+    }
+    if (toD) {
+      const tDay = new Date(toD.getFullYear(), toD.getMonth(), toD.getDate()).getTime();
+      if (rDay > tDay) return false;
+    }
+    return true;
+  }
+
+  function zazuPickBestDateKeyFromObjects(objects) {
+    if (!objects || !objects.length || !objects[0]) return null;
+    const preferred = ['fecha_entrega', 'fecha_programada', 'fecha_envio', 'fecha', 'created_at', 'updated_at', 'f_entrega', 'fecha_registro'];
+    const n = objects.length;
+    const scoreKey = (key) => {
+      let ok = 0;
+      for (let i = 0; i < n; i += 1) {
+        if (objects[i] && zazuParseFlexibleDate(objects[i][key])) ok += 1;
+      }
+      return ok / n;
+    };
+    for (let p = 0; p < preferred.length; p += 1) {
+      const key = preferred[p];
+      if (!(key in objects[0])) continue;
+      if (scoreKey(key) >= 0.45) return key;
+    }
+    const keys = Object.keys(objects[0]).filter((k) => {
+      const v = objects[0][k];
+      return v != null && typeof v !== 'object';
+    });
+    let best = null;
+    let bestScore = 0;
+    for (let i = 0; i < keys.length; i += 1) {
+      const k = keys[i];
+      if (!/fecha|fech|date|created|updated|programad|entrega|envio|_at$/i.test(k)) continue;
+      const sc = scoreKey(k);
+      if (sc > bestScore) {
+        bestScore = sc;
+        best = k;
+      }
+    }
+    if (best && bestScore >= 0.35) return best;
+    return null;
+  }
+
+  /**
+   * Lee fecha en la fila raíz o dentro de envio (donde suele estar la fecha de entrega).
+   */
+  function zazuResolveDateAccessor(rows) {
+    if (!rows || !rows.length) return null;
+    const sample = rows.slice(0, Math.min(80, rows.length));
+    const rootObjs = sample.map((r) => r).filter(Boolean);
+    let key = zazuPickBestDateKeyFromObjects(rootObjs);
+    if (key) return (r) => (r && r[key] != null ? r[key] : null);
+    const envioObjs = sample.map((r) => r && r.envio).filter((e) => e && typeof e === 'object');
+    if (envioObjs.length) {
+      key = zazuPickBestDateKeyFromObjects(envioObjs);
+      if (key) {
+        return (r) => {
+          const e = r && r.envio;
+          return e && e[key] != null ? e[key] : null;
+        };
+      }
+    }
+    return null;
+  }
+
+  /** Busca clave escalar de ubicación dentro de un objeto plano. */
+  function zazuFindZonaKeyInObject(obj) {
+    if (!obj || typeof obj !== 'object') return null;
+    const preferred = ['zona', 'tipo_envio', 'tipo_envío', 'ciudad', 'ambito', 'ámbito', 'destino', 'ubicacion', 'ubicación', 'departamento', 'region', 'región', 'distrito', 'provincia', 'ubigeo'];
+    for (let p = 0; p < preferred.length; p += 1) {
+      const k = preferred[p];
+      if (k in obj && obj[k] != null && typeof obj[k] !== 'object') return k;
+    }
+    const keys = Object.keys(obj);
+    for (let i = 0; i < keys.length; i += 1) {
+      const k = keys[i];
+      if (obj[k] != null && typeof obj[k] === 'object') continue;
+      if (/zona|ciudad|provincia|departamento|region|ubicacion|destino|ambito|distrito|lima|ubigeo|depart|prov\b/i.test(k)) return k;
+    }
+    return null;
+  }
+
+  /**
+   * Devuelve función (fila) => valor escalar de zona, probando la fila raíz y luego envio.*.
+   * Muchos registros traen ciudad/distrito solo dentro de `envio`.
+   */
+  function zazuResolveZonaAccessor(rows) {
+    if (!rows || !rows.length) return null;
+    const r0 = rows[0];
+    const topKey = zazuFindZonaKeyInObject(r0);
+    if (topKey) return (r) => (r && r[topKey] != null ? r[topKey] : null);
+    const e0 = r0 && r0.envio;
+    if (e0 && typeof e0 === 'object') {
+      const nk = zazuFindZonaKeyInObject(e0);
+      if (nk) {
+        return (r) => {
+          const e = r && r.envio;
+          if (!e || typeof e !== 'object') return null;
+          return e[nk] != null ? e[nk] : null;
+        };
+      }
+    }
+    return null;
+  }
+
+  /** Concatena textos primitivos de `envio` para heurística Lima/provincia cuando no hay columna clara. */
+  function zazuEnvioZonaBlob(envio) {
+    if (!envio || typeof envio !== 'object') return '';
+    const parts = [];
+    Object.keys(envio).forEach((k) => {
+      const v = envio[k];
+      if (v != null && typeof v !== 'object') parts.push(String(v));
+    });
+    return parts.join(' ').trim().toLowerCase();
+  }
+
+  /** Distritos/cadenas típicas de Lima y Callao (sin depender de la palabra «Lima» en el texto). */
+  const ZAZU_LIMA_AREA_RE = /\b(lima|metropol|callao|miraflores|surco|san isidro|barranco|jesus maria|chorrillos|lince|rimac|comas|los olivos|ate|sjl|san juan de lurigancho|villa maria|vmt|villa el salvador|magdalena|pueblo libre|santa anita|san borja|la molina|san miguel|independencia|cercado|ancon|carabayllo|smp|puente piedra|santa rosa|chaclacayo|cieneguilla|lurin|pachacamac|punta hermosa|punta negra|san bartolo|santa maria)\b/i;
+
+  function zazuTextLooksLikeLima(s) {
+    const t = String(s || '').trim().toLowerCase();
+    if (!t) return false;
+    if (t.includes('lima') || t.includes('metropol') || t.includes('callao')) return true;
+    return ZAZU_LIMA_AREA_RE.test(t);
+  }
+
+  function zazuRowMatchesZonaText(textLower, zona) {
+    const s = String(textLower || '').trim().toLowerCase();
+    if (zona === 'lima') {
+      if (!s) return false;
+      return zazuTextLooksLikeLima(s);
+    }
+    if (zona === 'provincia') {
+      if (!s) return false;
+      if (s.includes('provincia') || /\bprov\.?\b/.test(s)) return true;
+      if (zazuTextLooksLikeLima(s)) return false;
+      return true;
+    }
+    return true;
+  }
+
+  /**
+   * @param {*} val valor en columna detectada (o null)
+   * @param {string} zona all|lima|provincia
+   * @param {object} row fila completa (para leer envio)
+   */
+  function zazuRowMatchesZonaWithFallback(val, zona, row) {
+    if (zona === 'all') return true;
+    if (typeof val === 'boolean') {
+      if (zona === 'lima') return val === true;
+      if (zona === 'provincia') return val === false;
+      return true;
+    }
+    if (typeof val === 'number' && Number.isFinite(val)) {
+      if (zona === 'lima') return val === 1;
+      if (zona === 'provincia') return val !== 1;
+      return true;
+    }
+    const direct = String(val ?? '').trim();
+    if (direct !== '') return zazuRowMatchesZonaText(direct, zona);
+    const blob = zazuEnvioZonaBlob(row && row.envio);
+    if (!blob) return false;
+    return zazuRowMatchesZonaText(blob, zona);
+  }
+
+  /**
+   * Filtros de fecha y Lima/provincia en el navegador (no modifican Supabase ni exigen columnas fijas).
+   */
+  function zazuApplyClientFilters(rows) {
+    const list = Array.isArray(rows) ? rows.slice() : [];
+    const hints = [];
+    const dfEl = d.getElementById('zazu-date-from');
+    const dtEl = d.getElementById('zazu-date-to');
+    const df = dfEl && dfEl.value ? dfEl.value.trim() : '';
+    const dt = dtEl && dtEl.value ? dtEl.value.trim() : '';
+    const zona = (d.getElementById('zazu-zona')?.value || 'all').trim();
+    const fromD = df ? zazuParseFlexibleDate(`${df}T00:00:00`) : null;
+    const toD = dt ? zazuParseFlexibleDate(`${dt}T23:59:59.999`) : null;
+    const hadDate = !!(fromD || toD);
+    const hadZona = zona !== 'all';
+    const dateGet = hadDate ? zazuResolveDateAccessor(list) : null;
+    const zonaGet = hadZona ? zazuResolveZonaAccessor(list) : null;
+    let out = list;
+    if (hadDate) {
+      if (!dateGet) {
+        hints.push('No se detectó una fecha en la fila ni dentro de «envío»; el rango Desde/Hasta no se aplicó.');
+      } else {
+        out = out.filter((r) => {
+          const rd = zazuParseFlexibleDate(dateGet(r));
+          if (!rd) return false;
+          return zazuDateInCalendarRange(rd, fromD, toD);
+        });
+      }
+    }
+    if (hadZona) {
+      const sampleBlob = list[0] ? zazuEnvioZonaBlob(list[0].envio) : '';
+      if (!zonaGet && !sampleBlob) {
+        hints.push(
+          'Filtro Lima/Provincia: no hay campo de ciudad/zona en la fila ni texto útil en «envío». Revisa los datos o usa «Todas».'
+        );
+      } else {
+        out = out.filter((r) => zazuRowMatchesZonaWithFallback(zonaGet ? zonaGet(r) : null, zona, r));
+      }
+    }
+    if (out.length === 0 && list.length > 0) {
+      hints.push(
+        '0 filas con estos filtros: borra «Desde/Hasta» para filtrar solo por zona, o elige «Todas» en Zona para comprobar el rango de fechas.'
+      );
+    }
+    return { filtered: out, total: list.length, hints, dateKey: hadDate && dateGet ? 'ok' : null, zonaKey: zonaGet ? 'resuelto' : null };
+  }
+
+  function zazuShortUrlForLog(url) {
+    const s = String(url || '');
+    try {
+      if (/^https?:\/\//i.test(s)) {
+        const u = new URL(s);
+        return (u.pathname || '/') + (u.search || '');
+      }
+    } catch (_) { /* ignore */ }
+    return s.split('?')[0] || s;
+  }
+
+  function zazuLogTime() {
+    return new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+
+  function pushApiRequestLog(entry) {
+    const row = {
+      t: Date.now(),
+      method: entry.method || 'GET',
+      url: entry.url || '',
+      status: entry.status | 0,
+      ms: entry.ms | 0,
+      note: entry.note || null,
+    };
+    S.apiRequestLog.unshift(row);
+    if (S.apiRequestLog.length > ZAZU_API_LOG_MAX) S.apiRequestLog.length = ZAZU_API_LOG_MAX;
+    if (S.view === 'zazu') {
+      const path = zazuShortUrlForLog(row.url);
+      let line = `[${zazuLogTime()}] ${row.method} ${path} → ${row.status || '—'} (${row.ms} ms)`;
+      if (row.note) line += ` · ${row.note}`;
+      zazuDevConsolePush(line, row.status === 0 || row.status >= 400 ? 'err' : 'info');
+    }
+    renderZazuDevPanel();
+  }
+
+  function zazuDevConsolePush(text, level) {
+    S.zazuDevConsole.unshift({ t: Date.now(), level: level || 'info', text: String(text) });
+    if (S.zazuDevConsole.length > ZAZU_CONSOLE_MAX) S.zazuDevConsole.length = ZAZU_CONSOLE_MAX;
+  }
+
+  function renderZazuDevPanel() {
+    const reqEl = d.getElementById('zazu-req-log');
+    const conEl = d.getElementById('zazu-console-log');
+    if (!reqEl && !conEl) return;
+    if (reqEl) {
+      if (!S.apiRequestLog.length) {
+        reqEl.innerHTML = '<p class="zazu-dev-empty">Aún no hay peticiones en esta sesión.</p>';
+      } else {
+        reqEl.innerHTML = `<table class="zazu-req-table" aria-label="Historial de peticiones">
+<thead><tr><th>Hora</th><th>Método</th><th>Ruta</th><th>Estado</th><th>Tiempo</th></tr></thead>
+<tbody>${S.apiRequestLog.map((r) => {
+          const tm = new Date(r.t).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          const pathRaw = zazuShortUrlForLog(r.url);
+          const path = escHtml(pathRaw);
+          const pathTitle = escHtml(pathRaw);
+          const st = r.status | 0;
+          const stClass = st === 0 ? 'zazu-req-st--fail' : st >= 400 ? 'zazu-req-st--warn' : 'zazu-req-st--ok';
+          const note = r.note ? `<span class="zazu-req-note">${escHtml(r.note)}</span>` : '';
+          return `<tr><td class="zazu-req-td-time">${escHtml(tm)}</td><td>${escHtml(r.method)}</td><td class="zazu-req-td-path" title="${pathTitle}">${path}</td><td class="${stClass}">${st || '—'}</td><td>${r.ms | 0} ms</td></tr>${note ? `<tr class="zazu-req-note-row"><td colspan="5">${note}</td></tr>` : ''}`;
+        }).join('')}</tbody></table>`;
+      }
+    }
+    if (conEl) {
+      if (!S.zazuDevConsole.length) {
+        conEl.innerHTML = '<p class="zazu-dev-empty">Abre esta vista y usa el panel; aquí verás mensajes y peticiones mientras trabajas en Zazu.</p>';
+      } else {
+        conEl.innerHTML = S.zazuDevConsole.map((c) => {
+          const lv = c.level === 'err' ? 'zazu-con-line--err' : c.level === 'ok' ? 'zazu-con-line--ok' : '';
+          return `<div class="zazu-con-line ${lv}">${escHtml(c.text)}</div>`;
+        }).join('');
+      }
+    }
+  }
+
+  function clearZazuDevLogs() {
+    S.apiRequestLog = [];
+    S.zazuDevConsole = [];
+    renderZazuDevPanel();
+  }
+
+  /** GET /api/odoo/nota-venta-pdf con cookie de sesión; abre blob en nueva pestaña. */
+  async function zazuFetchAndOpenNotaVentaPdf(url) {
+    const newWin = window.open('about:blank', '_blank', 'noopener');
+    if (!newWin) {
+      zazuDevConsolePush('El navegador bloqueó la ventana emergente; permite popups para este sitio.', 'err');
+      return;
+    }
+    newWin.document.title = "Cargando PDF...";
+    newWin.document.body.innerHTML = "<h3 style='font-family:sans-serif; text-align:center; padding-top:20px; color:#444;'>Descargando tu PDF, espere por favor...</h3>";
+
+    const t0 = performance.now();
+    let status = 0;
+    try {
+      const resp = await fetch(url, { credentials: 'same-origin' });
+      status = resp.status;
+      pushApiRequestLog({
+        method: 'GET',
+        url,
+        status,
+        ms: Math.round(performance.now() - t0),
+        note: status === 401 ? 'No autenticado' : null,
+      });
+      renderZazuDevPanel();
+      if (status === 401) {
+        newWin.close();
+        zazuDevConsolePush('PDF: no hay sesión del panel. Entra en /login.html, inicia sesión y vuelve aquí.', 'err');
+        renderZazuDevPanel();
+        return;
+      }
+      if (!resp.ok) {
+        newWin.close();
+        let msg = `HTTP ${status}`;
+        try {
+          const j = await resp.json();
+          if (j.error) msg = j.error;
+        } catch (_) { /* ignore */ }
+        zazuDevConsolePush(`PDF nota: ${msg}`, 'err');
+        renderZazuDevPanel();
+        return;
+      }
+      const blob = await resp.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      newWin.document.body.style.margin = '0';
+      newWin.document.body.innerHTML = `<iframe src="${blobUrl}" style="width:100vw; height:100vh; border:none; margin:0; padding:0;"></iframe>`;
+      newWin.document.title = "Reporte Odoo";
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 120000);
+      renderZazuDevPanel();
+    } catch (e) {
+      pushApiRequestLog({
+        method: 'GET',
+        url,
+        status: status || 0,
+        ms: Math.round(performance.now() - t0),
+        note: e && e.message ? e.message : String(e),
+      });
+      zazuDevConsolePush(`PDF nota: ${e && e.message ? e.message : e}`, 'err');
+      renderZazuDevPanel();
+    }
+  }
+
+  /**
+   * PDF generado en Odoo vía XML-RPC: solo el nombre de nota (sale.order.name), ej. Overshark/024059.
+   */
+  function zazuOpenNotaVentaPdfByNota(nota) {
+    const qs = new URLSearchParams({
+      nota: String(nota || '').trim(),
+      match_name_only: '1',
+    });
+    zazuFetchAndOpenNotaVentaPdf(`/api/odoo/nota-venta-pdf?${qs.toString()}`);
+  }
+
+  function zazuOpenNotaVentaPdf(name) {
+    zazuOpenNotaVentaPdfByNota(name);
+  }
+
+  /**
+   * Búsqueda universal de PDF de nota de venta:
+   * - Si el valor es solo dígitos → usa sale_order_id (clave primaria en Odoo).
+   * - Si contiene letras o «/» → usa nota (sale.order.name, ej. Overshark/024260).
+   */
+  function zazuSearchAndOpenPdf(rawValue) {
+    const val = String(rawValue || '').trim();
+    if (!val) {
+      zazuPdfSearchSetStatus('Ingresa la nota de venta o el ID numérico de Odoo.', 'err');
+      return;
+    }
+    const isOnlyDigits = /^\d+$/.test(val);
+    let url;
+    let logLabel;
+    if (isOnlyDigits) {
+      const id = parseInt(val, 10);
+      if (id < 1) {
+        zazuPdfSearchSetStatus('El ID numérico debe ser un entero positivo.', 'err');
+        return;
+      }
+      url = `/api/odoo/nota-venta-pdf?sale_order_id=${id}`;
+      logLabel = `ID ${id}`;
+    } else {
+      const qs = new URLSearchParams({ nota: val, match_name_only: '1' });
+      url = `/api/odoo/nota-venta-pdf?${qs.toString()}`;
+      logLabel = `"${val}"`;
+    }
+    zazuPdfSearchSetStatus(`Buscando ${logLabel} y generando PDF desde Odoo…`, 'loading');
+    
+    // Abrir ventana preventiva antes del fetch asíncrono
+    const newWin = window.open('about:blank', '_blank', 'noopener');
+    if (!newWin) {
+      zazuPdfSearchSetStatus('El navegador bloqueó la ventana emergente. Por favor, permite popups para este sitio y vuelve a intentar.', 'err');
+      return;
+    }
+    newWin.document.title = "Cargando PDF...";
+    newWin.document.body.innerHTML = "<h3 style='font-family:sans-serif; text-align:center; padding-top:20px; color:#444;'>Descargando tu PDF, espere por favor...</h3>";
+
+    const t0 = performance.now();
+    fetch(url, { credentials: 'same-origin' })
+      .then(async (resp) => {
+        const ms = Math.round(performance.now() - t0);
+        pushApiRequestLog({ method: 'GET', url, status: resp.status, ms });
+        renderZazuDevPanel();
+        if (resp.status === 401) {
+          newWin.close();
+          zazuPdfSearchSetStatus('No hay sesión activa. Inicia sesión en /login.html y vuelve aquí.', 'err');
+          zazuDevConsolePush('PDF: no hay sesión del panel.', 'err');
+          renderZazuDevPanel();
+          return;
+        }
+        if (!resp.ok) {
+          newWin.close();
+          let msg = `HTTP ${resp.status}`;
+          try {
+            const j = await resp.json();
+            if (j.error) msg = j.error;
+          } catch (_) { /* ignore */ }
+          zazuPdfSearchSetStatus(`Error: ${msg}`, 'err');
+          zazuDevConsolePush(`PDF ${logLabel}: ${msg}`, 'err');
+          renderZazuDevPanel();
+          return;
+        }
+        const blob = await resp.blob();
+        const blobUrl = URL.createObjectURL(blob);
+        newWin.document.body.style.margin = '0';
+        newWin.document.body.innerHTML = `<iframe src="${blobUrl}" style="width:100vw; height:100vh; border:none; margin:0; padding:0;"></iframe>`;
+        newWin.document.title = "Reporte Odoo";
+        zazuPdfSearchSetStatus(`PDF generado correctamente (${ms} ms). Se abrió en nueva pestaña.`, 'ok');
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 120000);
+        renderZazuDevPanel();
+      })
+      .catch((e) => {
+        if (newWin && !newWin.closed) newWin.close();
+        const ms = Math.round(performance.now() - t0);
+        pushApiRequestLog({ method: 'GET', url, status: 0, ms, note: e?.message || String(e) });
+        zazuPdfSearchSetStatus(`Error de red: ${e?.message || e}`, 'err');
+        zazuDevConsolePush(`PDF ${logLabel}: ${e?.message || e}`, 'err');
+        renderZazuDevPanel();
+      });
+  }
+
+  /** Muestra estado en el widget de búsqueda de PDF. */
+  function zazuPdfSearchSetStatus(text, level) {
+    const el = d.getElementById('zazu-pdf-search-status');
+    if (!el) return;
+    el.hidden = false;
+    el.className = 'zazu-pdf-search__status';
+    if (level === 'err') el.classList.add('zazu-pdf-search__status--err');
+    else if (level === 'ok') el.classList.add('zazu-pdf-search__status--ok');
+    else if (level === 'loading') el.classList.add('zazu-pdf-search__status--loading');
+    el.textContent = text;
+  }
 
   // ── Format helpers ──
   const fmt = {
@@ -36,6 +545,14 @@
     pct: (v, dec = 2) => `${fmt.n(v, dec)}%`,
     compact: v => v >= 1e6 ? `${(v / 1e6).toFixed(1)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(1)}k` : fmt.n(v, 0),
   };
+
+  /** Total del ticket de regla ÷ cantidad promedio de prendas por orden (columna Cant./Orden). 0 si no hay dato. */
+  function analysisTicketOverAvgQty(f) {
+    const t = Number(f.ticket_usado) || 0;
+    const q = Number(f.cantidad_promedio) || 0;
+    if (q <= 0) return 0;
+    return t / q;
+  }
 
   // ── Theme ──
   function applyTheme(t) {
@@ -72,14 +589,29 @@
     </div>`;
   }
 
-  /** Incluye cookie de sesión; si 401, va al login */
+  /** Incluye cookie de sesión; si 401, va al login. Registra cada petición para el panel «Peticiones» (Zazu). */
   async function apiFetch(url, init) {
-    const resp = await fetch(url, Object.assign({ credentials: 'same-origin' }, init || {}));
-    if (resp.status === 401) {
-      w.location.href = '/login.html';
-      throw new Error('No autenticado');
+    const merged = Object.assign({ credentials: 'same-origin' }, init || {});
+    const method = String(merged.method || 'GET').toUpperCase();
+    const t0 = performance.now();
+    let status = 0;
+    let note = null;
+    try {
+      const resp = await fetch(url, merged);
+      status = resp.status;
+      if (resp.status === 401) {
+        note = 'No autenticado';
+        pushApiRequestLog({ method, url, status, ms: Math.round(performance.now() - t0), note });
+        w.location.href = '/login.html';
+        throw new Error('No autenticado');
+      }
+      pushApiRequestLog({ method, url, status, ms: Math.round(performance.now() - t0) });
+      return resp;
+    } catch (e) {
+      note = note || (e && e.message ? e.message : String(e));
+      if (status === 0) pushApiRequestLog({ method, url, status: 0, ms: Math.round(performance.now() - t0), note });
+      throw e;
     }
-    return resp;
   }
 
   async function fetchCompanies() {
@@ -201,25 +733,39 @@
     const load = d.getElementById('loading-panel');
     const inv = d.getElementById('panel-inventory');
     const risk = d.getElementById('panel-risks');
+    const zazu = d.getElementById('panel-zazu');
     const status = d.querySelector('.status-bar');
     if (view === 'dashboard') {
       if (dash) dash.style.display = S.data ? '' : 'none';
       if (inv) inv.hidden = true;
       if (risk) risk.hidden = true;
+      if (zazu) zazu.hidden = true;
       if (status) status.style.display = '';
     } else if (view === 'inventory') {
       if (dash) dash.style.display = 'none';
       if (inv) inv.hidden = false;
       if (risk) risk.hidden = true;
+      if (zazu) zazu.hidden = true;
       if (load) load.style.display = 'none';
       if (status) status.style.display = 'none';
-    } else {
+    } else if (view === 'risks') {
       if (dash) dash.style.display = 'none';
       if (inv) inv.hidden = true;
       if (risk) risk.hidden = false;
+      if (zazu) zazu.hidden = true;
+      if (load) load.style.display = 'none';
+      if (status) status.style.display = 'none';
+    } else if (view === 'zazu') {
+      if (dash) dash.style.display = 'none';
+      if (inv) inv.hidden = true;
+      if (risk) risk.hidden = true;
+      if (zazu) zazu.hidden = false;
       if (load) load.style.display = 'none';
       if (status) status.style.display = 'none';
     }
+    const contentInner = d.querySelector('.content-inner');
+    if (contentInner) contentInner.classList.toggle('content-inner--zazu-wide', view === 'zazu');
+    if (view === 'zazu') renderZazuDevPanel();
     if (S.invRisksTimer) {
       clearInterval(S.invRisksTimer);
       S.invRisksTimer = null;
@@ -237,6 +783,289 @@
       const fk = btn.getAttribute('data-risk-focus') || 'dias';
       btn.classList.toggle('nav-item--risk-active', onRisks && fk === k);
     });
+  }
+
+  function syncZazuTabsActive() {
+    const allowed = ['entregados', 'anulados', 'activos', 'todos'];
+    let t = S.zazuTab || 'entregados';
+    if (!allowed.includes(t)) t = 'entregados';
+    S.zazuTab = t;
+    d.querySelectorAll('[data-zazu-tab]').forEach((btn) => {
+      const on = (btn.getAttribute('data-zazu-tab') || '') === t;
+      btn.classList.toggle('zazu-tab--active', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+  }
+
+  function zazuShortObj(o) {
+    if (o == null || typeof o !== 'object') return '—';
+    const id = o.id != null ? `#${o.id}` : '';
+    const label = o.nombre || o.name || o.full_name || o.direccion || o.referencia || '';
+    const s = [id, label].filter(Boolean).join(' · ');
+    if (s) return s.length > 120 ? `${s.slice(0, 117)}…` : s;
+    try {
+      const j = JSON.stringify(o);
+      return j.length > 100 ? `${j.slice(0, 97)}…` : j;
+    } catch (_) {
+      return '—';
+    }
+  }
+
+  function zazuLooksLikeHttpUrl(s) {
+    const u = String(s ?? '').trim();
+    return /^https?:\/\//i.test(u);
+  }
+
+  /** Columnas cuyo nombre suelen guardar URL de evidencia / foto. */
+  function zazuColumnSuggestsPhoto(colKey) {
+    return /foto|photo|img|imagen|evidencia|comprobante|selfie|picture|url_foto|firma|recibo|adjunto|capture|screenshot/i.test(String(colKey || ''));
+  }
+
+  function zazuLooksLikeImageUrl(s, colKey) {
+    if (!zazuLooksLikeHttpUrl(s)) return false;
+    const u = String(s).trim();
+    if (/\.(jpe?g|png|gif|webp|svg|bmp)(\?|#|$)/i.test(u)) return true;
+    if (/\/image\//i.test(u) || /\/images?\//i.test(u)) return true;
+    if (zazuColumnSuggestsPhoto(colKey)) return true;
+    return false;
+  }
+
+  /** Fecha solo calendario (dd/mm/aaaa), sin hora. */
+  function zazuFormatDateOnlyDisplay(val) {
+    const d = zazuParseFlexibleDate(val);
+    if (!d || isNaN(d.getTime())) return null;
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yyyy = String(d.getFullYear());
+    return `${dd}/${mm}/${yyyy}`;
+  }
+
+  /** Nombre de columna sugiere fecha/hora (excluye id_* como id_envio). */
+  function zazuColumnLooksLikeDateKey(colKey) {
+    const n = zazuNormColKey(colKey);
+    if (!n || /^id_/.test(n)) return false;
+    if (/fecha|fech/.test(n)) return true;
+    if (/programad|entrega|registro/.test(n)) return true;
+    if (/_at$/.test(n)) return true;
+    if (/^(created|updated|modified)_/.test(n)) return true;
+    if (/\bdate\b/.test(n.replace(/_/g, ' '))) return true;
+    if (/_date$/.test(n) || /^date_/.test(n)) return true;
+    return false;
+  }
+
+  /** Valor string típico de instantánea ISO u hora local (no números sueltos = evita IDs largos). */
+  function zazuValueLooksLikeDateTimeString(s) {
+    const t = String(s || '').trim();
+    if (!t) return false;
+    if (/^\d{4}-\d{2}-\d{2}(T[\d:.+-]+Z?)?$/i.test(t)) return true;
+    if (/^\d{4}-\d{2}-\d{2}[ T]\d{1,2}:\d{2}/.test(t)) return true;
+    return false;
+  }
+
+  /** Quita comillas tipográficas y NBSP; formato Empresa/número sin espacios alrededor de «/». */
+  function zazuNormalizeNotaVentaRef(val) {
+    let s = String(val || '').replace(/\u00a0/g, ' ').trim();
+    if (!s) return '';
+    const edgeStart = /^[\s\u00ab\u00bb\u201c\u201d\u2018\u2019\u2039\u203a"'`´]+/;
+    const edgeEnd = /[\s\u00ab\u00bb\u201c\u201d\u2018\u2019\u2039\u203a"'`´]+$/;
+    for (let i = 0; i < 8 && (edgeStart.test(s) || edgeEnd.test(s)); i += 1) {
+      s = s.replace(edgeStart, '').replace(edgeEnd, '').trim();
+    }
+    s = s.replace(/\s*\/\s*/g, '/');
+    const slash = s.indexOf('/');
+    if (slash !== -1) {
+      s = `${s.slice(0, slash).trim()}/${s.slice(slash + 1).trim()}`;
+    }
+    if (s.length > 120) s = s.slice(0, 120);
+    return s;
+  }
+
+  /**
+   * Celda escalar: texto corto, enlace genérico como chip, URL de imagen como recuadro «Foto».
+   */
+  function zazuFormatScalarCell(colKey, val, row) {
+    if (val == null || val === '') return '<span class="zazu-cell-muted">—</span>';
+    const str = String(val).trim();
+    /* id_envio: solo texto de la nota de venta (sin botón PDF; se usa el buscador universal). */
+    if (zazuIsIdEnvioColumn(colKey) && str) {
+      const refNorm = zazuNormalizeNotaVentaRef(str);
+      if (!refNorm) return '<span class="zazu-cell-muted">—</span>';
+      const display = refNorm.length > 140 ? `${refNorm.slice(0, 137)}…` : refNorm;
+      return `<span class="zazu-envio-name">${escHtml(display)}</span>`;
+    }
+    if (zazuLooksLikeImageUrl(str, colKey)) {
+      const safeHref = escHtml(str);
+      return `<a class="zazu-photo-tile" href="${safeHref}" target="_blank" rel="noopener noreferrer" title="Abrir imagen en el navegador"><span class="zazu-photo-tile__preview" aria-hidden="true"><svg class="zazu-photo-tile__icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></span><span class="zazu-photo-tile__label">Foto</span></a>`;
+    }
+    if (zazuLooksLikeHttpUrl(str)) {
+      const safeHref = escHtml(str);
+      return `<a class="zazu-link-chip" href="${safeHref}" target="_blank" rel="noopener noreferrer" title="${safeHref}">Abrir enlace</a>`;
+    }
+    if (zazuColumnLooksLikeDateKey(colKey)) {
+      const dOnly = zazuFormatDateOnlyDisplay(val);
+      if (dOnly) return `<span class="zazu-cell-text zazu-cell-date">${escHtml(dOnly)}</span>`;
+    } else if (zazuValueLooksLikeDateTimeString(str)) {
+      const dOnly = zazuFormatDateOnlyDisplay(str);
+      if (dOnly) return `<span class="zazu-cell-text zazu-cell-date">${escHtml(dOnly)}</span>`;
+    }
+    const t = str.length > 140 ? `${str.slice(0, 137)}…` : str;
+    return `<span class="zazu-cell-text">${escHtml(t)}</span>`;
+  }
+
+  /** Normaliza nombre de columna para comparar (mayúsculas, acentos, espacios → _). */
+  function zazuNormColKey(key) {
+    return String(key || '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, '_');
+  }
+
+  /** id_envio, ID_ENVIO, idEnvio (Supabase/JSON) → misma columna de nota. */
+  function zazuIsIdEnvioColumn(colKey) {
+    const compact = zazuNormColKey(colKey).replace(/_/g, '');
+    return compact === 'idenvio';
+  }
+
+  /** Columnas que no se muestran en la tabla (pedido explícito + ids auxiliares). */
+  const ZAZU_HIDDEN_COLUMN_KEYS = new Set([
+    'id',
+    'id_motorizado',
+    'descripcion',
+    'foto_voucher',
+    'fotovoucher',
+    'hora_aproximada',
+    'is_visible',
+    'isvisible',
+    'orden_secuencia',
+    'secuencia_orden',
+    'ordensecuencia',
+    'verificacion',
+    'created_at',
+  ]);
+
+  function zazuScalarColExcluded(key) {
+    const n = zazuNormColKey(key);
+    if (ZAZU_HIDDEN_COLUMN_KEYS.has(n)) return true;
+    if (/orden/.test(n) && /secuencia/.test(n)) return true;
+    return false;
+  }
+
+  function zazuScalarCols(rows) {
+    const skip = new Set(['envio', 'motorizado']);
+    const keys = new Set();
+    (rows || []).slice(0, 80).forEach((r) => {
+      if (!r || typeof r !== 'object') return;
+      Object.keys(r).forEach((k) => {
+        if (skip.has(k) || zazuScalarColExcluded(k)) return;
+        const v = r[k];
+        if (v != null && typeof v === 'object') return;
+        keys.add(k);
+      });
+    });
+    const keysArr = [...keys];
+    const idEnvioKey = keysArr.find((k) => zazuIsIdEnvioColumn(k));
+    const order = ['estado_pedido', 'fecha', 'updated_at'];
+    const head = order.filter((k) => keys.has(k));
+    const rest = keysArr.filter((k) => k !== idEnvioKey && !order.includes(k)).sort();
+    const first = idEnvioKey ? [idEnvioKey] : [];
+    return [...first, ...head, ...rest].slice(0, 16);
+  }
+
+  function renderZazuTable(rows, info) {
+    const thead = d.getElementById('zazu-thead');
+    const tbody = d.getElementById('zazu-tbody');
+    const meta = d.getElementById('zazu-meta-badge');
+    if (!thead || !tbody) return;
+    const inf = info || {};
+    const loaded = inf.loaded != null ? inf.loaded : (Array.isArray(rows) ? rows.length : 0);
+    const list = Array.isArray(rows) ? rows : [];
+    const lab = ZAZU_TAB_LABELS[S.zazuTab] || S.zazuTab;
+    if (meta) {
+      meta.textContent = loaded !== list.length
+        ? `${list.length} visibles · ${loaded} traídos · ${lab}`
+        : `${list.length} registros · ${lab}`;
+    }
+    if (!list.length) {
+      thead.innerHTML = '<tr><th class="zazu-th">Sin datos</th></tr>';
+      const msg = loaded > 0
+        ? 'Ningún registro cumple los filtros de fecha o zona. Amplía el rango o elige «Todas» en Zona.'
+        : 'No hay filas para esta pestaña o la API devolvió vacío.';
+      tbody.innerHTML = `<tr><td class="zazu-empty" colspan="99">${msg}</td></tr>`;
+      return;
+    }
+    const cols = zazuScalarCols(list);
+    const thCells = cols.map((c, i) => {
+      const sticky = i === 0 ? ' zazu-th--sticky-first' : '';
+      return `<th class="zazu-th${sticky}" scope="col" data-col="${escHtml(c)}">${escHtml(c)}</th>`;
+    }).join('');
+    thead.innerHTML = `<tr>${thCells}<th class="zazu-th" scope="col">Envío</th></tr>`;
+    tbody.innerHTML = list.map((r) => {
+      const tds = cols.map((c, i) => {
+        const sticky = i === 0 ? ' zazu-cell-strong' : '';
+        return `<td class="zazu-cell${sticky}" data-col="${escHtml(c)}">${zazuFormatScalarCell(c, r[c], r)}</td>`;
+      }).join('');
+      return `<tr class="zazu-row">${tds}<td class="zazu-cell zazu-cell-nested">${escHtml(zazuShortObj(r.envio))}</td></tr>`;
+    }).join('');
+  }
+
+  /**
+   * @param {boolean} [forceFetch=true] Si false, reutiliza la última respuesta de la misma pestaña y solo aplica filtros en el navegador.
+   */
+  async function fetchZazuEnvios(forceFetch) {
+    const force = forceFetch !== false;
+    const load = d.getElementById('zazu-loading');
+    const err = d.getElementById('zazu-error');
+    const wrap = d.getElementById('zazu-table-wrap');
+    const warnBox = d.getElementById('zazu-warnings');
+    if (err) { err.hidden = true; err.textContent = ''; }
+    if (warnBox) { warnBox.hidden = true; warnBox.textContent = ''; }
+    if (wrap) wrap.hidden = true;
+    if (load) load.hidden = false;
+    syncZazuTabsActive();
+    initZazuDateInputsIfEmpty();
+    try {
+      const tab = S.zazuTab || 'entregados';
+      let rawRows;
+      let serverWarns = [];
+      const useCache = !force && S.zazuCache && S.zazuCache.tab === tab && Array.isArray(S.zazuCache.rows);
+      if (useCache) {
+        rawRows = S.zazuCache.rows;
+        zazuDevConsolePush(`Filtros en navegador (${tab}, ${rawRows.length} filas en memoria)…`, 'info');
+        renderZazuDevPanel();
+      } else {
+        zazuDevConsolePush(`Cargando envíos: ${tab}…`, 'info');
+        renderZazuDevPanel();
+        const url = `/api/zazu/envios-diarios?${new URLSearchParams({ tab, limit: '2000' }).toString()}`;
+        const resp = await apiFetch(url);
+        const j = await resp.json();
+        if (!resp.ok) throw new Error(j.error || `HTTP ${resp.status}`);
+        serverWarns = j.meta && Array.isArray(j.meta.warnings) ? j.meta.warnings : [];
+        rawRows = Array.isArray(j.rows) ? j.rows : [];
+        S.zazuCache = { tab, rows: rawRows };
+      }
+      const applied = zazuApplyClientFilters(rawRows);
+      const hintParts = (applied.hints || []).concat(serverWarns);
+      if (warnBox && hintParts.length) {
+        warnBox.hidden = false;
+        warnBox.textContent = hintParts.join(' ');
+      }
+      renderZazuTable(applied.filtered, { loaded: applied.total });
+      if (wrap) wrap.hidden = false;
+      const vis = applied.filtered.length;
+      const tot = applied.total;
+      zazuDevConsolePush(useCache ? `Listo: ${vis} visibles (${tot} en esta carga).` : `Listo: ${tot} filas (${tab}), ${vis} tras filtros.`, 'ok');
+      renderZazuDevPanel();
+    } catch (e) {
+      S.zazuCache = null;
+      const msg = e.message || String(e);
+      zazuDevConsolePush(`Error: ${msg}`, 'err');
+      renderZazuDevPanel();
+      if (err) { err.hidden = false; err.textContent = msg; }
+    } finally {
+      if (load) load.hidden = true;
+    }
   }
 
   /** Orden de columnas de talla en la matriz */
@@ -1407,9 +2236,40 @@
     scheduleDeferredChartResize();
   }
 
+  function syncAnalysisLineUi() {
+    const useRatio = S.analysisLineMode === 'ratio';
+    d.querySelectorAll('[data-analysis-line]').forEach((btn) => {
+      const on = btn.getAttribute('data-analysis-line') === (useRatio ? 'ratio' : 'commercial');
+      btn.classList.toggle('risk-co-chip--active', on);
+    });
+    const expl = d.getElementById('analysis-explainer');
+    if (expl) {
+      expl.innerHTML = useRatio
+        ? '<strong>Barras (verde)</strong> = unidades que el modelo proyecta vender. <strong>Línea (ámbar)</strong> = total del ticket de regla <strong>dividido</strong> entre la <strong>cantidad promedio de prendas por orden</strong> (misma familía), para ver cuánto del ticket corresponde a cada prenda según el tamaño típico del pedido.'
+        : '<strong>Barras (verde)</strong> = unidades que el modelo proyecta vender. <strong>Línea (ámbar)</strong> = ticket comercial usado en la regla (S/). Así se comparan volumen y precio por familia sin mezclar ambos en un solo color.';
+    }
+    const hintBody = d.getElementById('analysis-hint-body');
+    if (hintBody) {
+      hintBody.textContent = useRatio
+        ? 'Eje derecho: S/ (ticket de regla) ÷ (Cant./Orden). Si no hay dato de cantidad por orden, la línea cae en 0. El tooltip muestra ticket, cant./orden y el cociente.'
+        : 'Dos ejes: izquierda unidades, derecha soles del ticket de regla. Misma fila = misma familía. El tooltip incluye el desglose ticket ÷ cant./orden.';
+    }
+  }
+
+  function setAnalysisLineMode(mode) {
+    if (mode !== 'commercial' && mode !== 'ratio') return;
+    S.analysisLineMode = mode;
+    try {
+      localStorage.setItem('soni-analysis-line', mode);
+    } catch (_) { /* ignore */ }
+    syncAnalysisLineUi();
+    if (S.data && S.tab === 'analysis') renderAnalysisChart();
+  }
+
   function renderAnalysisChart() {
     const ctx = d.getElementById('chart-analysis'); if (!ctx) return;
     destroyChart('analysis');
+    const useRatio = S.analysisLineMode === 'ratio';
     const fam = [...S.data.families]
       .filter(f => f.nombre !== 'OVERSIZE' && !f.excluido_metricas)
       .sort((a, b) => b.ventas_proyectadas - a.ventas_proyectadas);
@@ -1418,6 +2278,12 @@
       wrap.style.height = `${Math.min(780, Math.max(400, fam.length * 36 + 240))}px`;
     }
     if (!fam.length) return;
+
+    const lineLabel = useRatio ? 'Ticket ÷ cant./orden (S/)' : 'Ticket comercial (S/)';
+    const chartTitle = useRatio
+      ? 'Ventas proyectadas (barras) vs ticket ÷ cant. por orden (línea)'
+      : 'Ventas proyectadas (barras) vs ticket comercial (línea)';
+    const y1Title = useRatio ? 'Ticket ÷ cant./orden (S/)' : 'Ticket comercial (S/)';
 
     S.charts.analysis = new Chart(ctx, {
       type: 'bar',
@@ -1437,8 +2303,8 @@
           },
           {
             type: 'line',
-            label: 'Ticket comercial (S/)',
-            data: fam.map(f => Number(f.ticket_usado) || 0),
+            label: lineLabel,
+            data: fam.map(f => (useRatio ? analysisTicketOverAvgQty(f) : Number(f.ticket_usado) || 0)),
             borderColor: '#f59e0b',
             backgroundColor: 'rgba(245, 158, 11, 0.12)',
             borderWidth: 2.5,
@@ -1463,7 +2329,7 @@
           },
           title: {
             display: true,
-            text: 'Ventas proyectadas (barras) vs ticket comercial (línea)',
+            text: chartTitle,
             color: txtC(),
             font: { size: 13, weight: 600 },
           },
@@ -1479,12 +2345,20 @@
               label(c) {
                 const f = fam[c.dataIndex];
                 if (c.datasetIndex === 0) return `Ventas proyectadas: ${fmt.n(f.ventas_proyectadas, 0)} u.`;
+                if (useRatio) return `Ticket ÷ cant./orden: ${fmt.money(analysisTicketOverAvgQty(f))}`;
                 return `Ticket comercial: ${fmt.money(f.ticket_usado)}`;
               },
               afterBody: items => {
                 if (!items?.[0]) return [];
                 const f = fam[items[0].dataIndex];
-                return [`Stock: ${fmt.n(f.stock, 0)} · Ingresos: ${fmt.money(f.ingresos_brutos)}`];
+                const qOrd = Number(f.cantidad_promedio) || 0;
+                const base = [`Stock: ${fmt.n(f.stock, 0)} · Ingresos: ${fmt.money(f.ingresos_brutos)}`];
+                if (useRatio) {
+                  base.push(`Ticket regla: ${fmt.money(f.ticket_usado)} · Cant./orden: ${qOrd > 0 ? fmt.n(qOrd, 2) : '—'}`);
+                } else {
+                  base.push(`Desglose: ${fmt.money(analysisTicketOverAvgQty(f))} (ticket ÷ cant./orden)`);
+                }
+                return base;
               },
             },
           },
@@ -1502,9 +2376,12 @@
           },
           y1: {
             position: 'right',
-            title: { display: true, text: 'Ticket (S/)', color: txtC() },
+            title: { display: true, text: y1Title, color: txtC() },
             grid: { drawOnChartArea: false },
-            ticks: { color: txtC(), callback: v => `S/ ${fmt.n(v, 0)}` },
+            ticks: {
+              color: txtC(),
+              callback: v => (useRatio ? `S/ ${fmt.n(v, 2)}` : `S/ ${fmt.n(v, 0)}`),
+            },
           },
         },
       },
@@ -1637,6 +2514,8 @@
     }
     if (S.view === 'inventory' || S.view === 'risks') {
       fetchInventoryRisks();
+    } else if (S.view === 'zazu') {
+      /* datos del panel Zazu; no recargar Odoo */
     } else {
       fetchData();
     }
@@ -1912,6 +2791,7 @@
 
   function init() {
     applyTheme(S.theme);
+    syncAnalysisLineUi();
     syncSidebarDetailsForViewport();
     syncTopbarFiltersDetails();
     w.addEventListener('resize', () => {
@@ -1926,6 +2806,12 @@
     d.querySelectorAll('.tab-button').forEach(btn => btn.addEventListener('click', () => {
       applyTabSelection(btn.dataset.tab || 'income');
     }));
+
+    d.querySelectorAll('[data-analysis-line]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        setAnalysisLineMode(btn.getAttribute('data-analysis-line') || 'commercial');
+      });
+    });
 
     // Theme (sidebar + barra móvil)
     d.querySelectorAll('[data-theme-toggle]').forEach((btn) => {
@@ -1944,6 +2830,7 @@
     // Refresh
     d.getElementById('btn-refresh')?.addEventListener('click', () => {
       if (S.view === 'inventory' || S.view === 'risks') fetchInventoryRisks(false, { force: true });
+      else if (S.view === 'zazu') fetchZazuEnvios(true);
       else fetchData({ force: true });
     });
     ['date-from', 'date-to'].forEach((id) => {
@@ -1995,6 +2882,44 @@
       setView('dashboard');
       setNav(btn.dataset.nav || 'produccion', {});
     }));
+
+    d.querySelectorAll('[data-panel="zazu"]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const label = d.getElementById('page-label');
+        const heading = d.getElementById('page-heading');
+        if (label) label.textContent = 'Zazu Express · Supabase';
+        if (heading) heading.textContent = 'Envíos diarios';
+        setView('zazu');
+        fetchZazuEnvios(true);
+      });
+    });
+
+    d.querySelectorAll('[data-zazu-tab]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        S.zazuTab = btn.getAttribute('data-zazu-tab') || 'entregados';
+        fetchZazuEnvios(true);
+      });
+    });
+
+    d.getElementById('zazu-apply-filters')?.addEventListener('click', () => {
+      fetchZazuEnvios(false);
+    });
+
+    d.getElementById('zazu-dev-clear')?.addEventListener('click', () => {
+      clearZazuDevLogs();
+    });
+
+    d.getElementById('zazu-pdf-search-form')?.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const input = d.getElementById('zazu-pdf-so-id');
+      if (!input) return;
+      const val = input.value.trim();
+      if (!val) {
+        zazuPdfSearchSetStatus('Ingresa la nota de venta o el ID.', 'err');
+        return;
+      }
+      zazuSearchAndOpenPdf(val);
+    });
 
     d.querySelectorAll('[data-panel="risks"]').forEach((btn) => {
       btn.addEventListener('click', () => {

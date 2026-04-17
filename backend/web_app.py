@@ -8,14 +8,18 @@ import xmlrpc.client
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from flask import Flask, jsonify, redirect, request, send_from_directory, session
+from flask import Flask, Response, jsonify, redirect, request, send_from_directory, session
 from flask_cors import CORS
 
 from odoo_connector import (
+    config_from_environ,
     dotenv_file_status,
     dotenv_package_available,
     is_configured,
     missing_config_keys,
+    sale_order_nota_lookup,
+    sale_order_nota_pdf_bytes,
+    sale_order_nota_pdf_bytes_by_id,
 )
 
 from analytics import (
@@ -25,6 +29,7 @@ from analytics import (
     generate_inventory_risks_payload,
     get_companies_for_dashboard_user,
 )
+from zazu_supabase import fetch_envios_diarios, zazu_configured
 
 # Raiz del repo (padre de /backend): public/, .env
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -34,6 +39,24 @@ ASSETS_DIR = REPO_ROOT / "public" / "assets"
 
 # Cargar .env antes de leer FLASK_SECRET_KEY / credenciales del panel
 missing_config_keys()
+
+
+def _load_api_folder_dotenv() -> None:
+    """Carga api/.env del repo (p. ej. ZAZU_SUPABASE_*). override=False: no pisa variables ya definidas."""
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    p = REPO_ROOT / "api" / ".env"
+    if not p.is_file():
+        return
+    try:
+        load_dotenv(p, override=False, encoding="utf-8-sig")
+    except TypeError:
+        load_dotenv(p, override=False)
+
+
+_load_api_folder_dotenv()
 
 app = Flask(__name__, static_folder=str(ASSETS_DIR), static_url_path="/assets")
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "").strip() or "dev-cambiar-FLASK_SECRET_KEY"
@@ -95,6 +118,35 @@ def _dashboard_session_ok() -> bool:
     return bool(session.get("dashboard_ok"))
 
 
+def _match_name_only_from_request() -> bool:
+    """
+    Por defecto True: PDF y lookup vinculan solo con sale.order.name (Nota de venta).
+    match_name_only=0 | false | no | off — también busca client_order_ref.
+    """
+    v = (request.args.get("match_name_only") or "1").strip().lower()
+    return v not in ("0", "false", "no", "off")
+
+
+def _odoo_diagnostic_key_authorized() -> bool:
+    """
+    Si ODOO_PANEL_DIAGNOSTIC_KEY está definido, permite GET a lookup/PDF con ?diag_key=...
+    sin cookie de panel (solo para diagnóstico; no uses una clave débil en producción pública).
+    """
+    secret = _env_strip("ODOO_PANEL_DIAGNOSTIC_KEY")
+    if not secret or request.method != "GET":
+        return False
+    path = request.path or ""
+    if path not in ("/api/odoo/sale-order-lookup", "/api/odoo/nota-venta-pdf"):
+        return False
+    given = request.args.get("diag_key", "").strip()
+    if len(given) != len(secret):
+        return False
+    try:
+        return hmac.compare_digest(given.encode("utf-8"), secret.encode("utf-8"))
+    except (ValueError, TypeError):
+        return False
+
+
 def _password_ok(given: str, expected: str) -> bool:
     if not expected:
         return False
@@ -120,6 +172,8 @@ def _require_dashboard_auth():
     if path.startswith("/api/auth/"):
         return None
     if path == "/api/health":
+        return None
+    if _odoo_diagnostic_key_authorized():
         return None
     if _dashboard_session_ok():
         return None
@@ -248,6 +302,7 @@ def health():
             "dashboard_auth_env_ok": _dashboard_auth_env_ok(),
             "dashboard_users_count": len(_dashboard_user_pairs()),
             "flask_secret_key_set": bool(_env_strip("FLASK_SECRET_KEY")),
+            "zazu_supabase_configured": zazu_configured(),
         },
     })
 
@@ -367,6 +422,147 @@ def api_inventory_risks():
         return jsonify({"error": f"Odoo: {e.faultString}"}), 502
     except OSError as e:
         return jsonify({"error": f"Red / conexion: {e}"}), 502
+    except Exception as e:
+        return jsonify({"error": f"Error interno: {e}"}), 500
+
+
+@app.route("/api/odoo/sale-order-lookup")
+def api_odoo_sale_order_lookup():
+    """
+    Diagnóstico JSON: sale.order para el texto de nota (por defecto solo sale.order.name).
+    Query: match_name_only=0 para incluir client_order_ref. Misma auth que el resto del panel.
+    """
+    if not is_configured():
+        return jsonify({
+            "error": "Faltan variables ODOO en .env",
+            "missing_keys": missing_config_keys(),
+        }), 503
+    raw = (
+        request.args.get("nota")
+        or request.args.get("name")
+        or request.args.get("id_envio")
+        or ""
+    ).strip()
+    if not raw:
+        return jsonify({"error": "Indica nota, name o id_envio."}), 400
+    try:
+        cfg = config_from_environ()
+        payload = sale_order_nota_lookup(
+            cfg, raw, match_name_only=_match_name_only_from_request()
+        )
+        resp = jsonify(payload)
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
+    except xmlrpc.client.Fault as e:
+        return jsonify({"error": f"Odoo: {e.faultString}"}), 502
+    except OSError as e:
+        return jsonify({"error": f"Red / conexión: {e}"}), 502
+    except Exception as e:
+        return jsonify({"error": f"Error interno: {e}"}), 500
+
+
+@app.route("/api/odoo/nota-venta-pdf")
+def api_odoo_nota_venta_pdf():
+    """
+    PDF de nota de venta generado en Odoo (XML-RPC: sale.order + ir.actions.report).
+    No usa Supabase: el listado Zazu puede venir de PostgREST, pero este endpoint solo consulta Odoo.
+
+    Query (prioridad):
+      sale_order_id=123 — id interno sale.order en la BD Odoo.
+      nota= / name= / id_envio= — Nota de venta = sale.order.name (por defecto solo ese campo).
+      match_name_only=0 — además buscar en client_order_ref (Referencia del cliente).
+    """
+    if not is_configured():
+        return jsonify({
+            "error": "Faltan variables ODOO en .env",
+            "missing_keys": missing_config_keys(),
+        }), 503
+    so_raw = (request.args.get("sale_order_id") or request.args.get("so_id") or "").strip()
+    raw_name = (
+        request.args.get("nota")
+        or request.args.get("name")
+        or request.args.get("id_envio")
+        or ""
+    ).strip()
+    if so_raw:
+        try:
+            sale_order_id = int(so_raw)
+        except ValueError:
+            return jsonify({"error": "sale_order_id debe ser un entero (id de sale.order en Odoo)."}), 400
+        if sale_order_id < 1:
+            return jsonify({"error": "sale_order_id debe ser positivo."}), 400
+    elif raw_name:
+        sale_order_id = None
+    else:
+        return jsonify({
+            "error": "Indica sale_order_id (entero en Odoo) o nota / name / id_envio (número de nota de venta).",
+        }), 400
+    try:
+        cfg = config_from_environ()
+        if sale_order_id is not None:
+            pdf, filename = sale_order_nota_pdf_bytes_by_id(cfg, sale_order_id)
+        else:
+            pdf, filename = sale_order_nota_pdf_bytes(
+                cfg, raw_name, match_name_only=_match_name_only_from_request()
+            )
+        return Response(
+            pdf,
+            mimetype="application/pdf",
+            headers={
+                "Content-Disposition": f'inline; filename="{filename}"',
+                "Cache-Control": "private, max-age=120",
+            },
+        )
+    except ValueError as e:
+        # 422: pedido no encontrado en Odoo (no confundir con 404 de ruta inexistente)
+        code = "sale_order_id_not_found" if sale_order_id is not None else "sale_order_not_found"
+        return jsonify({
+            "error": str(e),
+            "code": code,
+        }), 422
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 502
+    except xmlrpc.client.Fault as e:
+        return jsonify({"error": f"Odoo: {e.faultString}"}), 502
+    except OSError as e:
+        return jsonify({"error": f"Red / conexión: {e}"}), 502
+    except Exception as e:
+        return jsonify({"error": f"Error interno: {e}"}), 500
+
+
+@app.route("/api/zazu/envios-diarios")
+def api_zazu_envios_diarios():
+    """
+    Envíos diarios Zazu vía Supabase PostgREST (anon key solo en servidor).
+    Query:
+      tab=entregados|anulados|activos|todos
+      limit=1..2000 (default 1000)
+      date_from, date_to — YYYY-MM-DD (columna ZAZU_DATE_COLUMN)
+      zona=all|lima|provincia (columna y valores vía entorno, ver zazu_supabase.py)
+    """
+    try:
+        tab = request.args.get("tab", "entregados").strip().lower()
+        raw_lim = request.args.get("limit", "1000").strip()
+        limit = int(raw_lim) if raw_lim else 1000
+        date_from = request.args.get("date_from", "").strip() or None
+        date_to = request.args.get("date_to", "").strip() or None
+        zona = request.args.get("zona", "all").strip().lower() or "all"
+        if zona not in ("all", "lima", "provincia"):
+            return jsonify({"error": 'zona debe ser "all", "lima" o "provincia"'}), 400
+        payload = fetch_envios_diarios(
+            tab,
+            limit=limit,
+            date_from=date_from,
+            date_to=date_to,
+            zona=zona,
+        )
+        resp = jsonify(payload)
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 502
     except Exception as e:
         return jsonify({"error": f"Error interno: {e}"}), 500
 

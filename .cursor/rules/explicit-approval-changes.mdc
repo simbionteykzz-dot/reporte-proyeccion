@@ -1,0 +1,22 @@
+---
+description: Requiere aprobación explícita antes de modificar código o subir cambios al remoto
+alwaysApply: true
+---
+
+# Aprobación explícita para cambios y publicación
+
+## Alcance
+Esta regla aplica a **todo el asistente** en este workspace: planificar, explicar y proponer está permitido; **actuar** solo tras instrucción clara del usuario.
+
+## Modificación de código y archivos del repo
+- **No** editar, crear, borrar ni renombrar archivos (código, config, assets, docs, etc.) **hasta que el usuario lo indique de forma explícita** (por ejemplo: “aplica el cambio”, “implementa eso”, “modifica `archivo`”).
+- Está permitido: analizar el repo, leer archivos, buscar referencias, describir un plan o un diff propuesto **sin aplicarlo**.
+- Si la petición es ambigua, **preguntar** o ofrecer opciones en lugar de asumir e implementar.
+
+## Git: commit, push y operaciones remotas
+- **No** ejecutar `git push`, `git push --force`, subida a remoto, apertura de PR, merge, ni comandos equivalentes de publicación **hasta que el usuario lo autorice de forma explícita**.
+- **No** hacer `git commit` **salvo** que el usuario lo pida explícitamente (incluye commits automáticos o “de cierre”).
+- Está permitido: `git status`, `git diff`, `git log` (solo lectura) cuando ayude a responder o planificar.
+
+## Criterio de autorización
+Considerar autorizado solo cuando el usuario use verbos/intención inequívoca del tipo: *aplica*, *implementa*, *haz el commit*, *sube*, *push*, *despliega*, *merge* — o una frase equivalente que deje claro que debe ejecutarse la acción.

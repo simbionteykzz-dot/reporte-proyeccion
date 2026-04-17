@@ -63,6 +63,15 @@
           </div>
         </details>
         <details class="nav-section">
+          <summary class="nav-section-label">Logística</summary>
+          <div class="nav-section__body">
+            <button class="nav-item nav-item--zazu" type="button" data-panel="zazu" title="Envíos diarios desde Zazu (Supabase)">
+              <img class="nav-icon" src="/assets/iconos-barra/zazu-icon.jpg" alt="" width="20" height="20" decoding="async">
+              <span class="nav-text">Envíos diarios (Zazu)</span>
+            </button>
+          </div>
+        </details>
+        <details class="nav-section">
           <summary class="nav-section-label">Riesgos</summary>
           <div class="nav-section__body">
             <button class="nav-item nav-item--risk" type="button" data-panel="risks" data-risk-focus="bajo" title="Alertas de stock bajo">
@@ -219,10 +228,17 @@
                 </div>
               </div>
               <div class="tab-content" id="tab-analysis">
-                <p class="chart-explainer"><strong>Barras (verde)</strong> = unidades que el modelo proyecta vender. <strong>Línea (ámbar)</strong> = ticket comercial usado en la regla (S/). Así se comparan volumen y precio por familia sin mezclar ambos en un solo color.</p>
+                <div class="analysis-line-toolbar" role="toolbar" aria-label="Métrica de la línea naranja (eje derecho)">
+                  <span class="analysis-line-toolbar__label">Línea (eje derecho)</span>
+                  <div class="analysis-line-toolbar__chips">
+                    <button type="button" class="risk-co-chip risk-co-chip--active" data-analysis-line="commercial" id="analysis-line-commercial">Ticket comercial</button>
+                    <button type="button" class="risk-co-chip" data-analysis-line="ratio" id="analysis-line-ratio">Ticket ÷ cant. por orden</button>
+                  </div>
+                </div>
+                <p class="chart-explainer" id="analysis-explainer"><strong>Barras (verde)</strong> = unidades que el modelo proyecta vender. <strong>Línea (ámbar)</strong> = ticket comercial usado en la regla (S/). Así se comparan volumen y precio por familia sin mezclar ambos en un solo color.</p>
                 <div class="chart-container chart-container-fixed" id="chart-analysis-wrap"><canvas id="chart-analysis"></canvas></div>
                 <div id="analysis-hint" style="margin-top:12px;padding:12px;background:var(--color-surface-2);border-radius:var(--radius-lg);font-size:0.8125rem;color:var(--color-text-secondary)">
-                  <strong style="color:var(--color-text)">Lectura:</strong> Dos ejes: izquierda unidades, derecha soles de ticket. Misma fila = misma familía.
+                  <strong style="color:var(--color-text)">Lectura:</strong> <span id="analysis-hint-body">Dos ejes: izquierda unidades, derecha soles del ticket de regla. Misma fila = misma familía.</span>
                 </div>
               </div>
               <div class="tab-content" id="tab-table">
@@ -477,6 +493,106 @@
               </section>
             </div>
           </div>
+
+          <!-- Zazu: envíos diarios (API /api/zazu/envios-diarios → Supabase) -->
+          <div id="panel-zazu" class="app-panel app-panel--zazu" hidden>
+            <div class="app-panel-head">
+              <div>
+                <h2 class="app-panel-title">Envíos diarios</h2>
+                <p class="app-panel-desc">Listado desde <strong>Zazu Express</strong> (Supabase · <code>tb_envios_diarios_lina</code>). Entregados requieren <code>verificacion=true</code>. Las claves <code>ZAZU_SUPABASE_*</code> solo están en el servidor.</p>
+                <p class="zazu-scope-note">Listado en Supabase; el PDF se genera <strong>en Odoo</strong> (XML-RPC). Clic en <strong>id_envio</strong>: se usa solo el texto como <strong>Nota de venta</strong> (<code>sale.order.name</code>), igual que en el pedido. Hace falta <strong>sesión</strong> en este sitio. Diagnóstico: <code>ODOO_PANEL_DIAGNOSTIC_KEY</code> y <code>?diag_key=…</code>.</p>
+              </div>
+              <div class="app-panel-head-badges">
+                <span class="badge badge-accent" id="zazu-meta-badge">—</span>
+              </div>
+            </div>
+            <div id="zazu-warnings" class="zazu-api-warnings" role="status" hidden></div>
+            <div class="zazu-toolbar zazu-toolbar--tabs" role="tablist" aria-label="Estado del envío">
+              <button type="button" class="zazu-tab zazu-tab--active" data-zazu-tab="entregados" role="tab" aria-selected="true">Entregados</button>
+              <button type="button" class="zazu-tab" data-zazu-tab="activos" role="tab" aria-selected="false">En proceso</button>
+              <button type="button" class="zazu-tab" data-zazu-tab="anulados" role="tab" aria-selected="false">Anulados</button>
+              <button type="button" class="zazu-tab" data-zazu-tab="todos" role="tab" aria-selected="false">Todos</button>
+            </div>
+            <div class="zazu-filters" aria-label="Filtros de listado">
+              <p class="zazu-filters-hint">Las fechas son <strong>opcionales</strong>. Si eliges rango y zona y no ves filas, deja vacío «Desde/Hasta» y pulsa <strong>Aplicar filtros</strong> para filtrar solo por Lima/Provincia.</p>
+              <div class="zazu-filters__grid">
+                <div class="zazu-filter-field">
+                  <label class="zazu-filter-label" for="zazu-date-from">Desde</label>
+                  <input type="date" id="zazu-date-from" class="input-date zazu-filter-input">
+                </div>
+                <div class="zazu-filter-field">
+                  <label class="zazu-filter-label" for="zazu-date-to">Hasta</label>
+                  <input type="date" id="zazu-date-to" class="input-date zazu-filter-input">
+                </div>
+                <div class="zazu-filter-field zazu-filter-field--grow">
+                  <label class="zazu-filter-label" for="zazu-zona">Zona</label>
+                  <select id="zazu-zona" class="zazu-filter-select">
+                    <option value="all">Todas (Lima y provincia)</option>
+                    <option value="lima">Lima</option>
+                    <option value="provincia">Provincia</option>
+                  </select>
+                </div>
+                <div class="zazu-filter-actions">
+                  <button type="button" class="btn btn-primary" id="zazu-apply-filters">Aplicar filtros</button>
+                </div>
+              </div>
+            </div>
+            <!-- Búsqueda universal de PDF de nota de venta (por nombre o ID numérico) -->
+            <div class="zazu-pdf-search" id="zazu-pdf-search-panel">
+              <div class="zazu-pdf-search__inner">
+                <div class="zazu-pdf-search__icon" aria-hidden="true">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>
+                </div>
+                <div class="zazu-pdf-search__body">
+                  <h3 class="zazu-pdf-search__title">Obtener PDF de Nota de Venta</h3>
+                  <p class="zazu-pdf-search__desc">Ingresa el <strong>nombre de la nota</strong> (ej. <code>S000084</code>) o el <strong>ID numérico</strong> del pedido en Odoo para generar el PDF.</p>
+                </div>
+              </div>
+              <form class="zazu-pdf-search__form" id="zazu-pdf-search-form" autocomplete="off">
+                <div class="zazu-pdf-search__field">
+                  <label class="zazu-pdf-search__label" for="zazu-pdf-so-id">Nota de venta o ID de Odoo</label>
+                  <input type="text" id="zazu-pdf-so-id" class="zazu-pdf-search__input" placeholder="Ej: S000084 o 146" required>
+                </div>
+                <button type="submit" class="btn btn-primary zazu-pdf-search__btn" id="zazu-pdf-search-btn">
+                  <svg class="zazu-pdf-search__btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>
+                  Obtener PDF
+                </button>
+              </form>
+              <div class="zazu-pdf-search__status" id="zazu-pdf-search-status" hidden></div>
+            </div>
+
+            <div id="zazu-loading" class="app-panel-loading" hidden>
+              <div class="spinner-inline"></div>
+              <span>Consultando Supabase…</span>
+            </div>
+            <div id="zazu-error" class="app-panel-error" hidden></div>
+            <div id="zazu-table-wrap" class="table-container zazu-table-scroll" hidden>
+              <table class="data-table zazu-data-table">
+                <thead id="zazu-thead"></thead>
+                <tbody id="zazu-tbody"></tbody>
+              </table>
+            </div>
+            <details class="zazu-dev-panel" id="zazu-dev-panel">
+              <summary class="zazu-dev-panel__summary">
+                <span class="zazu-dev-panel__summary-title">Consola y peticiones</span>
+                <span class="zazu-dev-panel__summary-hint">Registro de llamadas a la API y mensajes del módulo</span>
+              </summary>
+              <div class="zazu-dev-panel__grid">
+                <section class="zazu-dev-section" aria-labelledby="zazu-req-heading">
+                  <h3 class="zazu-dev-section__title" id="zazu-req-heading">Peticiones</h3>
+                  <div class="zazu-dev-scroll" id="zazu-req-log" role="log" aria-live="polite"></div>
+                </section>
+                <section class="zazu-dev-section" aria-labelledby="zazu-console-heading">
+                  <h3 class="zazu-dev-section__title" id="zazu-console-heading">Consola</h3>
+                  <div class="zazu-dev-scroll zazu-dev-scroll--mono" id="zazu-console-log" role="log" aria-live="polite"></div>
+                </section>
+              </div>
+              <div class="zazu-dev-panel__actions">
+                <button type="button" class="btn btn-ghost" id="zazu-dev-clear">Limpiar registros</button>
+              </div>
+            </details>
+          </div>
+
         </div>
       </div>
     </main>
