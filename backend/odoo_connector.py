@@ -1246,3 +1246,126 @@ def sale_order_nota_pdf_bytes(
             "GET /api/odoo/sale-order-lookup?nota=...&match_name_only=0"
         )
     raise ValueError(hint)
+
+
+def order_details_for_receipt_by_name(
+    cfg: OdooConfig,
+    document_name: str,
+    *,
+    match_name_only: bool = True,
+) -> dict[str, Any]:
+    """
+    Recupera la estructura pura (líneas, precios, totales) de sale.order o pos.order
+    para construir el ticket localmente en lugar de intentar extraer un PDF de Odoo.
+    """
+    name = normalize_sale_order_document_name(document_name)
+    if not name:
+        raise ValueError("Nombre de nota inválido o demasiado largo.")
+
+    uid, models = connect(cfg)
+    nctx = nota_venta_allowed_company_context(models, cfg.db, uid, cfg.password)
+    
+    # Intentar sale.order
+    so_ids = sale_order_ids_by_document_name(
+        models, cfg.db, uid, cfg.password, name, limit=1,
+        odoo_context=nctx or None, name_field_only=match_name_only
+    )
+    if so_ids:
+        # Recuperar metadata del SALE order
+        soContext = dict(nctx) if nctx else {}
+        soContext["active_test"] = False
+        orders = models.execute_kw(
+            cfg.db, uid, cfg.password, "sale.order", "search_read",
+            [[["id", "=", so_ids[0]]]],
+            {"limit": 1, "fields": ["name", "order_line", "amount_total", "amount_tax", "date_order", "partner_id"], "context": soContext}
+        )
+        if not orders:
+            raise ValueError("No se pudo extraer data de sale.order id=" + str(so_ids[0]))
+        o = orders[0]
+        
+        # Recuperar lineas
+        lines_data = []
+        if o.get("order_line"):
+            lines_data = models.execute_kw(
+                cfg.db, uid, cfg.password, "sale.order.line", "read",
+                [o["order_line"]],
+                {"fields": ["product_id", "product_uom_qty", "price_unit", "price_subtotal"]}
+            )
+            
+        return {
+            "type": "sale.order",
+            "name": o.get("name", name),
+            "date_order": o.get("date_order", ""),
+            "partner": o.get("partner_id", [0, "C/F"])[1] if isinstance(o.get("partner_id"), list) else "C/F",
+            "amount_total": o.get("amount_total", 0.0),
+            "amount_tax": o.get("amount_tax", 0.0),
+            "lines": [
+                {
+                    "product": l.get("product_id")[1] if isinstance(l.get("product_id"), list) else str(l.get("product_id")),
+                    "qty": l.get("product_uom_qty", 1.0),
+                    "price_unit": l.get("price_unit", 0.0),
+                    "subtotal": l.get("price_subtotal", 0.0),
+                } for l in lines_data
+            ]
+        }
+
+    # Intentar pos.order
+    ctx_candidates = []
+    if nctx:
+        c0 = dict(nctx)
+        c0["active_test"] = False
+        ctx_candidates.append(c0)
+    ctx_candidates.append({"active_test": False})
+    
+    po_ids = []
+    for ctx in ctx_candidates:
+        try:
+            po_chunk = models.execute_kw(
+                cfg.db, uid, cfg.password, "pos.order", "search",
+                [["|", ["name", "ilike", name], ["pos_reference", "ilike", name]]],
+                {"limit": 1, "context": ctx}
+            )
+            if po_chunk:
+                po_ids = po_chunk
+                break
+        except Exception:
+            pass
+
+    if po_ids:
+        poContext = dict(nctx) if nctx else {}
+        poContext["active_test"] = False
+        orders = models.execute_kw(
+            cfg.db, uid, cfg.password, "pos.order", "search_read",
+            [[["id", "=", po_ids[0]]]],
+            {"limit": 1, "fields": ["name", "pos_reference", "lines", "amount_total", "amount_tax", "date_order", "partner_id"], "context": poContext}
+        )
+        if not orders:
+            raise ValueError("No se pudo extraer data de pos.order id=" + str(po_ids[0]))
+        o = orders[0]
+        
+        lines_data = []
+        if o.get("lines"):
+            lines_data = models.execute_kw(
+                cfg.db, uid, cfg.password, "pos.order.line", "read",
+                [o["lines"]],
+                {"fields": ["product_id", "qty", "price_unit", "price_subtotal_incl"]}
+            )
+            
+        return {
+            "type": "pos.order",
+            "name": o.get("pos_reference", o.get("name", name)),
+            "date_order": o.get("date_order", ""),
+            "partner": o.get("partner_id", [0, "C/F"])[1] if isinstance(o.get("partner_id"), list) else "C/F",
+            "amount_total": o.get("amount_total", 0.0),
+            "amount_tax": o.get("amount_tax", 0.0),
+            "lines": [
+                {
+                    "product": l.get("product_id")[1] if isinstance(l.get("product_id"), list) else str(l.get("product_id")),
+                    "qty": l.get("qty", 1.0),
+                    "price_unit": l.get("price_unit", 0.0),
+                    "subtotal": l.get("price_subtotal_incl", 0.0),
+                } for l in lines_data
+            ]
+        }
+        
+    raise ValueError(f"No hay registros en sale.order ni pos.order que coincidan con '{name}'")

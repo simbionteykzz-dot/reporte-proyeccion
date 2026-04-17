@@ -18,8 +18,8 @@ from odoo_connector import (
     is_configured,
     missing_config_keys,
     sale_order_nota_lookup,
-    sale_order_nota_pdf_bytes,
     sale_order_nota_pdf_bytes_by_id,
+    order_details_for_receipt_by_name,
 )
 
 from analytics import (
@@ -528,6 +528,30 @@ def api_odoo_nota_venta_pdf():
         return jsonify({"error": f"Red / conexión: {e}"}), 502
     except Exception as e:
         return jsonify({"error": f"Error interno: {e}"}), 500
+
+
+@app.route("/api/odoo/order-receipt-json")
+def api_odoo_order_receipt_json():
+    """
+    Retorna data estructurada (JSON) de una nota de venta o ticket POS
+    para que la web genere el recibo localmente.
+    Query: nota=...
+    """
+    if not is_configured():
+        return jsonify({"error": "Faltan variables ODOO"}), 503
+        
+    nota = request.args.get("nota", "").strip()
+    if not nota:
+        return jsonify({"error": "Indica el parámetro 'nota'"}), 400
+        
+    try:
+        cfg = config_from_environ()
+        details = order_details_for_receipt_by_name(
+            cfg, nota, match_name_only=_match_name_only_from_request()
+        )
+        return jsonify(details)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/zazu/envios-diarios")

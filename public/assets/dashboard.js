@@ -455,32 +455,21 @@
       zazuPdfSearchSetStatus('Ingresa la nota de venta o el ID numérico de Odoo.', 'err');
       return;
     }
-    const isOnlyDigits = /^\d+$/.test(val);
-    let url;
-    let logLabel;
-    if (isOnlyDigits) {
-      const id = parseInt(val, 10);
-      if (id < 1) {
-        zazuPdfSearchSetStatus('El ID numérico debe ser un entero positivo.', 'err');
-        return;
-      }
-      url = `/api/odoo/nota-venta-pdf?sale_order_id=${id}`;
-      logLabel = `ID ${id}`;
-    } else {
-      const qs = new URLSearchParams({ nota: val, match_name_only: '1' });
-      url = `/api/odoo/nota-venta-pdf?${qs.toString()}`;
-      logLabel = `"${val}"`;
-    }
-    zazuPdfSearchSetStatus(`Buscando ${logLabel} y generando PDF desde Odoo…`, 'loading');
     
-    // Abrir ventana preventiva antes del fetch asíncrono
+    // Usaremos el nuevo endpoint de JSON para generar el recibo localmente
+    const qs = new URLSearchParams({ nota: val, match_name_only: '1' });
+    const url = `/api/odoo/order-receipt-json?${qs.toString()}`;
+    const logLabel = `"${val}"`;
+
+    zazuPdfSearchSetStatus(`Obteniendo datos de ${logLabel} desde Odoo…`, 'loading');
+    
     const newWin = window.open('about:blank', '_blank', 'noopener');
     if (!newWin) {
-      zazuPdfSearchSetStatus('El navegador bloqueó la ventana emergente. Por favor, permite popups para este sitio y vuelve a intentar.', 'err');
+      zazuPdfSearchSetStatus('El navegador bloqueó la ventana emergente. Por favor, permite popups.', 'err');
       return;
     }
-    newWin.document.title = "Cargando PDF...";
-    newWin.document.body.innerHTML = "<h3 style='font-family:sans-serif; text-align:center; padding-top:20px; color:#444;'>Descargando tu PDF, espere por favor...</h3>";
+    newWin.document.title = "Generando Recibo...";
+    newWin.document.body.innerHTML = "<div style='font-family:monospace; text-align:center; padding-top:50px;'>Generando recibo de Odoo...</div>";
 
     const t0 = performance.now();
     fetch(url, { credentials: 'same-origin' })
@@ -488,42 +477,95 @@
         const ms = Math.round(performance.now() - t0);
         pushApiRequestLog({ method: 'GET', url, status: resp.status, ms });
         renderZazuDevPanel();
-        if (resp.status === 401) {
-          newWin.close();
-          zazuPdfSearchSetStatus('No hay sesión activa. Inicia sesión en /login.html y vuelve aquí.', 'err');
-          zazuDevConsolePush('PDF: no hay sesión del panel.', 'err');
-          renderZazuDevPanel();
-          return;
-        }
+
         if (!resp.ok) {
           newWin.close();
           let msg = `HTTP ${resp.status}`;
           try {
             const j = await resp.json();
             if (j.error) msg = j.error;
-          } catch (_) { /* ignore */ }
+          } catch (_) { }
           zazuPdfSearchSetStatus(`Error: ${msg}`, 'err');
-          zazuDevConsolePush(`PDF ${logLabel}: ${msg}`, 'err');
-          renderZazuDevPanel();
           return;
         }
-        const blob = await resp.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        newWin.document.body.style.margin = '0';
-        newWin.document.body.innerHTML = `<iframe src="${blobUrl}" style="width:100vw; height:100vh; border:none; margin:0; padding:0;"></iframe>`;
-        newWin.document.title = "Reporte Odoo";
-        zazuPdfSearchSetStatus(`PDF generado correctamente (${ms} ms). Se abrió en nueva pestaña.`, 'ok');
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 120000);
-        renderZazuDevPanel();
+
+        const data = await resp.json();
+        renderLocalReceiptToWindow(newWin, data);
+        zazuPdfSearchSetStatus(`Recibo generado correctamente (${ms} ms).`, 'ok');
       })
       .catch((e) => {
         if (newWin && !newWin.closed) newWin.close();
-        const ms = Math.round(performance.now() - t0);
-        pushApiRequestLog({ method: 'GET', url, status: 0, ms, note: e?.message || String(e) });
-        zazuPdfSearchSetStatus(`Error de red: ${e?.message || e}`, 'err');
-        zazuDevConsolePush(`PDF ${logLabel}: ${e?.message || e}`, 'err');
-        renderZazuDevPanel();
+        zazuPdfSearchSetStatus(`Error de red: ${e.message}`, 'err');
       });
+  }
+
+  /**
+   * Renderiza un recibo estilo ticket térmico en una ventana abierta.
+   */
+  function renderLocalReceiptToWindow(win, data) {
+    const linesHtml = data.lines.map(l => `
+      <tr>
+        <td style="padding: 4px 0;">${l.product}<br/><small>${l.qty} x ${l.price_unit.toFixed(2)}</small></td>
+        <td style="text-align: right; vertical-align: bottom;">S/ ${l.subtotal.toFixed(2)}</td>
+      </tr>
+    `).join('');
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Recibo - ${data.name}</title>
+        <style>
+          body { font-family: 'Courier New', Courier, monospace; width: 80mm; margin: 0 auto; color: #000; padding: 10mm; }
+          .header { text-align: center; margin-bottom: 20px; }
+          .info { margin-bottom: 20px; font-size: 14px; }
+          table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px; }
+          .total-row td { border-top: 1px dashed #000; padding-top: 10px; font-weight: bold; }
+          .footer { text-align: center; font-size: 12px; margin-top: 30px; }
+          @media print {
+            body { width: 100%; margin: 0; padding: 5mm; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h2 style="margin: 0;">SONI REPORTE</h2>
+          <p style="margin: 5px 0;">Comprobante de Venta</p>
+          <hr/>
+        </div>
+        <div class="info">
+          <div><strong>ORDEN:</strong> ${data.name}</div>
+          <div><strong>FECHA:</strong> ${data.date_order}</div>
+          <div><strong>CLIENTE:</strong> ${data.partner}</div>
+        </div>
+        <table>
+          <thead>
+            <tr style="border-bottom: 1px solid #000;">
+              <th style="text-align: left; padding-bottom: 5px;">Detalle</th>
+              <th style="text-align: right; padding-bottom: 5px;">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${linesHtml}
+            <tr class="total-row">
+              <td style="text-align: right; padding-top: 10px;">TOTAL:</td>
+              <td style="text-align: right; padding-top: 10px;">S/ ${data.amount_total.toFixed(2)}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="footer">
+          <p>Gracias por su compra</p>
+          <p>Generado localmente - Soni Dashboard</p>
+        </div>
+        <script>
+          setTimeout(() => window.print(), 500);
+        </script>
+      </body>
+      </html>
+    `;
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
   }
 
   /** Muestra estado en el widget de búsqueda de PDF. */
