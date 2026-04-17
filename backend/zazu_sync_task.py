@@ -16,21 +16,31 @@ def sync_zazu_data_to_supabase():
     user = os.environ.get("ZAZU_WEB_USER", "").strip()
     password = os.environ.get("ZAZU_WEB_PASSWORD", "").strip()
     base_url = os.environ.get("ZAZU_WEB_URL", "https://zazu.com.pe").strip().rstrip('/')
+    # Limpieza: Si el usuario puso la URL completa del login, extraemos solo la base
+    for suffix in ['/auth/login', '/login', '/auth']:
+        if base_url.lower().endswith(suffix):
+            base_url = base_url[:base_url.lower().rfind(suffix)].rstrip('/')
 
     # Cargar .env local si existe (para pruebas fuera de Vercel)
     try:
         from dotenv import load_dotenv
-        # Intentamos cargar el archivo específico que el usuario creó
         creds_path = os.path.join(os.path.dirname(__file__), "zazu_credentials.env")
         if os.path.exists(creds_path):
-            load_dotenv(creds_path)
-            user = user or os.environ.get("ZAZU_WEB_USER", "").strip()
-            password = password or os.environ.get("ZAZU_WEB_PASSWORD", "").strip()
+            load_dotenv(creds_path, override=True) # Override para asegurar que tome lo del archivo local
+            user = os.environ.get("ZAZU_WEB_USER", "").strip()
+            password = os.environ.get("ZAZU_WEB_PASSWORD", "").strip()
+            # Volver a limpiar base_url si el archivo local la tiene
+            file_url = os.environ.get("ZAZU_WEB_URL", "").strip().rstrip('/')
+            if file_url:
+                for suffix in ['/auth/login', '/login', '/auth']:
+                    if file_url.lower().endswith(suffix):
+                        file_url = file_url[:file_url.lower().rfind(suffix)].rstrip('/')
+                base_url = file_url
     except ImportError:
         pass
 
     if not user or not password:
-        return {"success": False, "error": "Faltan credenciales de Zazu (ZAZU_WEB_USER/PASS). Si estás en Vercel, agrégalas en el Dashboard de Vercel."}
+        return {"success": False, "error": "Faltan credenciales de Zazu (ZAZU_WEB_USER/PASS). RECUERDA: Si estás en la web de Vercel, debes agregarlas en el panel de Vercel (Environment Variables), el archivo local es solo para pruebas en tu PC."}
 
     urls = [
         f"{base_url}/lima/envios-diarios",
@@ -44,11 +54,10 @@ def sync_zazu_data_to_supabase():
     
     # 1. Intento de Login con campos reales identificados: email y password
     try:
-        # El subagente identificó la URL de login correcta
         login_url = f"{base_url}/auth/login" 
         login_data = {"email": user, "password": password} 
         
-        # Petición inicial para cookies y tokens si hubiese
+        # Petición inicial para cookies
         session.get(login_url, timeout=15)
         
         # POST Login
