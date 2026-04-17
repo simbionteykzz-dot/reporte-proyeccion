@@ -595,6 +595,26 @@
       </div>
     </main>
   </div>
+  <!-- Modal de Recibo -->
+  <div class="receipt-overlay" id="receipt-modal-overlay">
+    <div class="receipt-modal">
+      <div class="receipt-modal__header">
+        <h3 class="receipt-modal__title" id="receipt-modal-title">Nota de Venta</h3>
+        <button type="button" class="btn btn-ghost btn-sm" id="receipt-modal-close-x">&times;</button>
+      </div>
+      <div class="receipt-modal__body" id="receipt-modal-body">
+        <!-- El contenido del ticket se inyecta aquí -->
+      </div>
+      <div class="receipt-modal__footer">
+        <button type="button" class="btn btn-ghost" id="receipt-modal-close">Cerrar</button>
+        <button type="button" class="btn btn-primary" id="receipt-modal-print">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+          Imprimir / Guardar PDF
+        </button>
+      </div>
+    </div>
+  </div>
+
   <script src="/assets/dashboard.js"></script>
 </body>
 </html>

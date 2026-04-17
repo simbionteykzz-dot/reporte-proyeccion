@@ -441,13 +441,12 @@
   }
 
   function zazuOpenNotaVentaPdf(name) {
-    zazuOpenNotaVentaPdfByNota(name);
+    zazuSearchAndOpenPdf(name);
   }
 
   /**
-   * Búsqueda universal de PDF de nota de venta:
-   * - Si el valor es solo dígitos → usa sale_order_id (clave primaria en Odoo).
-   * - Si contiene letras o «/» → usa nota (sale.order.name, ej. Overshark/024260).
+   * Búsqueda universal de Recibo de nota de venta:
+   * - Extrae datos de Odoo y los muestra en un Modal interno.
    */
   function zazuSearchAndOpenPdf(rawValue) {
     const val = String(rawValue || '').trim();
@@ -456,21 +455,12 @@
       return;
     }
     
-    // Usaremos el nuevo endpoint de JSON para generar el recibo localmente
     const qs = new URLSearchParams({ nota: val, match_name_only: '1' });
     const url = `/api/odoo/order-receipt-json?${qs.toString()}`;
     const logLabel = `"${val}"`;
 
     zazuPdfSearchSetStatus(`Obteniendo datos de ${logLabel} desde Odoo…`, 'loading');
     
-    const newWin = window.open('about:blank', '_blank', 'noopener');
-    if (!newWin) {
-      zazuPdfSearchSetStatus('El navegador bloqueó la ventana emergente. Por favor, permite popups.', 'err');
-      return;
-    }
-    newWin.document.title = "Generando Recibo...";
-    newWin.document.body.innerHTML = "<div style='font-family:monospace; text-align:center; padding-top:50px;'>Generando recibo de Odoo...</div>";
-
     const t0 = performance.now();
     fetch(url, { credentials: 'same-origin' })
       .then(async (resp) => {
@@ -479,7 +469,6 @@
         renderZazuDevPanel();
 
         if (!resp.ok) {
-          newWin.close();
           let msg = `HTTP ${resp.status}`;
           try {
             const j = await resp.json();
@@ -490,82 +479,81 @@
         }
 
         const data = await resp.json();
-        renderLocalReceiptToWindow(newWin, data);
+        renderLocalReceiptToModal(data);
         zazuPdfSearchSetStatus(`Recibo generado correctamente (${ms} ms).`, 'ok');
       })
       .catch((e) => {
-        if (newWin && !newWin.closed) newWin.close();
         zazuPdfSearchSetStatus(`Error de red: ${e.message}`, 'err');
       });
   }
 
   /**
-   * Renderiza un recibo estilo ticket térmico en una ventana abierta.
+   * Renderiza el recibo dentro del modal integrado.
    */
-  function renderLocalReceiptToWindow(win, data) {
+  function renderLocalReceiptToModal(data) {
+    const modal = d.getElementById('receipt-modal-overlay');
+    const body = d.getElementById('receipt-modal-body');
+    const title = d.getElementById('receipt-modal-title');
+    if (!modal || !body) return;
+
+    title.textContent = `Recibo - ${data.name}`;
+
     const linesHtml = data.lines.map(l => `
-      <tr>
-        <td style="padding: 4px 0;">${l.product}<br/><small>${l.qty} x ${l.price_unit.toFixed(2)}</small></td>
-        <td style="text-align: right; vertical-align: bottom;">S/ ${l.subtotal.toFixed(2)}</td>
+      <tr style="border-bottom: 1px dashed #eee;">
+        <td style="padding: 10px 0; font-size: 13px;">
+          <div style="font-weight: 500;">${l.product}</div>
+          <div style="color: #666; font-size: 11px;">${l.qty} unid. x S/ ${l.price_unit.toFixed(2)}</div>
+        </td>
+        <td style="text-align: right; vertical-align: middle; font-weight: 600;">S/ ${l.subtotal.toFixed(2)}</td>
       </tr>
     `).join('');
 
-    const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Recibo - ${data.name}</title>
-        <style>
-          body { font-family: 'Courier New', Courier, monospace; width: 80mm; margin: 0 auto; color: #000; padding: 10mm; }
-          .header { text-align: center; margin-bottom: 20px; }
-          .info { margin-bottom: 20px; font-size: 14px; }
-          table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px; }
-          .total-row td { border-top: 1px dashed #000; padding-top: 10px; font-weight: bold; }
-          .footer { text-align: center; font-size: 12px; margin-top: 30px; }
-          @media print {
-            body { width: 100%; margin: 0; padding: 5mm; }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h2 style="margin: 0;">SONI REPORTE</h2>
-          <p style="margin: 5px 0;">Comprobante de Venta</p>
-          <hr/>
+    body.innerHTML = `
+      <div style="font-family: 'Inter', sans-serif; color: #000;">
+        <div style="text-align: center; margin-bottom: 25px;">
+          <h2 style="margin: 0; letter-spacing: 1px; font-size: 20px;">SONI REPORTE</h2>
+          <div style="font-size: 12px; color: #666; margin-top: 4px;">Comprobante de despacho</div>
+          <div style="border-top: 2px solid #000; width: 40px; margin: 12px auto;"></div>
         </div>
-        <div class="info">
-          <div><strong>ORDEN:</strong> ${data.name}</div>
-          <div><strong>FECHA:</strong> ${data.date_order}</div>
-          <div><strong>CLIENTE:</strong> ${data.partner}</div>
+        
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 25px; font-size: 12px;">
+          <div>
+            <div style="color: #888; text-transform: uppercase; font-size: 10px; font-weight: bold; margin-bottom: 4px;">Detalles de Orden</div>
+            <div style="font-weight: 600;">${data.name}</div>
+            <div style="color: #444;">${data.date_order}</div>
+          </div>
+          <div style="text-align: right;">
+            <div style="color: #888; text-transform: uppercase; font-size: 10px; font-weight: bold; margin-bottom: 4px;">Cliente / Destino</div>
+            <div style="font-weight: 600;">${data.partner}</div>
+          </div>
         </div>
-        <table>
+
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px;">
           <thead>
-            <tr style="border-bottom: 1px solid #000;">
-              <th style="text-align: left; padding-bottom: 5px;">Detalle</th>
-              <th style="text-align: right; padding-bottom: 5px;">Total</th>
+            <tr style="border-bottom: 2px solid #000;">
+              <th style="text-align: left; padding-bottom: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">Descripción</th>
+              <th style="text-align: right; padding-bottom: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">Total</th>
             </tr>
           </thead>
           <tbody>
             ${linesHtml}
-            <tr class="total-row">
-              <td style="text-align: right; padding-top: 10px;">TOTAL:</td>
-              <td style="text-align: right; padding-top: 10px;">S/ ${data.amount_total.toFixed(2)}</td>
-            </tr>
           </tbody>
+          <tfoot>
+            <tr>
+              <td style="text-align: right; padding-top: 20px; font-size: 14px; font-weight: bold;">TOTAL:</td>
+              <td style="text-align: right; padding-top: 20px; font-size: 18px; font-weight: 800; color: #000;">S/ ${data.amount_total.toFixed(2)}</td>
+            </tr>
+          </tfoot>
         </table>
-        <div class="footer">
-          <p>Gracias por su compra</p>
-          <p>Generado localmente - Soni Dashboard</p>
+
+        <div style="text-align: center; border-top: 1px solid #eee; padding-top: 20px; font-size: 11px; color: #999;">
+          <p style="margin: 0;">Este documento es un comprobante interno generado por Soni Dashboard.</p>
+          <p style="margin: 4px 0;">Gracias por su preferencia.</p>
         </div>
-        <script>
-          setTimeout(() => window.print(), 500);
-        </script>
-      </body>
-      </html>
+      </div>
     `;
-    win.document.open();
-    win.document.write(html);
-    win.document.close();
+
+    modal.style.display = 'flex';
   }
 
   /** Muestra estado en el widget de búsqueda de PDF. */
@@ -3013,6 +3001,20 @@
     });
     d.getElementById('inv-collapse-all')?.addEventListener('click', () => {
       d.querySelectorAll('#inv-detail-root details.inv-grupo-card').forEach((el) => { el.open = false; });
+    });
+
+    // Controladores del Modal de Recibo
+    const closeReceipt = () => {
+      const modal = d.getElementById('receipt-modal-overlay');
+      if (modal) modal.style.display = 'none';
+    };
+    d.getElementById('receipt-modal-close')?.addEventListener('click', closeReceipt);
+    d.getElementById('receipt-modal-close-x')?.addEventListener('click', closeReceipt);
+    d.getElementById('receipt-modal-overlay')?.addEventListener('click', (ev) => {
+      if (ev.target === d.getElementById('receipt-modal-overlay')) closeReceipt();
+    });
+    d.getElementById('receipt-modal-print')?.addEventListener('click', () => {
+      window.print();
     });
 
     // Load

@@ -3504,3 +3504,106 @@ button.risk-overview__card:focus-visible {
   transform: scale(1.05);
   border-color: var(--color-accent);
 }
+
+/* --------------------------------------------------
+   Receipt Modal
+   -------------------------------------------------- */
+.receipt-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(8px);
+  z-index: 9999;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.receipt-modal {
+  background: #fff;
+  color: #000;
+  width: 100%;
+  max-width: 450px;
+  max-height: 90vh;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  animation: modalIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.95) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.receipt-modal__header {
+  padding: 16px 20px;
+  border-bottom: 1px solid #eee;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #fafafa;
+}
+
+.receipt-modal__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #333;
+}
+
+.receipt-modal__body {
+  padding: 30px;
+  overflow-y: auto;
+  background: #fff;
+}
+
+.receipt-modal__footer {
+  padding: 16px 20px;
+  border-top: 1px solid #eee;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  background: #fafafa;
+}
+
+/* Print Styles */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .receipt-modal, .receipt-modal * {
+    visibility: visible;
+  }
+  .receipt-modal {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    max-width: none;
+    height: auto;
+    max-height: none;
+    box-shadow: none;
+    margin: 0;
+    padding: 0;
+  }
+  .receipt-modal__header, .receipt-modal__footer {
+    display: none;
+  }
+  .receipt-modal__body {
+    padding: 0;
+  }
+  .receipt-overlay {
+    position: absolute;
+    background: transparent;
+    backdrop-filter: none;
+    padding: 0;
+    display: block !important;
+  }
+}
