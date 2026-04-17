@@ -243,7 +243,22 @@
   }
 
   /**
-   * Filtros de fecha y Lima/provincia en el navegador (no modifican Supabase ni exigen columnas fijas).
+   * Búsqueda global en el navegador por texto libre.
+   */
+  function zazuRowMatchesSearch(row, term) {
+    if (!term) return true;
+    const t = term.toLowerCase();
+    const blob = [
+      String(row.id_envio || ''),
+      String(row.nombre_cliente || ''),
+      String(row.numero_orden || ''),
+      zazuEnvioZonaBlob(row.envio)
+    ].join(' ').toLowerCase();
+    return blob.includes(t);
+  }
+
+  /**
+   * Filtros de fecha, Lima/provincia y búsqueda global en el navegador.
    */
   function zazuApplyClientFilters(rows) {
     const list = Array.isArray(rows) ? rows.slice() : [];
@@ -253,13 +268,22 @@
     const df = dfEl && dfEl.value ? dfEl.value.trim() : '';
     const dt = dtEl && dtEl.value ? dtEl.value.trim() : '';
     const zona = (d.getElementById('zazu-zona')?.value || 'all').trim();
+    const search = (d.getElementById('zazu-global-search')?.value || '').trim();
+    
     const fromD = df ? zazuParseFlexibleDate(`${df}T00:00:00`) : null;
     const toD = dt ? zazuParseFlexibleDate(`${dt}T23:59:59.999`) : null;
     const hadDate = !!(fromD || toD);
     const hadZona = zona !== 'all';
     const dateGet = hadDate ? zazuResolveDateAccessor(list) : null;
     const zonaGet = hadZona ? zazuResolveZonaAccessor(list) : null;
+    
     let out = list;
+
+    // Filtro de búsqueda global
+    if (search) {
+      out = out.filter(r => zazuRowMatchesSearch(r, search));
+    }
+
     if (hadDate) {
       if (!dateGet) {
         hints.push('No se detectó una fecha en la fila ni dentro de «envío»; el rango Desde/Hasta no se aplicó.');
@@ -274,16 +298,17 @@
     if (hadZona) {
       const sampleBlob = list[0] ? zazuEnvioZonaBlob(list[0].envio) : '';
       if (!zonaGet && !sampleBlob) {
-        hints.push(
-          'Filtro Lima/Provincia: no hay campo de ciudad/zona en la fila ni texto útil en «envío». Revisa los datos o usa «Todas».'
-        );
+        // Silenciamos la advertencia si no hay filas, pero si hay filas intentamos detectar
+        if (list.length > 0) {
+           hints.push('Filtro Lima/Provincia: detección automática limitada.');
+        }
       } else {
         out = out.filter((r) => zazuRowMatchesZonaWithFallback(zonaGet ? zonaGet(r) : null, zona, r));
       }
     }
     if (out.length === 0 && list.length > 0) {
       hints.push(
-        '0 filas con estos filtros: borra «Desde/Hasta» para filtrar solo por zona, o elige «Todas» en Zona para comprobar el rango de fechas.'
+        '0 filas con estos filtros: borra búsqueda o «Desde/Hasta» para ampliar resultados.'
       );
     }
     return { filtered: out, total: list.length, hints, dateKey: hadDate && dateGet ? 'ok' : null, zonaKey: zonaGet ? 'resuelto' : null };
@@ -1026,24 +1051,132 @@
     if (!list.length) {
       thead.innerHTML = '<tr><th class="zazu-th">Sin datos</th></tr>';
       const msg = loaded > 0
-        ? 'Ningún registro cumple los filtros de fecha o zona. Amplía el rango o elige «Todas» en Zona.'
+        ? 'Ningún registro cumple los filtros. Amplía el rango, borra búsqueda o elige «Todas» en Zona.'
         : 'No hay filas para esta pestaña o la API devolvió vacío.';
       tbody.innerHTML = `<tr><td class="zazu-empty" colspan="99">${msg}</td></tr>`;
       return;
     }
     const cols = zazuScalarCols(list);
+    
+    // Inyectamos Ciudad y Distrito (ocultos) para auditoría interna como solicitó el usuario
+    const hasDistrito = list[0]?.envio?.distrito || list[0]?.distrito;
+    const hasCiudad = list[0]?.envio?.ciudad || list[0]?.ciudad;
+    
     const thCells = cols.map((c, i) => {
       const sticky = i === 0 ? ' zazu-th--sticky-first' : '';
       return `<th class="zazu-th${sticky}" scope="col" data-col="${escHtml(c)}">${escHtml(c)}</th>`;
     }).join('');
-    thead.innerHTML = `<tr>${thCells}<th class="zazu-th" scope="col">Envío</th></tr>`;
+
+    const hiddenThs = `
+      <th class="zazu-th zazu-th--hidden" scope="col">Distrito (audit)</th>
+      <th class="zazu-th zazu-th--hidden" scope="col">Ciudad (audit)</th>
+    `;
+
+    thead.innerHTML = `<tr>${thCells}${hiddenThs}<th class="zazu-th" scope="col" style="min-width: 320px;">Detalle Envío</th></tr>`;
+    
     tbody.innerHTML = list.map((r) => {
       const tds = cols.map((c, i) => {
         const sticky = i === 0 ? ' zazu-cell-strong' : '';
         return `<td class="zazu-cell${sticky}" data-col="${escHtml(c)}">${zazuFormatScalarCell(c, r[c], r)}</td>`;
       }).join('');
-      return `<tr class="zazu-row">${tds}<td class="zazu-cell zazu-cell-nested">${escHtml(zazuShortObj(r.envio))}</td></tr>`;
+
+      const dist = r.envio?.distrito || r.distrito || '—';
+      const ciu = r.envio?.ciudad || r.ciudad || '—';
+      const hiddenTds = `
+        <td class="zazu-cell zazu-cell--hidden">${escHtml(dist)}</td>
+        <td class="zazu-cell zazu-cell--hidden">${escHtml(ciu)}</td>
+      `;
+
+      // Mejoramos la estética de la columna ENVÍO (nested) para evitar el wrapping vertical horrible
+      // Usamos el markup que definimos en CSS para un look premium
+      const envio = r.envio || {};
+      const orden = envio.numero_orden || r.numero_orden || r.id_envio || '—';
+      const cliente = envio.nombre_cliente || r.nombre_cliente || 'Sin nombre';
+      const desc = envio.descripcion_envio || '';
+      
+      const envioHtml = `
+        <div class="zazu-envio-content">
+          <span class="zazu-envio-name">#${escHtml(orden)}</span>
+          <div style="font-size: 0.875rem; color: var(--color-text); margin-bottom: 4px;">${escHtml(cliente)}</div>
+          ${desc ? `<div class="zazu-envio-meta">${escHtml(desc)}</div>` : ''}
+          <div class="zazu-envio-meta">${escHtml(dist)}${ciu !== dist ? `, ${escHtml(ciu)}` : ''}</div>
+        </div>
+      `;
+
+      return `<tr class="zazu-row">${tds}${hiddenTds}<td class="zazu-cell zazu-cell-nested">${envioHtml}</td></tr>`;
     }).join('');
+  }
+
+  /**
+   * Exporta a PDF los registros filtrados actualmente.
+   */
+  async function exportZazuPdf() {
+    if (!window.jspdf?.jsPDF) {
+      alert('jsPDF no está cargado. Revisa la conexión a internet o el archivo HTML.');
+      return;
+    }
+    const btn = d.getElementById('zazu-export-pdf');
+    if (btn) btn.disabled = true;
+    
+    try {
+      const tab = S.zazuTab || 'entregados';
+      const lab = ZAZU_TAB_LABELS[tab] || tab;
+      const rows = zazuApplyClientFilters(S.zazuCache?.rows || []).filtered;
+      
+      if (!rows.length) {
+        alert('No hay datos para exportar con los filtros actuales.');
+        return;
+      }
+
+      const doc = new window.jspdf.jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+      const pageW = doc.internal.pageSize.getWidth();
+      const m = { left: 40, right: 40, top: 60 };
+      
+      // Header estético
+      doc.setFillColor(24, 24, 27);
+      doc.rect(0, 0, pageW, 50, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`Reporte de Envíos Zazu Express - ${lab.toUpperCase()}`, m.left, 32);
+      
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(200, 200, 200);
+      const now = new Date().toLocaleString('es-PE');
+      doc.text(`Generado: ${now} · Registros: ${rows.length}`, pageW - m.right, 32, { align: 'right' });
+
+      // Preparar tabla
+      const headers = [['ID Envío', 'Orden', 'Fecha', 'Estado', 'Cliente', 'Ciudad / Distrito']];
+      const body = rows.map(r => {
+        const e = r.envio || r;
+        return [
+          String(r.id_envio || ''),
+          String(e.numero_orden || r.numero_orden || ''),
+          String(r.fecha || '').split('T')[0],
+          String(r.estado_pedido || '').toUpperCase(),
+          String(e.nombre_cliente || r.nombre_cliente || '—'),
+          `${e.ciudad || ''} / ${e.distrito || ''}`
+        ];
+      });
+
+      doc.autoTable({
+        head: headers,
+        body: body,
+        startY: 70,
+        margin: m,
+        styles: { fontSize: 8, cellPadding: 6 },
+        headStyles: { fillColor: [245, 158, 11], textColor: 255 },
+        alternateRowStyles: { fillColor: [250, 250, 250] }
+      });
+
+      doc.save(`zazu_reporte_${tab}_${new Date().toISOString().slice(0,10)}.pdf`);
+    } catch (err) {
+      console.error(err);
+      alert('Error al generar PDF: ' + err.message);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
   }
 
   /**
@@ -2999,6 +3132,16 @@
 
     d.getElementById('zazu-dev-clear')?.addEventListener('click', () => {
       clearZazuDevLogs();
+    });
+
+    // Zazu Global Search
+    d.getElementById('zazu-global-search')?.addEventListener('input', () => {
+      fetchZazuEnvios(false); // Refiltrar localmente
+    });
+
+    // Zazu PDF Export
+    d.getElementById('zazu-export-pdf')?.addEventListener('click', () => {
+      exportZazuPdf();
     });
 
     d.getElementById('zazu-pdf-search-form')?.addEventListener('submit', (ev) => {

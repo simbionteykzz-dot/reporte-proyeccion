@@ -538,6 +538,21 @@
                   </button>
                 </div>
               </div>
+              
+              <!-- Nueva barra de búsqueda global y acciones de exportación -->
+              <div class="zazu-filter-actions" style="margin-top: 16px; border-top: 1px solid var(--color-border); padding-top: 16px; flex-wrap: wrap;">
+                <div class="zazu-search-container">
+                  <span class="zazu-search-icon">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                  </span>
+                  <input type="text" id="zazu-global-search" class="zazu-search-input" placeholder="Buscar cliente, ID, número de orden, distrito..." />
+                </div>
+                
+                <button type="button" id="zazu-export-pdf" class="zazu-btn-pdf">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                  Exportar reporte PDF
+                </button>
+              </div>
             </div>
             <!-- Búsqueda universal de PDF de nota de venta (por nombre o ID numérico) -->
             <div class="zazu-pdf-search" id="zazu-pdf-search-panel">

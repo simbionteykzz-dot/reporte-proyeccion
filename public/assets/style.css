@@ -3626,25 +3626,99 @@ button.risk-overview__card:focus-visible {
 }
 
 .zazu-cell-nested {
-  max-width: 400px;
+  min-width: 280px;
+  max-width: 500px;
   white-space: normal !important;
   word-break: break-word;
-  line-height: 1.4;
+  line-height: 1.5;
   font-size: 0.8125rem;
+  padding: 12px 16px !important;
+}
+
+/* Hidden technical columns */
+.zazu-cell--hidden, .zazu-th--hidden {
+  display: none !important;
+}
+
+/* Search Input */
+.zazu-search-container {
+  position: relative;
+  flex: 1;
+  min-width: 200px;
+}
+
+.zazu-search-input {
+  width: 100%;
+  padding: 8px 12px 8px 36px;
+  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-alt);
+  color: var(--color-text);
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+}
+
+.zazu-search-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15);
+  background: var(--color-bg);
+}
+
+.zazu-search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-text-muted);
+  pointer-events: none;
+}
+
+.zazu-btn-pdf {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #ef4444; /* Rojo para PDF */
+  color: white;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.875rem;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.zazu-btn-pdf:hover {
+  background: #dc2626;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
+}
+
+.zazu-btn-pdf:active {
+  transform: translateY(0);
 }
 
 .zazu-envio-name {
-  display: inline-block;
-  min-width: 180px;
-  font-weight: 500;
-  color: var(--color-text);
-  white-space: normal;
+  display: block;
+  font-weight: 600;
+  color: var(--color-primary);
+  margin-bottom: 4px;
+}
+
+.zazu-envio-meta {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
 }
 
 .zazu-filter-actions {
   display: flex;
   gap: 12px;
   align-items: center;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border);
 }
 
 /* Icon spin animation for sync */
