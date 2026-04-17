@@ -1,4 +1,5 @@
 .env
+pass.env
 odoo.env
 api/.env
 __pycache__/
