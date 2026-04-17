@@ -17,3 +17,6 @@ Thumbs.db
 
 # Copias locales de asistentes (muy pesadas; no son la app)
 .claude/
+
+# Credenciales Zazu
+backend/zazu_credentials.env

@@ -98,12 +98,15 @@ def fetch_envios_diarios(
     ]
 
     if t == "entregados":
-        q.append(("estado_pedido", "eq.Entregado"))
+        # Incluye variaciones comunes y asegura que la verificacion sea True
+        q.append(("estado_pedido", "ilike.*entregado*"))
         q.append(("verificacion", "eq.true"))
     elif t == "anulados":
-        q.append(("estado_pedido", "eq.Anulado"))
+        # Agrupa anulados, cancelados o rechazados
+        q.append(("estado_pedido", "in.(Anulado,Cancelado,Rechazado,ANULADO,CANCELADO,RECHAZADO)"))
     elif t == "activos":
-        q.append(("estado_pedido", "not.in.(Entregado,Anulado)"))
+        # Por defecto, todo lo que no esté entregado o anulado se considera en proceso
+        q.append(("estado_pedido", "not.in.(Entregado,Anulado,Cancelado,Rechazado,ENTREGADO,ANULADO,CANCELADO,RECHAZADO)"))
     # todos: sin filtro de estado
 
     date_col = _strip("ZAZU_DATE_COLUMN", "")

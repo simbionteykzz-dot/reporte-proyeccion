@@ -142,6 +142,28 @@
     return null;
   }
 
+  /**
+   * Detecta el mejor campo para el nombre del cliente con múltiples fallbacks.
+   */
+  function zazuResolveName(row) {
+    if (!row) return 'Sin nombre';
+    const e = row.envio || {};
+    // Prioridad de campos comunes en diversas APIs de logística
+    return (
+      e.nombre_cliente || 
+      row.nombre_cliente || 
+      e.destinatario || 
+      row.destinatario || 
+      e.nombre || 
+      row.nombre || 
+      e.cliente || 
+      row.cliente || 
+      e.contact_name || 
+      e.customer_name ||
+      'Sin nombre'
+    ).trim();
+  }
+
   /** Busca clave escalar de ubicación dentro de un objeto plano. */
   function zazuFindZonaKeyInObject(obj) {
     if (!obj || typeof obj !== 'object') return null;
@@ -1091,7 +1113,7 @@
       // Usamos el markup que definimos en CSS para un look premium
       const envio = r.envio || {};
       const orden = envio.numero_orden || r.numero_orden || r.id_envio || '—';
-      const cliente = envio.nombre_cliente || r.nombre_cliente || 'Sin nombre';
+      const cliente = zazuResolveName(r);
       const desc = envio.descripcion_envio || '';
       
       const envioHtml = `
