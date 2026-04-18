@@ -43,6 +43,19 @@ def classify_zona(distrito: str) -> str:
             return "Lima"
     return "Provincia"
 
+def extract_brand(order_ref: str) -> str:
+    """Extrae la marca desde el string de orden/referencia."""
+    s = (order_ref or "").lower()
+    if "overshark" in s or "over" in s:
+        return "Overshark"
+    if "bravos" in s or "brav" in s:
+        return "Bravos"
+    if "box" in s:
+        return "Box Prime"
+    if "tino" in s:
+        return "TinoStack"
+    return "Otros"
+
 def sync_zazu_data_to_supabase():
     """
     Sincroniza datos desde las tablas de Zazu (Lima y Provincia) hacia la tabla del dashboard.
@@ -137,6 +150,7 @@ def sync_zazu_data_to_supabase():
                             "numero_orden": orden,
                             "nombre_cliente": cliente,
                             "zona": zona,
+                            "marca": extract_brand(orden), # Nueva extracción de marca
                             "raw_source": table,
                             "raw_data": row
                         }

@@ -572,7 +572,8 @@ def api_zazu_envios_diarios():
         date_to = request.args.get("date_to", "").strip() or None
         zona = request.args.get("zona", "all").strip().lower() or "all"
         detalle = request.args.get("detalle", "all").strip() or "all" # Nuevo
-        
+        marca = request.args.get("marca", "all").strip() # Nuevo
+
         if zona not in ("all", "lima", "provincia"):
             return jsonify({"error": 'zona debe ser "all", "lima" o "provincia"'}), 400
             
@@ -582,7 +583,8 @@ def api_zazu_envios_diarios():
             date_from=date_from,
             date_to=date_to,
             zona=zona,
-            detalle=detalle, # Pasamos detalle
+            detalle=detalle,
+            marca=marca, # Pasamos marca
         )
         resp = jsonify(payload)
         resp.headers["Cache-Control"] = "no-store"

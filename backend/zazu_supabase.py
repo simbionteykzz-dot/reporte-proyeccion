@@ -64,7 +64,8 @@ def fetch_envios_diarios(
     date_from: str | None = None,
     date_to: str | None = None,
     zona: str | None = None,
-    detalle: str | None = None
+    detalle: str | None = None,
+    marca: str | None = None  # Nuevo: Filtrado por empresa/marca
 ) -> dict[str, Any]:
     """
     tab:
@@ -167,6 +168,17 @@ def fetch_envios_diarios(
             # Para provincia general, filtramos por los que NO están en la lista (not.in)
             distritos_str = ",".join(LIMA_DISTRICTS)
             q.append((f"{zcol}", f"not.in.({distritos_str})"))
+
+    # FILTRADO POR MARCA (ilike en id_envio del dashboard)
+    if marca and marca != 'all':
+        # Buscamos en el ID que contiene el prefijo comercial
+        pattern = f"*{marca}*"
+        if marca == "Overshark": pattern = "*over*"
+        if marca == "Bravos": pattern = "*brav*"
+        if marca == "Box Prime": pattern = "*box*"
+        if marca == "TinoStack": pattern = "*tino*"
+        
+        q.append(("id_envio", f"ilike.{pattern}"))
 
     url = f"{base}/rest/v1/tb_envios_diarios_lina?{urlencode(q)}"
 

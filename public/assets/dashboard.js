@@ -1289,9 +1289,10 @@
     
     try {
       const tab = S.zazuTab || 'entregados';
-      // Obtenemos los valores de los filtros actuales (solo fecha)
+      // Obtenemos los valores de los filtros actuales (fecha y marca)
       const df = d.getElementById('zazu-date-from')?.value || '';
       const dt = d.getElementById('zazu-date-to')?.value || '';
+      const marca = d.getElementById('zazu-marca')?.value || 'all';
 
       let rawRows;
       let serverWarns = [];
@@ -1305,13 +1306,14 @@
         zazuDevConsolePush(`Cargando envíos (${tab}) desde el servidor…`, 'info');
         renderZazuDevPanel();
         
-        // Pasamos solo filtros de fecha al servidor
+        // Pasamos filtros al servidor
         const params = new URLSearchParams({ 
           tab, 
           limit: '2000'
         });
         if (df) params.set('date_from', df);
         if (dt) params.set('date_to', dt);
+        if (marca !== 'all') params.set('marca', marca);
 
         const url = `/api/zazu/envios-diarios?${params.toString()}`;
         const resp = await apiFetch(url);
