@@ -247,6 +247,14 @@
    */
   function zazuRowMatchesZonaWithFallback(val, zona, row) {
     if (zona === 'all') return true;
+    
+    // Preferencia a la columna persistida 'zona' si existe (Lima/Provincia)
+    const rowZona = row.zona || (row.envio && row.envio.zona);
+    if (rowZona) {
+      if (zona === 'lima') return String(rowZona).toLowerCase() === 'lima';
+      if (zona === 'provincia') return String(rowZona).toLowerCase() === 'provincia';
+    }
+
     if (typeof val === 'boolean') {
       if (zona === 'lima') return val === true;
       if (zona === 'provincia') return val === false;
@@ -565,10 +573,28 @@
       </div>
     `;
 
+    // --- BRAND LOGO DETECTION ---
+    let logoSrc = 'assets/logo_tinostack.png';
+    let brandName = 'TinoStack';
+    
+    // Identificamos marca por prefijo en el nombre o número de Zazu
+    const orderRef = (data.number_zazu || data.name || '').toLowerCase();
+    if (orderRef.includes('overshark') || orderRef.includes('over')) {
+      logoSrc = 'assets/iconos-barra/over-icon.png';
+      brandName = 'Overshark';
+    } else if (orderRef.includes('bravos') || orderRef.includes('brav')) {
+      logoSrc = 'assets/iconos-barra/brav-icon.png';
+      brandName = 'Bravos';
+    } else if (orderRef.includes('box')) {
+      logoSrc = 'assets/iconos-barra/box.icon.png';
+      brandName = 'Box';
+    }
+
     body.innerHTML = `
       <div style="font-family: 'Inter', sans-serif; color: #000;">
         <div style="text-align: center; margin-bottom: 25px;">
-          <h2 style="margin: 0; letter-spacing: 1px; font-size: 20px;">SONI REPORTE</h2>
+          <img src="${logoSrc}" alt="Logo" style="height: 60px; margin-bottom: 10px; object-fit: contain;">
+          <h2 style="margin: 0; letter-spacing: 1px; font-size: 20px;">${brandName}</h2>
           <div style="font-size: 12px; color: #666; margin-top: 4px;">Comprobante de despacho</div>
           <div style="border-top: 2px solid #000; width: 40px; margin: 12px auto;"></div>
         </div>
@@ -600,7 +626,7 @@
         </table>
 
         <div style="text-align: center; border-top: 1px solid #eee; padding-top: 20px; font-size: 11px; color: #999;">
-          <p style="margin: 0;">Este documento es un comprobante interno generado por Soni Dashboard.</p>
+          <p style="margin: 0; font-weight: 600;">Comprobante Generado-TinoStack</p>
           <p style="margin: 4px 0;">Gracias por su preferencia.</p>
         </div>
       </div>
@@ -1049,7 +1075,7 @@
     });
     const keysArr = [...keys];
     const idEnvioKey = keysArr.find((k) => zazuIsIdEnvioColumn(k));
-    const order = ['estado_pedido', 'fecha', 'updated_at'];
+    const order = ['zona', 'estado_pedido', 'fecha', 'updated_at'];
     const head = order.filter((k) => keys.has(k));
     const rest = keysArr.filter((k) => k !== idEnvioKey && !order.includes(k)).sort();
     const first = idEnvioKey ? [idEnvioKey] : [];
@@ -1084,48 +1110,58 @@
     const hasDistrito = list[0]?.envio?.distrito || list[0]?.distrito;
     const hasCiudad = list[0]?.envio?.ciudad || list[0]?.ciudad;
     
-    const thCells = cols.map((c, i) => {
-      const sticky = i === 0 ? ' zazu-th--sticky-first' : '';
-      return `<th class="zazu-th${sticky}" scope="col" data-col="${escHtml(c)}">${escHtml(c)}</th>`;
-    }).join('');
-
-    const hiddenThs = `
-      <th class="zazu-th zazu-th--hidden" scope="col">Distrito (audit)</th>
-      <th class="zazu-th zazu-th--hidden" scope="col">Ciudad (audit)</th>
+    // Nueva cabecera fija solicitada por el usuario
+    thead.innerHTML = `
+      <tr>
+        <th class="zazu-th zazu-th--sticky-first" scope="col">ID Envío</th>
+        <th class="zazu-th" scope="col">Fecha</th>
+        <th class="zazu-th" scope="col">Cliente</th>
+        <th class="zazu-th" scope="col">Distrito</th>
+        <th class="zazu-th" scope="col">Zona</th>
+        <th class="zazu-th" scope="col">Estado</th>
+        <th class="zazu-th" scope="col" style="min-width: 280px;">Detalle Envío</th>
+      </tr>
     `;
-
-    thead.innerHTML = `<tr>${thCells}${hiddenThs}<th class="zazu-th" scope="col" style="min-width: 320px;">Detalle Envío</th></tr>`;
     
     tbody.innerHTML = list.map((r) => {
-      const tds = cols.map((c, i) => {
-        const sticky = i === 0 ? ' zazu-cell-strong' : '';
-        return `<td class="zazu-cell${sticky}" data-col="${escHtml(c)}">${zazuFormatScalarCell(c, r[c], r)}</td>`;
-      }).join('');
-
-      const dist = r.envio?.distrito || r.distrito || '—';
-      const ciu = r.envio?.ciudad || r.ciudad || '—';
-      const hiddenTds = `
-        <td class="zazu-cell zazu-cell--hidden">${escHtml(dist)}</td>
-        <td class="zazu-cell zazu-cell--hidden">${escHtml(ciu)}</td>
-      `;
-
-      // Mejoramos la estética de la columna ENVÍO (nested) para evitar el wrapping vertical horrible
-      // Usamos el markup que definimos en CSS para un look premium
-      const envio = r.envio || {};
-      const orden = envio.numero_orden || r.numero_orden || r.id_envio || '—';
+      const idEnvio = r.id_envio || '—';
+      const fecha = r.fecha || r.created_at || '—';
       const cliente = zazuResolveName(r);
+      const dist = r.envio?.distrito || r.distrito || '—';
+      const city = r.envio?.ciudad || r.ciudad || '';
+      const zona = r.zona || (r.envio && r.envio.zona) || '—';
+      const estado = r.estado_pedido || '—';
+      
+      const stClass = String(estado).toLowerCase().includes('entregado') ? 'zazu-st--ok' : 
+                      String(estado).toLowerCase().includes('anulado') ? 'zazu-st--err' : 'zazu-st--warn';
+
+      const envio = r.envio || {};
+      const orden = envio.numero_orden || r.numero_orden || '—';
       const desc = envio.descripcion_envio || '';
       
       const envioHtml = `
         <div class="zazu-envio-content">
           <span class="zazu-envio-name">#${escHtml(orden)}</span>
-          <div style="font-size: 0.875rem; color: var(--color-text); margin-bottom: 4px;">${escHtml(cliente)}</div>
           ${desc ? `<div class="zazu-envio-meta">${escHtml(desc)}</div>` : ''}
-          <div class="zazu-envio-meta">${escHtml(dist)}${ciu !== dist ? `, ${escHtml(ciu)}` : ''}</div>
+          <div class="zazu-envio-meta">${escHtml(dist)}${city && city !== dist ? `, ${escHtml(city)}` : ''}</div>
         </div>
       `;
 
-      return `<tr class="zazu-row">${tds}${hiddenTds}<td class="zazu-cell zazu-cell-nested">${envioHtml}</td></tr>`;
+      return `
+        <tr class="zazu-row">
+          <td class="zazu-cell zazu-cell-strong">${escHtml(idEnvio)}</td>
+          <td class="zazu-cell">${escHtml(fecha.substring(0, 10))}</td>
+          <td class="zazu-cell">${escHtml(cliente)}</td>
+          <td class="zazu-cell">${escHtml(dist)}</td>
+          <td class="zazu-cell">
+            <span class="badge ${zona === 'Lima' ? 'badge-accent' : 'badge-secondary'}" style="font-size: 10px; padding: 2px 6px;">
+              ${escHtml(zona)}
+            </span>
+          </td>
+          <td class="zazu-cell"><span class="zazu-st-badge ${stClass}">${escHtml(estado)}</span></td>
+          <td class="zazu-cell zazu-cell-nested">${envioHtml}</td>
+        </tr>
+      `;
     }).join('');
   }
 
@@ -1236,7 +1272,7 @@
   /**
    * @param {boolean} [forceFetch=true] Si false, reutiliza la última respuesta de la misma pestaña y solo aplica filtros en el navegador.
    */
-  async function fetchZazuEnvios(forceFetch) {
+    async function fetchZazuEnvios(forceFetch) {
     const force = forceFetch !== false;
     const load = d.getElementById('zazu-loading');
     const err = d.getElementById('zazu-error');
@@ -1253,10 +1289,9 @@
     
     try {
       const tab = S.zazuTab || 'entregados';
-      // Obtenemos los valores de los filtros actuales
+      // Obtenemos los valores de los filtros actuales (solo fecha)
       const df = d.getElementById('zazu-date-from')?.value || '';
       const dt = d.getElementById('zazu-date-to')?.value || '';
-      const zona = d.getElementById('zazu-zona')?.value || 'all';
 
       let rawRows;
       let serverWarns = [];
@@ -1270,14 +1305,13 @@
         zazuDevConsolePush(`Cargando envíos (${tab}) desde el servidor…`, 'info');
         renderZazuDevPanel();
         
-        // Pasamos los filtros al servidor para que el filtrado sea más preciso y eficiente
+        // Pasamos solo filtros de fecha al servidor
         const params = new URLSearchParams({ 
           tab, 
           limit: '2000'
         });
         if (df) params.set('date_from', df);
         if (dt) params.set('date_to', dt);
-        if (zona !== 'all') params.set('zona', zona);
 
         const url = `/api/zazu/envios-diarios?${params.toString()}`;
         const resp = await apiFetch(url);
@@ -3229,6 +3263,9 @@
     d.getElementById('inv-collapse-all')?.addEventListener('click', () => {
       d.querySelectorAll('#inv-detail-root details.inv-grupo-card').forEach((el) => { el.open = false; });
     });
+
+    d.getElementById('zazu-zona')?.addEventListener('change', updateZazuDetalleDropdown);
+    // ----------------------------------------
 
     // Controladores del Modal de Recibo
     const closeReceipt = () => {

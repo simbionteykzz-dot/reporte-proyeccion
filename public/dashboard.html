@@ -366,18 +366,30 @@
 
             <div class="risk-overview" id="risk-overview-strip" aria-label="Resumen de alertas">
               <button type="button" class="risk-overview__card risk-overview__card--amber risk-overview__card--jump" data-risk-focus-tab="bajo" title="Ver solo Stock bajo">
+                <div class="risk-card-icon">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                </div>
                 <span class="risk-overview__value" id="risk-kpi-bajo">0</span>
                 <span class="risk-overview__label">Stock bajo</span>
               </button>
               <button type="button" class="risk-overview__card risk-overview__card--danger risk-overview__card--jump" data-risk-focus-tab="agotado" title="Ver solo Agotado">
+                <div class="risk-card-icon">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></svg>
+                </div>
                 <span class="risk-overview__value" id="risk-kpi-agotado">0</span>
                 <span class="risk-overview__label">Agotado</span>
               </button>
               <button type="button" class="risk-overview__card risk-overview__card--warn risk-overview__card--jump" data-risk-focus-tab="compra" title="Ver solo Baja compra">
+                <div class="risk-card-icon">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>
+                </div>
                 <span class="risk-overview__value" id="risk-kpi-compra">0</span>
                 <span class="risk-overview__label">Baja compra</span>
               </button>
               <button type="button" class="risk-overview__card risk-overview__card--info risk-overview__card--jump" data-risk-focus-tab="dias" title="Ver solo Días hasta agotar">
+                <div class="risk-card-icon">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 22h14"/><path d="M5 2h14"/><path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"/><path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"/></svg>
+                </div>
                 <span class="risk-overview__value" id="risk-kpi-dias">0</span>
                 <span class="risk-overview__label">Días</span>
               </button>
@@ -522,14 +534,6 @@
                   <label class="zazu-filter-label" for="zazu-date-to">Hasta</label>
                   <input type="date" id="zazu-date-to" class="input-date zazu-filter-input">
                 </div>
-                <div class="zazu-filter-field zazu-filter-field--grow">
-                  <label class="zazu-filter-label" for="zazu-zona">Zona</label>
-                  <select id="zazu-zona" class="zazu-filter-select">
-                    <option value="all">Todas (Lima y provincia)</option>
-                    <option value="lima">Lima</option>
-                    <option value="provincia">Provincia</option>
-                  </select>
-                </div>
                 <div class="zazu-filter-actions">
                   <button type="button" class="btn btn-primary" id="zazu-apply-filters">Aplicar filtros</button>
                   <button type="button" class="btn btn-secondary" id="zazu-refresh-data" title="Sincronizar datos desde Zazu Express">
@@ -585,7 +589,17 @@
             <div id="zazu-error" class="app-panel-error" hidden></div>
             <div id="zazu-table-wrap" class="table-container zazu-table-scroll" hidden>
               <table class="data-table zazu-data-table">
-                <thead id="zazu-thead"></thead>
+                <thead id="zazu-thead">
+                  <tr>
+                    <th>ID Envío</th>
+                    <th>Fecha</th>
+                    <th>Cliente</th>
+                    <th>Distrito</th>
+                    <th>Zona</th>
+                    <th>Estado</th>
+                    <th>Acciones</th>
+                  </tr>
+                </thead>
                 <tbody id="zazu-tbody"></tbody>
               </table>
             </div>

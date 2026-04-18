@@ -64,6 +64,7 @@ def fetch_envios_diarios(
     date_from: str | None = None,
     date_to: str | None = None,
     zona: str | None = None,
+    detalle: str | None = None
 ) -> dict[str, Any]:
     """
     tab:
@@ -149,14 +150,23 @@ def fetch_envios_diarios(
     zraw = (zona or "all").strip().lower()
     zcol = _strip("ZAZU_ZONA_COLUMN", "envio.distrito")
     
-    # Logic for Lima/Provincia based on a fixed list of districts
-    if zraw in ("lima", "provincia"):
-        # We build the PostgREST 'in' filter: envio.distrito=in.("Lima","Miraflores",...)
-        dist_list_str = ",".join(f'"{d}"' for d in LIMA_DISTRICTS)
-        if zraw == "lima":
-            q.append((zcol, f"in.({dist_list_str})"))
+    # Logic for Lima/Provincia based on a fixed list of districts in the joined 'envio' table
+    if zraw == "lima":
+        if detalle and detalle != 'all':
+            # Filtrado por un distrito específico de Lima
+            q.append((f"{zcol}", f"eq.{detalle}"))
         else:
-            q.append((zcol, f"not.in.({dist_list_str})"))
+            # Filtramos por todos los distritos configurados en LIMA_DISTRICTS
+            distritos_str = ",".join(LIMA_DISTRICTS)
+            q.append((f"{zcol}", f"in.({distritos_str})"))
+    elif zraw == "provincia":
+        if detalle and detalle != 'all':
+            # Filtrado por un distrito/región específica de Provincia
+            q.append((f"{zcol}", f"eq.{detalle}"))
+        else:
+            # Para provincia general, filtramos por los que NO están en la lista (not.in)
+            distritos_str = ",".join(LIMA_DISTRICTS)
+            q.append((f"{zcol}", f"not.in.({distritos_str})"))
 
     url = f"{base}/rest/v1/tb_envios_diarios_lina?{urlencode(q)}"
 
