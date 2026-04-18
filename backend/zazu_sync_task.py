@@ -53,8 +53,8 @@ def extract_brand(order_ref: str) -> str:
     if "box" in s:
         return "Box Prime"
     if "tino" in s:
-        return "TinoStack"
-    return "Otros"
+        return "N/A"
+    return "N/A"
 
 def sync_zazu_data_to_supabase():
     """

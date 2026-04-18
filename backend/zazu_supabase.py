@@ -176,7 +176,6 @@ def fetch_envios_diarios(
         if marca == "Overshark": pattern = "*over*"
         if marca == "Bravos": pattern = "*brav*"
         if marca == "Box Prime": pattern = "*box*"
-        if marca == "TinoStack": pattern = "*tino*"
         
         q.append(("id_envio", f"ilike.{pattern}"))
 
