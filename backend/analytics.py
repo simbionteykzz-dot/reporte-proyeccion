@@ -1772,9 +1772,19 @@ def generate_dashboard_payload(
         )
         totals.ticket_global = ticket_promedio
     else:
-        stock_by_product = stock_all
+        stock_by_product = dict(stock_all)
+        # Quitar los variantes forzados para no duplicarlos en compute_all (ya que se inyectan abajo)
+        if OVERSHARK_FORCE_TEMPLATE_IDS:
+            forced_v_rows = extractor._sr(
+                "product.product",
+                [("product_tmpl_id", "in", list(OVERSHARK_FORCE_TEMPLATE_IDS))],
+                ["id"]
+            )
+            for f_row in forced_v_rows:
+                stock_by_product.pop(int(f_row["id"]), None)
+
         product_ids = sorted(stock_by_product.keys())
-        products_with_stock_count = len([p for p in product_ids if stock_all.get(p, 0) > 0])
+        products_with_stock_count = len([p for p in product_ids if stock_by_product.get(p, 0) > 0])
         product_details = extractor.get_product_details(product_ids)
         pos_lines = extractor.get_pos_lines(product_ids, date_from, date_to)
         pos_orders = extractor.get_pos_orders_dates(date_from, date_to)
