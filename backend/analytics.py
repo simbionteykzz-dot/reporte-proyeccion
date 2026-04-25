@@ -293,7 +293,7 @@ class OdooRealExtractor:
         return [l["id"] for l in locs]
 
     def get_stock_by_product(self, loc_ids: list[int]) -> dict[int, float]:
-        quant_domain = [("location_id", "in", loc_ids), ("quantity", ">", 0)]
+        quant_domain = [("location_id", "in", loc_ids), ("quantity", "!=", 0)]
         # Alinea stock con el contexto de compañia del usuario (vista Odoo "A la mano")
         if self.company_id:
             quant_domain.append(("company_id", "=", self.company_id))
