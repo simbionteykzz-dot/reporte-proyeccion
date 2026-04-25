@@ -820,7 +820,7 @@ def _refine_ids_exact_order_name(
     *,
     name_field_only: bool = False,
 ) -> list[int]:
-    """Si name_search devolvió varios ids, acota por name (y opcionalmente client_order_ref)."""
+    """Si name_search devolvió varios ids, acota por name, eso mejorara el filtro, evita errores y da mas resultados (y opcionalmente client_order_ref)."""
     if len(ids) <= 1:
         return ids
     try:
@@ -861,7 +861,7 @@ def sale_order_ids_by_document_name(
     name_field_only: bool = True,
 ) -> list[int]:
     """
-    Busca sale.order por texto de nota.
+    Busca sale.order por texto de nota. Para obtener pdf en linea
     Si name_field_only=True (por defecto): solo sale.order.name (Nota de venta en la UI).
     Si False: también client_order_ref (Referencia del cliente).
     Prueba dominio (=, =ilike, ilike), luego name_search; reintento sin compañía vía env.
@@ -956,6 +956,7 @@ def sale_order_nota_lookup(
 ) -> dict[str, Any]:
     """
     Diagnóstico: qué ve la API en sale.order para el texto de nota (sin generar PDF).
+    Esto genera el PDF en una vista JS para evitar el cuello de botella en Odoo Pos ORDER
     match_name_only=True: solo sale.order.name (Nota de venta). False: también client_order_ref.
     """
     name = normalize_sale_order_document_name(raw_query)
@@ -1260,6 +1261,284 @@ def sale_order_nota_pdf_bytes(
     raise ValueError(hint)
 
 
+def sale_order_accounts_receivable_by_documents(
+    cfg: OdooConfig,
+    document_names: list[str],
+    *,
+    match_name_only: bool = False,
+) -> dict[str, dict[str, Any]]:
+    """
+    Devuelve CxC por documento (nota/name/ref) leyendo Odoo en modo solo consulta.
+    Fuente contable: account.move.amount_residual de facturas cliente publicadas.
+    """
+    cleaned: list[str] = []
+    for raw in document_names or []:
+        n = normalize_sale_order_document_name(str(raw or ""))
+        if n and n not in cleaned:
+            cleaned.append(n)
+    if not cleaned:
+        return {}
+
+    uid, models = connect(cfg)
+    nctx = nota_venta_allowed_company_context(models, cfg.db, uid, cfg.password)
+    so_ctx = dict(nctx) if nctx else {}
+    so_ctx["active_test"] = False
+
+    def _search_orders(domain: list[Any]) -> list[dict[str, Any]]:
+        return models.execute_kw(
+            cfg.db,
+            uid,
+            cfg.password,
+            "sale.order",
+            "search_read",
+            [domain],
+            {
+                "fields": [
+                    "id",
+                    "name",
+                    "client_order_ref",
+                    "partner_id",
+                    "currency_id",
+                    "amount_total",
+                    "invoice_ids",
+                    "invoice_status",
+                ],
+                "limit": max(2000, len(cleaned) * 3),
+                "context": so_ctx,
+            },
+        )
+
+    orders = _search_orders([("name", "in", cleaned)])
+    by_name: dict[str, dict[str, Any]] = {}
+    for o in orders:
+        nm = str(o.get("name") or "").strip()
+        if nm and nm in cleaned and nm not in by_name:
+            by_name[nm] = o
+
+    missing = [n for n in cleaned if n not in by_name]
+    by_client_ref: dict[str, dict[str, Any]] = {}
+    if missing and not match_name_only:
+        by_ref_rows = _search_orders([("client_order_ref", "in", missing)])
+        for o in by_ref_rows:
+            ref = str(o.get("client_order_ref") or "").strip()
+            if ref and ref in missing and ref not in by_client_ref:
+                by_client_ref[ref] = o
+
+    all_invoice_ids: list[int] = []
+    for o in list(by_name.values()) + list(by_client_ref.values()):
+        ids = o.get("invoice_ids") or []
+        for iid in ids:
+            try:
+                iv = int(iid)
+            except (TypeError, ValueError):
+                continue
+            if iv > 0:
+                all_invoice_ids.append(iv)
+    all_invoice_ids = sorted(set(all_invoice_ids))
+
+    inv_by_id: dict[int, dict[str, Any]] = {}
+    if all_invoice_ids:
+        try:
+            inv_rows = models.execute_kw(
+                cfg.db,
+                uid,
+                cfg.password,
+                "account.move",
+                "read",
+                [all_invoice_ids],
+                {
+                    "fields": [
+                        "id",
+                        "name",
+                        "state",
+                        "move_type",
+                        "payment_state",
+                        "amount_residual",
+                        "amount_total",
+                        "currency_id",
+                        "invoice_date",
+                    ],
+                },
+            )
+            inv_by_id = {int(r["id"]): r for r in inv_rows if r.get("id")}
+        except xmlrpc.client.Fault:
+            # Si el usuario Odoo no tiene acceso contable, devolvemos CxC no disponible.
+            inv_by_id = {}
+
+    # Fallback POS (cuando el documento viene como number_zazu/name y no existe en sale.order).
+    pos_ctx = dict(nctx) if nctx else {}
+    pos_ctx["active_test"] = False
+    by_pos_ref: dict[str, dict[str, Any]] = {}
+    try:
+        pos_rows = models.execute_kw(
+            cfg.db,
+            uid,
+            cfg.password,
+            "pos.order",
+            "search_read",
+            [[("number_zazu", "in", cleaned)]],
+            {
+                "fields": [
+                    "id",
+                    "name",
+                    "number_zazu",
+                    "pos_reference",
+                    "partner_id",
+                    "currency_id",
+                    "amount_total",
+                    "amount_paid",
+                    "state",
+                    "date_order",
+                ],
+                "limit": max(2000, len(cleaned) * 3),
+                "context": pos_ctx,
+            },
+        )
+    except xmlrpc.client.Fault:
+        # Si no existe number_zazu, probar por name / pos_reference.
+        pos_rows = []
+
+    if not pos_rows:
+        try:
+            pos_rows = models.execute_kw(
+                cfg.db,
+                uid,
+                cfg.password,
+                "pos.order",
+                "search_read",
+                [["|", ("name", "in", cleaned), ("pos_reference", "in", cleaned)]],
+                {
+                    "fields": [
+                        "id",
+                        "name",
+                        "number_zazu",
+                        "pos_reference",
+                        "partner_id",
+                        "currency_id",
+                        "amount_total",
+                        "amount_paid",
+                        "state",
+                        "date_order",
+                    ],
+                    "limit": max(2000, len(cleaned) * 3),
+                    "context": pos_ctx,
+                },
+            )
+        except xmlrpc.client.Fault:
+            pos_rows = []
+
+    for p in pos_rows:
+        keys = [
+            str(p.get("number_zazu") or "").strip(),
+            str(p.get("name") or "").strip(),
+            str(p.get("pos_reference") or "").strip(),
+        ]
+        for k in keys:
+            if k and k in cleaned and k not in by_pos_ref:
+                by_pos_ref[k] = p
+
+    out: dict[str, dict[str, Any]] = {}
+    for doc in cleaned:
+        order = by_name.get(doc) or by_client_ref.get(doc)
+        if not order:
+            pos = by_pos_ref.get(doc)
+            if pos:
+                partner_t = pos.get("partner_id")
+                partner_name = (
+                    partner_t[1]
+                    if isinstance(partner_t, (list, tuple)) and len(partner_t) > 1
+                    else ""
+                )
+                currency_t = pos.get("currency_id")
+                currency_name = (
+                    currency_t[1]
+                    if isinstance(currency_t, (list, tuple)) and len(currency_t) > 1
+                    else ""
+                )
+                amount_total = float(pos.get("amount_total") or 0.0)
+                amount_paid = float(pos.get("amount_paid") or 0.0)
+                residual = max(amount_total - amount_paid, 0.0)
+                out[doc] = {
+                    "found": True,
+                    "source": "odoo_pos_order",
+                    "pos_order_id": int(pos.get("id") or 0),
+                    "pos_name": str(pos.get("name") or ""),
+                    "number_zazu": str(pos.get("number_zazu") or ""),
+                    "pos_reference": str(pos.get("pos_reference") or ""),
+                    "partner": partner_name,
+                    "currency": currency_name,
+                    "state": str(pos.get("state") or ""),
+                    "amount_to_collect": round(amount_total, 2),
+                    "amount_paid": round(amount_paid, 2),
+                    "amount_residual": round(residual, 2),
+                    "date_order": str(pos.get("date_order") or ""),
+                }
+            else:
+                out[doc] = {
+                    "found": False,
+                    "reason": "sale_pos_not_found",
+                }
+            continue
+        partner_t = order.get("partner_id")
+        partner_name = (
+            partner_t[1]
+            if isinstance(partner_t, (list, tuple)) and len(partner_t) > 1
+            else ""
+        )
+        currency_t = order.get("currency_id")
+        currency_name = (
+            currency_t[1]
+            if isinstance(currency_t, (list, tuple)) and len(currency_t) > 1
+            else ""
+        )
+        invoice_ids = [int(i) for i in (order.get("invoice_ids") or []) if str(i).isdigit()]
+        cxc = 0.0
+        open_count = 0
+        paid_count = 0
+        for iid in invoice_ids:
+            inv = inv_by_id.get(iid)
+            if not inv:
+                continue
+            if (inv.get("state") or "") != "posted":
+                continue
+            if (inv.get("move_type") or "") not in ("out_invoice", "out_refund"):
+                continue
+            residual = float(inv.get("amount_residual") or 0.0)
+            cxc += residual
+            if abs(residual) > 1e-9:
+                open_count += 1
+            else:
+                paid_count += 1
+
+        invoice_status = str(order.get("invoice_status") or "")
+        has_invoices = bool(invoice_ids)
+        # Si no hay facturas emitidas, el saldo real es el total de la orden (pendiente de facturar).
+        # Si hay facturas pero ninguna posted, también es pendiente.
+        if not has_invoices or (has_invoices and open_count == 0 and paid_count == 0):
+            effective_residual = float(order.get("amount_total") or 0.0) if invoice_status not in ("fully_invoiced", "invoiced") else 0.0
+            cxc_source = "odoo_sale_order_only"
+        else:
+            effective_residual = cxc
+            cxc_source = "odoo_account_move"
+        out[doc] = {
+            "found": True,
+            "sale_order_id": int(order.get("id") or 0),
+            "sale_order_name": str(order.get("name") or ""),
+            "client_order_ref": str(order.get("client_order_ref") or ""),
+            "partner": partner_name,
+            "currency": currency_name,
+            "sale_amount_total": float(order.get("amount_total") or 0.0),
+            "invoice_status": invoice_status,
+            "invoice_count": len(invoice_ids),
+            "open_invoice_count": open_count,
+            "paid_invoice_count": paid_count,
+            "not_invoiced": not has_invoices or invoice_status == "nothing",
+            "amount_residual": round(effective_residual, 2),
+            "source": cxc_source,
+        }
+    return out
+
+
 def order_details_for_receipt_by_name(
     cfg: OdooConfig,
     document_name: str,
@@ -1301,7 +1580,7 @@ def order_details_for_receipt_by_name(
             lines_data = models.execute_kw(
                 cfg.db, uid, cfg.password, "sale.order.line", "read",
                 [o["order_line"]],
-                {"fields": ["product_id", "product_uom_qty", "price_unit", "price_subtotal"]}
+                {"fields": ["name", "product_id", "product_uom_qty", "price_unit", "price_subtotal"]}
             )
             
         return {
@@ -1313,7 +1592,10 @@ def order_details_for_receipt_by_name(
             "amount_tax": o.get("amount_tax", 0.0),
             "lines": [
                 {
-                    "product": l.get("product_id")[1] if isinstance(l.get("product_id"), list) else str(l.get("product_id")),
+                    # `sale.order.line.name` conserva la descripción completa (variante/talla/color).
+                    "product": (str(l.get("name") or "").strip() or (
+                        l.get("product_id")[1] if isinstance(l.get("product_id"), list) else str(l.get("product_id"))
+                    )),
                     "qty": l.get("product_uom_qty", 1.0),
                     "price_unit": l.get("price_unit", 0.0),
                     "subtotal": l.get("price_subtotal", 0.0),
@@ -1376,7 +1658,7 @@ def order_details_for_receipt_by_name(
             lines_data = models.execute_kw(
                 cfg.db, uid, cfg.password, "pos.order.line", "read",
                 [o["lines"]],
-                {"fields": ["product_id", "qty", "price_unit", "price_subtotal_incl"]}
+                {"fields": ["full_product_name", "name", "product_id", "qty", "price_unit", "price_subtotal_incl"]}
             )
             
         return {
@@ -1389,7 +1671,12 @@ def order_details_for_receipt_by_name(
             "amount_tax": o.get("amount_tax", 0.0),
             "lines": [
                 {
-                    "product": l.get("product_id")[1] if isinstance(l.get("product_id"), list) else str(l.get("product_id")),
+                    # POS suele guardar el texto final vendido en `full_product_name`/`name`.
+                    "product": (
+                        str(l.get("full_product_name") or "").strip()
+                        or str(l.get("name") or "").strip()
+                        or (l.get("product_id")[1] if isinstance(l.get("product_id"), list) else str(l.get("product_id")))
+                    ),
                     "qty": l.get("qty", 1.0),
                     "price_unit": l.get("price_unit", 0.0),
                     "subtotal": l.get("price_subtotal_incl", 0.0),
@@ -1398,3 +1685,125 @@ def order_details_for_receipt_by_name(
         }
         
     raise ValueError(f"No hay registros en sale.order ni pos.order que coincidan con '{name}'")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# POS GEOGRAPHIC ANALYTICS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def fetch_pos_orders_geographic(cfg: "OdooConfig") -> list[dict]:
+    """
+    Extrae pos.order del periodo con datos geográficos del partner:
+    departamento (res.country.state), distrito (l10n_pe_district o city) y ciudad.
+    Retorna lista de dicts listos para segmentación geográfica.
+    """
+    uid, models = connect(cfg)
+
+    domain: list = [["state", "in", ["paid", "done", "invoiced"]]]
+    if cfg.date_from:
+        domain.append(["date_order", ">=", cfg.date_from + " 00:00:00"])
+    if cfg.date_to:
+        domain.append(["date_order", "<=", cfg.date_to + " 23:59:59"])
+
+    orders = _search_read_all(
+        models, cfg.db, uid, cfg.password, "pos.order", domain,
+        ["id", "name", "date_order", "amount_total", "amount_tax",
+         "state", "partner_id", "config_id", "company_id"],
+    )
+
+    if not orders:
+        return []
+
+    # Collect unique partner IDs (exclude falsy / Consumer)
+    partner_ids = list({
+        o["partner_id"][0]
+        for o in orders
+        if isinstance(o.get("partner_id"), list) and o["partner_id"][0]
+    })
+
+    # Base geographic fields
+    partner_geo: dict[int, dict] = {}
+    if partner_ids:
+        chunk_size = _product_chunk_size()
+        for i in range(0, len(partner_ids), chunk_size):
+            chunk = partner_ids[i: i + chunk_size]
+            partners = models.execute_kw(
+                cfg.db, uid, cfg.password, "res.partner", "read",
+                [chunk],
+                {"fields": ["id", "name", "city", "state_id", "zip"]},
+            )
+            for p in partners:
+                state_name = (
+                    p["state_id"][1]
+                    if isinstance(p.get("state_id"), list) and p["state_id"]
+                    else ""
+                )
+                partner_geo[p["id"]] = {
+                    "city": (p.get("city") or "").strip(),
+                    "departamento": state_name.strip(),
+                    "zip": (p.get("zip") or "").strip(),
+                    "distrito": "",
+                }
+
+    # Try Peru localization field l10n_pe_district
+    if partner_ids:
+        try:
+            chunk_size = _product_chunk_size()
+            for i in range(0, len(partner_ids), chunk_size):
+                chunk = partner_ids[i: i + chunk_size]
+                dist_rows = models.execute_kw(
+                    cfg.db, uid, cfg.password, "res.partner", "read",
+                    [chunk],
+                    {"fields": ["id", "l10n_pe_district"]},
+                )
+                for p in dist_rows:
+                    pid = p["id"]
+                    if pid not in partner_geo:
+                        continue
+                    d_val = p.get("l10n_pe_district")
+                    if isinstance(d_val, list) and d_val:
+                        partner_geo[pid]["distrito"] = str(d_val[1]).strip()
+                    elif isinstance(d_val, str) and d_val:
+                        partner_geo[pid]["distrito"] = d_val.strip()
+        except Exception:
+            pass  # Campo no disponible en esta instalación
+
+    result: list[dict] = []
+    for o in orders:
+        pid_raw = o.get("partner_id")
+        pid = pid_raw[0] if isinstance(pid_raw, list) and pid_raw else None
+        geo = partner_geo.get(pid, {}) if pid else {}
+
+        departamento = geo.get("departamento") or "Sin departamento"
+        # Prefer l10n_pe_district for distrito, fallback to city
+        distrito = geo.get("distrito") or geo.get("city") or "Sin distrito"
+        ciudad = geo.get("city") or "Sin ciudad"
+
+        config_name = (
+            o["config_id"][1] if isinstance(o.get("config_id"), list) else ""
+        )
+        company_name = (
+            o["company_id"][1] if isinstance(o.get("company_id"), list) else ""
+        )
+        partner_name = (
+            pid_raw[1] if isinstance(pid_raw, list) and len(pid_raw) > 1 else "C/F"
+        )
+        date_str = str(o.get("date_order", ""))[:10]
+
+        result.append({
+            "id": o["id"],
+            "name": o.get("name", ""),
+            "date_order": date_str,
+            "amount_total": float(o.get("amount_total") or 0),
+            "amount_tax": float(o.get("amount_tax") or 0),
+            "state": o.get("state", ""),
+            "partner_id": pid,
+            "partner_name": partner_name,
+            "departamento": departamento,
+            "distrito": distrito,
+            "ciudad": ciudad,
+            "config": config_name,
+            "company": company_name,
+        })
+
+    return result

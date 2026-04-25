@@ -1,0 +1,192 @@
+/* sections.css — Visual isolation for panel sections
+   Each major block inside a panel gets its own card boundary.
+   ============================================================ */
+
+/* ── Panel layout: full-height scroll isolation ── */
+.app-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5, 20px);
+  padding: var(--space-5, 20px) 0 var(--space-8, 32px);
+  margin-top: 0;
+}
+
+/* display:flex overrides the browser default for [hidden]; force none explicitly */
+.app-panel[hidden],
+.zazu-courier-card[hidden] {
+  display: none !important;
+}
+
+/* ── Section card — base visual container ── */
+.panel-section {
+  background: var(--color-surface, #121214);
+  border: 1px solid var(--color-border, rgba(255,255,255,0.08));
+  border-radius: var(--radius-xl, 16px);
+  padding: var(--space-5, 20px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 16px);
+}
+
+.panel-section--accent {
+  border-color: var(--color-accent-subtle, rgba(245,158,11,0.15));
+}
+
+.panel-section__title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted, #71717a);
+  margin: 0 0 var(--space-2, 8px);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+}
+
+.panel-section__title svg {
+  opacity: 0.7;
+}
+
+/* ── Content-inner: switch between dashboard-flow and panel-view ── */
+/* Dashboard view: sections flow with gap */
+.content-inner {
+  max-width: var(--max-content-width, 1400px);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8, 32px);
+}
+
+/* When only a panel is visible, gap has no effect (single child) */
+/* The panel itself controls its internal gap via .app-panel */
+
+/* ── Inventory panel sections ── */
+.inv-matrix-block {
+  background: var(--color-surface, #121214);
+  border: 1px solid var(--color-border, rgba(255,255,255,0.08));
+  border-radius: var(--radius-xl, 16px);
+  padding: var(--space-5, 20px);
+}
+
+.inv-detail-section {
+  background: var(--color-surface, #121214);
+  border: 1px solid var(--color-border, rgba(255,255,255,0.08));
+  border-radius: var(--radius-xl, 16px);
+  padding: var(--space-5, 20px);
+}
+
+/* ── Risks panel sections ── */
+.risk-section-card {
+  background: var(--color-surface, #121214);
+  border: 1px solid var(--color-border, rgba(255,255,255,0.08));
+  border-radius: var(--radius-xl, 16px);
+  padding: var(--space-5, 20px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 16px);
+}
+
+/* ── Zazu panel sub-section cards ── */
+.zazu-section-card {
+  background: var(--color-surface, #121214);
+  border: 1px solid var(--color-border, rgba(255,255,255,0.08));
+  border-radius: var(--radius-xl, 16px);
+  padding: var(--space-5, 20px);
+}
+
+/* ── Zazu tab-bar visual container ── */
+.zazu-tab-bar,
+.risk-type-tabs.zazu-tabs {
+  background: var(--color-surface-2, #1a1a1e);
+  border: 1px solid var(--color-border, rgba(255,255,255,0.08));
+  border-radius: var(--radius-lg, 12px);
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+}
+
+/* ── Zazu filter bar container ── */
+.zazu-filter-bar,
+.zazu-lima-filters,
+.zazu-prov-filters {
+  background: var(--color-surface-2, #1a1a1e);
+  border: 1px solid var(--color-border, rgba(255,255,255,0.08));
+  border-radius: var(--radius-lg, 12px);
+  padding: var(--space-3, 12px) var(--space-4, 16px);
+}
+
+/* ── Zazu courier province card ── */
+.zazu-courier-card {
+  background: var(--color-surface, #121214);
+  border: 1px solid var(--color-border, rgba(255,255,255,0.08));
+  border-radius: var(--radius-xl, 16px);
+  padding: var(--space-5, 20px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 16px);
+}
+
+/* ── Zazu content areas (table / ranking / kpis) ── */
+.zazu-table-wrap,
+.zazu-ranking-wrap,
+.zazu-kpis-wrap {
+  background: var(--color-surface, #121214);
+  border: 1px solid var(--color-border, rgba(255,255,255,0.08));
+  border-radius: var(--radius-xl, 16px);
+  padding: var(--space-4, 16px);
+}
+
+/* Las tabla-wrappers necesitan scroll horizontal; ranking y kpis no desbordan */
+.zazu-table-wrap {
+  overflow-x: auto;
+  overflow-y: visible;
+}
+.zazu-ranking-wrap,
+.zazu-kpis-wrap {
+  overflow: hidden;
+}
+
+/* ── Insights + Alerts sections in dashboard ── */
+.insights-section,
+.alerts-section {
+  background: var(--color-surface, #121214);
+  border: 1px solid var(--color-border, rgba(255,255,255,0.08));
+  border-radius: var(--radius-xl, 16px);
+  padding: var(--space-5, 20px);
+}
+
+.insights-section__title,
+.alerts-section__title {
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-text-muted, #71717a);
+  margin-bottom: var(--space-4, 16px);
+  font-weight: 600;
+}
+
+/* ── Separator between major sections within a panel ── */
+.panel-divider {
+  height: 1px;
+  background: var(--color-border, rgba(255,255,255,0.08));
+  margin: 0;
+  border: none;
+}
+
+/* ── Light theme overrides ── */
+[data-theme="light"] .panel-section,
+[data-theme="light"] .inv-matrix-block,
+[data-theme="light"] .inv-detail-section,
+[data-theme="light"] .risk-section-card,
+[data-theme="light"] .zazu-section-card,
+[data-theme="light"] .zazu-content-card,
+[data-theme="light"] .insights-section,
+[data-theme="light"] .alerts-section {
+  background: #ffffff;
+  border-color: rgba(0,0,0,0.08);
+}
+
+[data-theme="light"] .zazu-tab-bar,
+[data-theme="light"] .zazu-filter-bar {
+  background: #f4f4f5;
+  border-color: rgba(0,0,0,0.08);
+}

@@ -18,8 +18,10 @@ from odoo_connector import (
     is_configured,
     missing_config_keys,
     sale_order_nota_lookup,
+    sale_order_nota_pdf_bytes,
     sale_order_nota_pdf_bytes_by_id,
     order_details_for_receipt_by_name,
+    sale_order_accounts_receivable_by_documents,
 )
 
 from analytics import (
@@ -28,8 +30,15 @@ from analytics import (
     generate_dashboard_payload,
     generate_inventory_risks_payload,
     get_companies_for_dashboard_user,
+    generate_pos_geographic_payload,
 )
-from zazu_supabase import fetch_envios_diarios, zazu_configured
+from supabase.client import (
+    fetch_zazu_envios,
+    fetch_courier_tables_summary,
+    fetch_provincia_envios,
+    supabase_health_payload,
+)
+from shalom_client import build_tracking_url, get_shalom_config
 
 # Raiz del repo (padre de /backend): public/, .env
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -42,7 +51,7 @@ missing_config_keys()
 
 
 def _load_api_folder_dotenv() -> None:
-    """Carga api/.env del repo (p. ej. ZAZU_SUPABASE_*). override=False: no pisa variables ya definidas."""
+    """Carga api/.env del repo (p. ej. variables de Supabase)."""
     try:
         from dotenv import load_dotenv
     except ImportError:
@@ -171,7 +180,7 @@ def _require_dashboard_auth():
         return None
     if path.startswith("/api/auth/"):
         return None
-    if path == "/api/health":
+    if path in ("/api/health", "/api/supabase/health"):
         return None
     if _odoo_diagnostic_key_authorized():
         return None
@@ -288,6 +297,7 @@ def api_auth_status():
 def health():
     dash_html = PUBLIC_DIR / "dashboard.html"
     login_html = PUBLIC_DIR / "login.html"
+    supabase_status = supabase_health_payload()
     return jsonify({
         "ok": True,
         "odoo_configured": is_configured(),
@@ -302,9 +312,117 @@ def health():
             "dashboard_auth_env_ok": _dashboard_auth_env_ok(),
             "dashboard_users_count": len(_dashboard_user_pairs()),
             "flask_secret_key_set": bool(_env_strip("FLASK_SECRET_KEY")),
-            "zazu_supabase_configured": zazu_configured(),
+            "supabase_configured": supabase_status["configured"],
         },
     })
+
+
+@app.route("/api/supabase/health")
+def api_supabase_health():
+    payload = supabase_health_payload()
+    # Always return 200 for configuration diagnostics; status is in payload.configured.
+    return jsonify(payload), 200
+
+
+@app.route("/api/supabase/zazu-envios")
+def api_supabase_zazu_envios():
+    try:
+        tab = (request.args.get("tab") or "entregados").strip().lower()
+        table = (request.args.get("table") or "").strip() or None
+        raw_limit = (request.args.get("limit") or "200").strip()
+        limit = int(raw_limit) if raw_limit else 200
+        raw_offset = (request.args.get("offset") or "0").strip()
+        offset = int(raw_offset) if raw_offset else 0
+        date_from = (request.args.get("date_from") or "").strip() or None
+        date_to = (request.args.get("date_to") or "").strip() or None
+        payload = fetch_zazu_envios(
+            tab=tab,
+            table=table,
+            limit=limit,
+            offset=offset,
+            date_from=date_from,
+            date_to=date_to,
+        )
+        resp = jsonify(payload)
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 502
+    except Exception as e:
+        return jsonify({"error": f"Error interno: {e}"}), 500
+
+
+@app.route("/api/supabase/courier-summary")
+def api_supabase_courier_summary():
+    try:
+        raw_max = (request.args.get("max_rows_per_table") or "5000").strip()
+        max_rows = int(raw_max) if raw_max else 5000
+        payload = fetch_courier_tables_summary(max_rows_per_table=max_rows)
+        resp = jsonify(payload)
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 502
+    except Exception as e:
+        return jsonify({"error": f"Error interno: {e}"}), 500
+
+
+@app.route("/api/supabase/provincia-envios")
+def api_supabase_provincia_envios():
+    try:
+        table = (request.args.get("table") or "__ALL_PROV__").strip()
+        raw_limit = (request.args.get("limit") or "300").strip()
+        limit = int(raw_limit) if raw_limit else 300
+        raw_offset = (request.args.get("offset") or "0").strip()
+        offset = int(raw_offset) if raw_offset else 0
+        date_from = (request.args.get("date_from") or "").strip() or None
+        date_to = (request.args.get("date_to") or "").strip() or None
+        estado = (request.args.get("estado") or "").strip() or None
+        salida_almacen = (request.args.get("salida_almacen") or "").strip() or None
+        guia_query = (request.args.get("guia_query") or "").strip() or None
+        payload = fetch_provincia_envios(
+            table=table,
+            date_from=date_from,
+            date_to=date_to,
+            estado=estado,
+            salida_almacen=salida_almacen,
+            guia_query=guia_query,
+            limit=limit,
+            offset=offset,
+        )
+        # Enriquecer con datos Odoo usando nota_odoo como referencia (nota_venta > numero_nota > id_venta).
+        if is_configured():
+            rows_with_ref = [
+                (r, str(r.get("nota_odoo") or r.get("id_venta") or "").strip())
+                for r in payload.get("rows", [])
+            ]
+            refs = list(dict.fromkeys(ref for _, ref in rows_with_ref if ref))
+            if refs:
+                try:
+                    cfg = config_from_environ()
+                    extra = sale_order_accounts_receivable_by_documents(
+                        cfg, refs, match_name_only=False
+                    )
+                    for r, ref in rows_with_ref:
+                        if ref and ref in extra:
+                            r["odoo"] = extra[ref]
+                except Exception:
+                    # Si falla Odoo, no romper el listado principal de provincia.
+                    pass
+        resp = jsonify(payload)
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 502
+    except Exception as e:
+        return jsonify({"error": f"Error interno: {e}"}), 500
+
 
 
 @app.route("/api/companies")
@@ -378,6 +496,37 @@ def api_dashboard():
             bravos_tab=_request_bravos_tab(),
         )
         return jsonify(payload)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 502
+    except xmlrpc.client.Fault as e:
+        return jsonify({"error": f"Odoo: {e.faultString}"}), 502
+    except OSError as e:
+        return jsonify({"error": f"Red / conexion: {e}"}), 502
+    except Exception as e:
+        return jsonify({"error": f"Error interno: {e}"}), 500
+
+
+@app.route("/api/pos/geographic")
+def api_pos_geographic():
+    """Segmentación geográfica de pos.order: departamento, distrito, ciudad."""
+    if not is_configured():
+        return jsonify({
+            "error": "Faltan variables ODOO en .env",
+            "missing_keys": missing_config_keys(),
+        }), 503
+    try:
+        date_from, date_to = _request_dates()
+        company_id = _request_company_id()
+        payload = generate_pos_geographic_payload(
+            date_from=date_from,
+            date_to=date_to,
+            company_id=company_id,
+        )
+        resp = jsonify(payload)
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     except RuntimeError as e:
@@ -465,7 +614,7 @@ def api_odoo_sale_order_lookup():
 def api_odoo_nota_venta_pdf():
     """
     PDF de nota de venta generado en Odoo (XML-RPC: sale.order + ir.actions.report).
-    No usa Supabase: el listado Zazu puede venir de PostgREST, pero este endpoint solo consulta Odoo.
+    No usa Supabase: este endpoint solo consulta Odoo.
 
     Query (prioridad):
       sale_order_id=123 — id interno sale.order en la BD Odoo.
@@ -554,62 +703,55 @@ def api_odoo_order_receipt_json():
         return jsonify({"error": str(e)}), 500
 
 
-@app.route("/api/zazu/envios-diarios")
-def api_zazu_envios_diarios():
+@app.route("/api/odoo/accounts-receivable", methods=["POST"])
+def api_odoo_accounts_receivable():
     """
-    Envíos diarios Zazu vía Supabase PostgREST (anon key solo en servidor).
-    Query:
-      tab=entregados|anulados|activos|todos
-      limit=1..2000 (default 1000)
-      date_from, date_to — YYYY-MM-DD (columna ZAZU_DATE_COLUMN)
-      zona=all|lima|provincia (columna y valores vía entorno, ver zazu_supabase.py)
+    CxC por lista de documentos (name/client_order_ref) desde Odoo.
+    Body JSON: { "refs": ["OVERSHARK/123", ...], "match_name_only": false }
     """
+    if not is_configured():
+        return jsonify({"error": "Faltan variables ODOO"}), 503
+    data = request.get_json(silent=True) or {}
+    refs = data.get("refs")
+    if not isinstance(refs, list):
+        return jsonify({"error": "refs debe ser una lista de textos"}), 400
+    cleaned: list[str] = []
+    for v in refs[:2000]:
+        s = str(v or "").strip()
+        if s:
+            cleaned.append(s)
+    if not cleaned:
+        return jsonify({"items": {}, "count": 0})
     try:
-        tab = request.args.get("tab", "entregados").strip().lower()
-        raw_lim = request.args.get("limit", "1000").strip()
-        limit = int(raw_lim) if raw_lim else 1000
-        date_from = request.args.get("date_from", "").strip() or None
-        date_to = request.args.get("date_to", "").strip() or None
-        zona = request.args.get("zona", "all").strip().lower() or "all"
-        detalle = request.args.get("detalle", "all").strip() or "all" # Nuevo
-        marca = request.args.get("marca", "all").strip() # Nuevo
-
-        if zona not in ("all", "lima", "provincia"):
-            return jsonify({"error": 'zona debe ser "all", "lima" o "provincia"'}), 400
-            
-        payload = fetch_envios_diarios(
-            tab,
-            limit=limit,
-            date_from=date_from,
-            date_to=date_to,
-            zona=zona,
-            detalle=detalle,
-            marca=marca, # Pasamos marca
+        cfg = config_from_environ()
+        items = sale_order_accounts_receivable_by_documents(
+            cfg,
+            cleaned,
+            match_name_only=bool(data.get("match_name_only", False)),
         )
-        resp = jsonify(payload)
-        resp.headers["Cache-Control"] = "no-store"
-        return resp
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
-    except RuntimeError as e:
-        return jsonify({"error": str(e)}), 502
+        return jsonify({"items": items, "count": len(items)})
+    except xmlrpc.client.Fault as e:
+        return jsonify({"error": f"Odoo: {e.faultString}"}), 502
+    except OSError as e:
+        return jsonify({"error": f"Red / conexión: {e}"}), 502
     except Exception as e:
         return jsonify({"error": f"Error interno: {e}"}), 500
 
 
-@app.route("/api/zazu/sync", methods=["POST"])
-def api_zazu_sync():
-    """
-    Endpoint manual para disparar la sincronización de Zazu Express a Supabase.
-    """
-    from zazu_sync_task import sync_zazu_data_to_supabase
+@app.route("/api/shalom/config")
+def api_shalom_config():
     try:
-        result = sync_zazu_data_to_supabase()
-        if not result.get("success"):
-            return jsonify(result), 400
-        return jsonify(result)
+        config = get_shalom_config()
+        return jsonify(config)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route("/api/shalom/tracking-url")
+def api_shalom_tracking_url():
+    guia = request.args.get("guia", "").strip()
+    codigo = request.args.get("codigo", "").strip()
+    url = build_tracking_url(guia=guia or None, codigo=codigo or None)
+    return jsonify({"url": url, "guia": guia, "codigo": codigo})
 
 
 def main():

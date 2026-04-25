@@ -6,6 +6,7 @@
   'use strict';
 
   const APP_NAME = 'Proyección Inventario';
+  const ZAZU_DEFAULT_DATE_FROM = '';
 
   // ── State ──
   const S = {
@@ -33,618 +34,39 @@
       if (v === 'commercial') return 'commercial';
       return 'ratio';
     })(),
-    /** pestaña activa en panel Zazu: entregados | anulados | activos | todos */
-    zazuTab: 'entregados',
-    /** últimas peticiones HTTP (todas las vistas), para panel Zazu */
-    apiRequestLog: [],
-    /** líneas de consola mientras la vista Zazu está activa + mensajes explícitos */
-    zazuDevConsole: [],
-    /** última respuesta cruda por pestaña (filtros fecha/zona solo en cliente) */
-    zazuCache: null,
+    zazuTab: 'todos',
+    zazuEstadoFiltro: '',
+    zazuScope: 'lima',
+    zazuLimaView: 'tabla',
+    zazuProvView: 'tabla',
+    zazuLimaRankingFilter: '',
+    zazuProvRankingFilter: '',
+    zazuLimaSearch: '',
+    zazuSourceTable: 'tb_envios_diarios_lina',
+    zazuDateFrom: '',
+    zazuDateTo: '',
+    zazuEmpresa: '__ALL__',
+    zazuRowsAll: [],
+    zazuPage: 1,
+    zazuPageSize: 400,
+    zazuCxcByRef: {},
+    zazuCxcPending: {},
+    zazuCourierSummary: null,
+    zazuProvDateFrom: ZAZU_DEFAULT_DATE_FROM,
+    zazuProvDateTo: '',
+    zazuProvEstado: 'todos',
+    zazuProvEstadoFiltro: 'todos',
+    zazuProvGuideQuery: '',
+    zazuProvRows: [],
+    zazuProvMeta: null,
+    zazuProvPage: 1,
+    zazuProvPageSize: 10000,
+    zazuProvHasMore: false,
+    // ── POS Geographic ──
   };
 
-  const ZAZU_API_LOG_MAX = 48;
-  const ZAZU_CONSOLE_MAX = 120;
-
-  const ZAZU_TAB_LABELS = {
-    entregados: 'Entregados (verif.)',
-    anulados: 'Anulados',
-    activos: 'En proceso',
-    todos: 'Todos (sin filtrar estado)',
-  };
-
-  function initZazuDateInputsIfEmpty() {
-    /* Sin rango por defecto: si no hay datos en ese mes, fecha + Lima dejaba 0 filas. El usuario elige fechas si las necesita. */
-  }
-
-  /** Parsea fechas ISO u otros formatos que entienda Date() */
-  function zazuParseFlexibleDate(val) {
-    if (val == null || val === '') return null;
-    if (typeof val === 'number' && Number.isFinite(val)) {
-      const d0 = new Date(val);
-      return isNaN(d0.getTime()) ? null : d0;
-    }
-    const s = String(val).trim();
-    if (!s) return null;
-    const d0 = new Date(s);
-    return isNaN(d0.getTime()) ? null : d0;
-  }
-
-  /** Compara solo día calendario local (evita desfaces UTC al filtrar). */
-  function zazuDateInCalendarRange(rd, fromD, toD) {
-    if (!rd || isNaN(rd.getTime())) return false;
-    const rDay = new Date(rd.getFullYear(), rd.getMonth(), rd.getDate()).getTime();
-    if (fromD) {
-      const fDay = new Date(fromD.getFullYear(), fromD.getMonth(), fromD.getDate()).getTime();
-      if (rDay < fDay) return false;
-    }
-    if (toD) {
-      const tDay = new Date(toD.getFullYear(), toD.getMonth(), toD.getDate()).getTime();
-      if (rDay > tDay) return false;
-    }
-    return true;
-  }
-
-  function zazuPickBestDateKeyFromObjects(objects) {
-    if (!objects || !objects.length || !objects[0]) return null;
-    const preferred = ['fecha_entrega', 'fecha_programada', 'fecha_envio', 'fecha', 'created_at', 'updated_at', 'f_entrega', 'fecha_registro'];
-    const n = objects.length;
-    const scoreKey = (key) => {
-      let ok = 0;
-      for (let i = 0; i < n; i += 1) {
-        if (objects[i] && zazuParseFlexibleDate(objects[i][key])) ok += 1;
-      }
-      return ok / n;
-    };
-    for (let p = 0; p < preferred.length; p += 1) {
-      const key = preferred[p];
-      if (!(key in objects[0])) continue;
-      if (scoreKey(key) >= 0.45) return key;
-    }
-    const keys = Object.keys(objects[0]).filter((k) => {
-      const v = objects[0][k];
-      return v != null && typeof v !== 'object';
-    });
-    let best = null;
-    let bestScore = 0;
-    for (let i = 0; i < keys.length; i += 1) {
-      const k = keys[i];
-      if (!/fecha|fech|date|created|updated|programad|entrega|envio|_at$/i.test(k)) continue;
-      const sc = scoreKey(k);
-      if (sc > bestScore) {
-        bestScore = sc;
-        best = k;
-      }
-    }
-    if (best && bestScore >= 0.35) return best;
-    return null;
-  }
-
-  /**
-   * Lee fecha en la fila raíz o dentro de envio (donde suele estar la fecha de entrega).
-   */
-  function zazuResolveDateAccessor(rows) {
-    if (!rows || !rows.length) return null;
-    const sample = rows.slice(0, Math.min(80, rows.length));
-    const rootObjs = sample.map((r) => r).filter(Boolean);
-    let key = zazuPickBestDateKeyFromObjects(rootObjs);
-    if (key) return (r) => (r && r[key] != null ? r[key] : null);
-    const envioObjs = sample.map((r) => r && r.envio).filter((e) => e && typeof e === 'object');
-    if (envioObjs.length) {
-      key = zazuPickBestDateKeyFromObjects(envioObjs);
-      if (key) {
-        return (r) => {
-          const e = r && r.envio;
-          return e && e[key] != null ? e[key] : null;
-        };
-      }
-    }
-    return null;
-  }
-
-  /**
-   * Detecta el mejor campo para el nombre del cliente con múltiples fallbacks.
-   */
-  function zazuResolveName(row) {
-    if (!row) return 'Sin nombre';
-    const e = row.envio || {};
-    // Prioridad de campos comunes en diversas APIs de logística
-    return (
-      e.nombre_cliente || 
-      row.nombre_cliente || 
-      e.destinatario || 
-      row.destinatario || 
-      e.nombre || 
-      row.nombre || 
-      e.cliente || 
-      row.cliente || 
-      e.contact_name || 
-      e.customer_name ||
-      'Sin nombre'
-    ).trim();
-  }
-
-  /** Busca clave escalar de ubicación dentro de un objeto plano. */
-  function zazuFindZonaKeyInObject(obj) {
-    if (!obj || typeof obj !== 'object') return null;
-    const preferred = ['zona', 'tipo_envio', 'tipo_envío', 'ciudad', 'ambito', 'ámbito', 'destino', 'ubicacion', 'ubicación', 'departamento', 'region', 'región', 'distrito', 'provincia', 'ubigeo'];
-    for (let p = 0; p < preferred.length; p += 1) {
-      const k = preferred[p];
-      if (k in obj && obj[k] != null && typeof obj[k] !== 'object') return k;
-    }
-    const keys = Object.keys(obj);
-    for (let i = 0; i < keys.length; i += 1) {
-      const k = keys[i];
-      if (obj[k] != null && typeof obj[k] === 'object') continue;
-      if (/zona|ciudad|provincia|departamento|region|ubicacion|destino|ambito|distrito|lima|ubigeo|depart|prov\b/i.test(k)) return k;
-    }
-    return null;
-  }
-
-  /**
-   * Devuelve función (fila) => valor escalar de zona, probando la fila raíz y luego envio.*.
-   * Muchos registros traen ciudad/distrito solo dentro de `envio`.
-   */
-  function zazuResolveZonaAccessor(rows) {
-    if (!rows || !rows.length) return null;
-    const r0 = rows[0];
-    const topKey = zazuFindZonaKeyInObject(r0);
-    if (topKey) return (r) => (r && r[topKey] != null ? r[topKey] : null);
-    const e0 = r0 && r0.envio;
-    if (e0 && typeof e0 === 'object') {
-      const nk = zazuFindZonaKeyInObject(e0);
-      if (nk) {
-        return (r) => {
-          const e = r && r.envio;
-          if (!e || typeof e !== 'object') return null;
-          return e[nk] != null ? e[nk] : null;
-        };
-      }
-    }
-    return null;
-  }
-
-  /** Concatena textos primitivos de `envio` para heurística Lima/provincia cuando no hay columna clara. */
-  function zazuEnvioZonaBlob(envio) {
-    if (!envio || typeof envio !== 'object') return '';
-    const parts = [];
-    Object.keys(envio).forEach((k) => {
-      const v = envio[k];
-      if (v != null && typeof v !== 'object') parts.push(String(v));
-    });
-    return parts.join(' ').trim().toLowerCase();
-  }
-
-  /** Distritos/cadenas típicas de Lima y Callao (sin depender de la palabra «Lima» en el texto). */
-  const ZAZU_LIMA_AREA_RE = /\b(lima|metropol|callao|miraflores|surco|san isidro|barranco|jesus maria|chorrillos|lince|rimac|comas|los olivos|ate|sjl|san juan de lurigancho|villa maria|vmt|villa el salvador|magdalena|pueblo libre|santa anita|san borja|la molina|san miguel|independencia|cercado|ancon|carabayllo|smp|puente piedra|santa rosa|chaclacayo|cieneguilla|lurin|pachacamac|punta hermosa|punta negra|san bartolo|santa maria)\b/i;
-
-  function zazuTextLooksLikeLima(s) {
-    const t = String(s || '').trim().toLowerCase();
-    if (!t) return false;
-    if (t.includes('lima') || t.includes('metropol') || t.includes('callao')) return true;
-    return ZAZU_LIMA_AREA_RE.test(t);
-  }
-
-  function zazuRowMatchesZonaText(textLower, zona) {
-    const s = String(textLower || '').trim().toLowerCase();
-    if (zona === 'lima') {
-      if (!s) return false;
-      return zazuTextLooksLikeLima(s);
-    }
-    if (zona === 'provincia') {
-      if (!s) return false;
-      if (s.includes('provincia') || /\bprov\.?\b/.test(s)) return true;
-      if (zazuTextLooksLikeLima(s)) return false;
-      return true;
-    }
-    return true;
-  }
-
-  /**
-   * @param {*} val valor en columna detectada (o null)
-   * @param {string} zona all|lima|provincia
-   * @param {object} row fila completa (para leer envio)
-   */
-  function zazuRowMatchesZonaWithFallback(val, zona, row) {
-    if (zona === 'all') return true;
-    
-    // Preferencia a la columna persistida 'zona' si existe (Lima/Provincia)
-    const rowZona = row.zona || (row.envio && row.envio.zona);
-    if (rowZona) {
-      if (zona === 'lima') return String(rowZona).toLowerCase() === 'lima';
-      if (zona === 'provincia') return String(rowZona).toLowerCase() === 'provincia';
-    }
-
-    if (typeof val === 'boolean') {
-      if (zona === 'lima') return val === true;
-      if (zona === 'provincia') return val === false;
-      return true;
-    }
-    if (typeof val === 'number' && Number.isFinite(val)) {
-      if (zona === 'lima') return val === 1;
-      if (zona === 'provincia') return val !== 1;
-      return true;
-    }
-    const direct = String(val ?? '').trim();
-    if (direct !== '') return zazuRowMatchesZonaText(direct, zona);
-    const blob = zazuEnvioZonaBlob(row && row.envio);
-    if (!blob) return false;
-    return zazuRowMatchesZonaText(blob, zona);
-  }
-
-  /**
-   * Búsqueda global en el navegador por texto libre.
-   */
-  function zazuRowMatchesSearch(row, term) {
-    if (!term) return true;
-    const t = term.toLowerCase();
-    const blob = [
-      String(row.id_envio || ''),
-      String(row.nombre_cliente || ''),
-      String(row.numero_orden || ''),
-      zazuEnvioZonaBlob(row.envio)
-    ].join(' ').toLowerCase();
-    return blob.includes(t);
-  }
-
-  /**
-   * Filtros de fecha, Lima/provincia y búsqueda global en el navegador.
-   */
-  function zazuApplyClientFilters(rows) {
-    const list = Array.isArray(rows) ? rows.slice() : [];
-    const hints = [];
-    const dfEl = d.getElementById('zazu-date-from');
-    const dtEl = d.getElementById('zazu-date-to');
-    const df = dfEl && dfEl.value ? dfEl.value.trim() : '';
-    const dt = dtEl && dtEl.value ? dtEl.value.trim() : '';
-    const zona = (d.getElementById('zazu-zona')?.value || 'all').trim();
-    const search = (d.getElementById('zazu-global-search')?.value || '').trim();
-    
-    const fromD = df ? zazuParseFlexibleDate(`${df}T00:00:00`) : null;
-    const toD = dt ? zazuParseFlexibleDate(`${dt}T23:59:59.999`) : null;
-    const hadDate = !!(fromD || toD);
-    const hadZona = zona !== 'all';
-    const dateGet = hadDate ? zazuResolveDateAccessor(list) : null;
-    const zonaGet = hadZona ? zazuResolveZonaAccessor(list) : null;
-    
-    let out = list;
-
-    // Filtro de búsqueda global
-    if (search) {
-      out = out.filter(r => zazuRowMatchesSearch(r, search));
-    }
-
-    if (hadDate) {
-      if (!dateGet) {
-        hints.push('No se detectó una fecha en la fila ni dentro de «envío»; el rango Desde/Hasta no se aplicó.');
-      } else {
-        out = out.filter((r) => {
-          const rd = zazuParseFlexibleDate(dateGet(r));
-          if (!rd) return false;
-          return zazuDateInCalendarRange(rd, fromD, toD);
-        });
-      }
-    }
-    if (hadZona) {
-      const sampleBlob = list[0] ? zazuEnvioZonaBlob(list[0].envio) : '';
-      if (!zonaGet && !sampleBlob) {
-        // Silenciamos la advertencia si no hay filas, pero si hay filas intentamos detectar
-        if (list.length > 0) {
-           hints.push('Filtro Lima/Provincia: detección automática limitada.');
-        }
-      } else {
-        out = out.filter((r) => zazuRowMatchesZonaWithFallback(zonaGet ? zonaGet(r) : null, zona, r));
-      }
-    }
-    if (out.length === 0 && list.length > 0) {
-      hints.push(
-        '0 filas con estos filtros: borra búsqueda o «Desde/Hasta» para ampliar resultados.'
-      );
-    }
-    return { filtered: out, total: list.length, hints, dateKey: hadDate && dateGet ? 'ok' : null, zonaKey: zonaGet ? 'resuelto' : null };
-  }
-
-  function zazuShortUrlForLog(url) {
-    const s = String(url || '');
-    try {
-      if (/^https?:\/\//i.test(s)) {
-        const u = new URL(s);
-        return (u.pathname || '/') + (u.search || '');
-      }
-    } catch (_) { /* ignore */ }
-    return s.split('?')[0] || s;
-  }
-
-  function zazuLogTime() {
-    return new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  }
-
-  function pushApiRequestLog(entry) {
-    const row = {
-      t: Date.now(),
-      method: entry.method || 'GET',
-      url: entry.url || '',
-      status: entry.status | 0,
-      ms: entry.ms | 0,
-      note: entry.note || null,
-    };
-    S.apiRequestLog.unshift(row);
-    if (S.apiRequestLog.length > ZAZU_API_LOG_MAX) S.apiRequestLog.length = ZAZU_API_LOG_MAX;
-    if (S.view === 'zazu') {
-      const path = zazuShortUrlForLog(row.url);
-      let line = `[${zazuLogTime()}] ${row.method} ${path} → ${row.status || '—'} (${row.ms} ms)`;
-      if (row.note) line += ` · ${row.note}`;
-      zazuDevConsolePush(line, row.status === 0 || row.status >= 400 ? 'err' : 'info');
-    }
-    renderZazuDevPanel();
-  }
-
-  function zazuDevConsolePush(text, level) {
-    S.zazuDevConsole.unshift({ t: Date.now(), level: level || 'info', text: String(text) });
-    if (S.zazuDevConsole.length > ZAZU_CONSOLE_MAX) S.zazuDevConsole.length = ZAZU_CONSOLE_MAX;
-  }
-
-  function renderZazuDevPanel() {
-    const reqEl = d.getElementById('zazu-req-log');
-    const conEl = d.getElementById('zazu-console-log');
-    if (!reqEl && !conEl) return;
-    if (reqEl) {
-      if (!S.apiRequestLog.length) {
-        reqEl.innerHTML = '<p class="zazu-dev-empty">Aún no hay peticiones en esta sesión.</p>';
-      } else {
-        reqEl.innerHTML = `<table class="zazu-req-table" aria-label="Historial de peticiones">
-<thead><tr><th>Hora</th><th>Método</th><th>Ruta</th><th>Estado</th><th>Tiempo</th></tr></thead>
-<tbody>${S.apiRequestLog.map((r) => {
-          const tm = new Date(r.t).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-          const pathRaw = zazuShortUrlForLog(r.url);
-          const path = escHtml(pathRaw);
-          const pathTitle = escHtml(pathRaw);
-          const st = r.status | 0;
-          const stClass = st === 0 ? 'zazu-req-st--fail' : st >= 400 ? 'zazu-req-st--warn' : 'zazu-req-st--ok';
-          const note = r.note ? `<span class="zazu-req-note">${escHtml(r.note)}</span>` : '';
-          return `<tr><td class="zazu-req-td-time">${escHtml(tm)}</td><td>${escHtml(r.method)}</td><td class="zazu-req-td-path" title="${pathTitle}">${path}</td><td class="${stClass}">${st || '—'}</td><td>${r.ms | 0} ms</td></tr>${note ? `<tr class="zazu-req-note-row"><td colspan="5">${note}</td></tr>` : ''}`;
-        }).join('')}</tbody></table>`;
-      }
-    }
-    if (conEl) {
-      if (!S.zazuDevConsole.length) {
-        conEl.innerHTML = '<p class="zazu-dev-empty">Abre esta vista y usa el panel; aquí verás mensajes y peticiones mientras trabajas en Zazu.</p>';
-      } else {
-        conEl.innerHTML = S.zazuDevConsole.map((c) => {
-          const lv = c.level === 'err' ? 'zazu-con-line--err' : c.level === 'ok' ? 'zazu-con-line--ok' : '';
-          return `<div class="zazu-con-line ${lv}">${escHtml(c.text)}</div>`;
-        }).join('');
-      }
-    }
-  }
-
-  function clearZazuDevLogs() {
-    S.apiRequestLog = [];
-    S.zazuDevConsole = [];
-    renderZazuDevPanel();
-  }
-
-  /** GET /api/odoo/nota-venta-pdf con cookie de sesión; abre blob en nueva pestaña. */
-  async function zazuFetchAndOpenNotaVentaPdf(url) {
-    const newWin = window.open('about:blank', '_blank', 'noopener');
-    if (!newWin) {
-      zazuDevConsolePush('El navegador bloqueó la ventana emergente; permite popups para este sitio.', 'err');
-      return;
-    }
-    newWin.document.title = "Cargando PDF...";
-    newWin.document.body.innerHTML = "<h3 style='font-family:sans-serif; text-align:center; padding-top:20px; color:#444;'>Descargando tu PDF, espere por favor...</h3>";
-
-    const t0 = performance.now();
-    let status = 0;
-    try {
-      const resp = await fetch(url, { credentials: 'same-origin' });
-      status = resp.status;
-      pushApiRequestLog({
-        method: 'GET',
-        url,
-        status,
-        ms: Math.round(performance.now() - t0),
-        note: status === 401 ? 'No autenticado' : null,
-      });
-      renderZazuDevPanel();
-      if (status === 401) {
-        newWin.close();
-        zazuDevConsolePush('PDF: no hay sesión del panel. Entra en /login.html, inicia sesión y vuelve aquí.', 'err');
-        renderZazuDevPanel();
-        return;
-      }
-      if (!resp.ok) {
-        newWin.close();
-        let msg = `HTTP ${status}`;
-        try {
-          const j = await resp.json();
-          if (j.error) msg = j.error;
-        } catch (_) { /* ignore */ }
-        zazuDevConsolePush(`PDF nota: ${msg}`, 'err');
-        renderZazuDevPanel();
-        return;
-      }
-      const blob = await resp.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      newWin.document.body.style.margin = '0';
-      newWin.document.body.innerHTML = `<iframe src="${blobUrl}" style="width:100vw; height:100vh; border:none; margin:0; padding:0;"></iframe>`;
-      newWin.document.title = "Reporte Odoo";
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 120000);
-      renderZazuDevPanel();
-    } catch (e) {
-      pushApiRequestLog({
-        method: 'GET',
-        url,
-        status: status || 0,
-        ms: Math.round(performance.now() - t0),
-        note: e && e.message ? e.message : String(e),
-      });
-      zazuDevConsolePush(`PDF nota: ${e && e.message ? e.message : e}`, 'err');
-      renderZazuDevPanel();
-    }
-  }
-
-  /**
-   * PDF generado en Odoo vía XML-RPC: solo el nombre de nota (sale.order.name), ej. Overshark/024059.
-   */
-  function zazuOpenNotaVentaPdfByNota(nota) {
-    const qs = new URLSearchParams({
-      nota: String(nota || '').trim(),
-      match_name_only: '1',
-    });
-    zazuFetchAndOpenNotaVentaPdf(`/api/odoo/nota-venta-pdf?${qs.toString()}`);
-  }
-
-  function zazuOpenNotaVentaPdf(name) {
-    zazuSearchAndOpenPdf(name);
-  }
-
-  /**
-   * Búsqueda universal de Recibo de nota de venta:
-   * - Extrae datos de Odoo y los muestra en un Modal interno.
-   */
-  function zazuSearchAndOpenPdf(rawValue) {
-    const val = String(rawValue || '').trim();
-    if (!val) {
-      zazuPdfSearchSetStatus('Ingresa la nota de venta o el ID numérico de Odoo.', 'err');
-      return;
-    }
-    
-    const qs = new URLSearchParams({ nota: val, match_name_only: '1' });
-    const url = `/api/odoo/order-receipt-json?${qs.toString()}`;
-    const logLabel = `"${val}"`;
-
-    zazuPdfSearchSetStatus(`Obteniendo datos de ${logLabel} desde Odoo…`, 'loading');
-    
-    const t0 = performance.now();
-    fetch(url, { credentials: 'same-origin' })
-      .then(async (resp) => {
-        const ms = Math.round(performance.now() - t0);
-        pushApiRequestLog({ method: 'GET', url, status: resp.status, ms });
-        renderZazuDevPanel();
-
-        if (!resp.ok) {
-          let msg = `HTTP ${resp.status}`;
-          try {
-            const j = await resp.json();
-            if (j.error) msg = j.error;
-          } catch (_) { }
-          zazuPdfSearchSetStatus(`Error: ${msg}`, 'err');
-          return;
-        }
-
-        const data = await resp.json();
-        renderLocalReceiptToModal(data);
-        zazuPdfSearchSetStatus(`Recibo generado correctamente (${ms} ms).`, 'ok');
-      })
-      .catch((e) => {
-        zazuPdfSearchSetStatus(`Error de red: ${e.message}`, 'err');
-      });
-  }
-
-  /**
-   * Renderiza el recibo dentro del modal integrado.
-   */
-  function renderLocalReceiptToModal(data) {
-    const modal = d.getElementById('receipt-modal-overlay');
-    const body = d.getElementById('receipt-modal-body');
-    const title = d.getElementById('receipt-modal-title');
-    if (!modal || !body) return;
-
-    title.textContent = `Recibo - ${data.name}`;
-
-    const linesHtml = data.lines.map(l => `
-      <tr style="border-bottom: 1px dashed #eee;">
-        <td style="padding: 10px 0; font-size: 13px;">
-          <div style="font-weight: 500;">${l.product}</div>
-          <div style="color: #666; font-size: 11px;">${l.qty} unid. x S/ ${l.price_unit.toFixed(2)}</div>
-        </td>
-        <td style="text-align: right; vertical-align: middle; font-weight: 600;">S/ ${l.subtotal.toFixed(2)}</td>
-      </tr>
-    `).join('');
-
-    // Preparar el bloque de info de orden para que incluya Nota de Venta si existe
-    let orderInfoHtml = `
-      <div>
-        <div style="color: #888; text-transform: uppercase; font-size: 10px; font-weight: bold; margin-bottom: 4px;">Detalles de Orden</div>
-        <div style="font-weight: 600;">${data.name}</div>
-        ${data.number_zazu && data.number_zazu !== data.name ? `<div style="color: #333; font-size: 11px;">Nota: ${data.number_zazu}</div>` : ''}
-        <div style="color: #444;">${data.date_order}</div>
-      </div>
-    `;
-
-    // --- BRAND LOGO DETECTION ---
-    let logoSrc = 'assets/logo_tinostack.png';
-    let brandName = 'TinoStack';
-    
-    // Identificamos marca por prefijo en el nombre o número de Zazu
-    const orderRef = (data.number_zazu || data.name || '').toLowerCase();
-    if (orderRef.includes('overshark') || orderRef.includes('over')) {
-      logoSrc = 'assets/iconos-barra/over-icon.png';
-      brandName = 'Overshark';
-    } else if (orderRef.includes('bravos') || orderRef.includes('brav')) {
-      logoSrc = 'assets/iconos-barra/brav-icon.png';
-      brandName = 'Bravos';
-    } else if (orderRef.includes('box')) {
-      logoSrc = 'assets/iconos-barra/box.icon.png';
-      brandName = 'Box';
-    }
-
-    body.innerHTML = `
-      <div style="font-family: 'Inter', sans-serif; color: #000;">
-        <div style="text-align: center; margin-bottom: 25px;">
-          <img src="${logoSrc}" alt="Logo" style="height: 60px; margin-bottom: 10px; object-fit: contain;">
-          <h2 style="margin: 0; letter-spacing: 1px; font-size: 20px;">${brandName}</h2>
-          <div style="font-size: 12px; color: #666; margin-top: 4px;">Comprobante de despacho</div>
-          <div style="border-top: 2px solid #000; width: 40px; margin: 12px auto;"></div>
-        </div>
-        
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 25px; font-size: 12px;">
-          ${orderInfoHtml}
-          <div style="text-align: right;">
-            <div style="color: #888; text-transform: uppercase; font-size: 10px; font-weight: bold; margin-bottom: 4px;">Cliente / Destino</div>
-            <div style="font-weight: 600;">${data.partner}</div>
-          </div>
-        </div>
-
-        <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px;">
-          <thead>
-            <tr style="border-bottom: 2px solid #000;">
-              <th style="text-align: left; padding-bottom: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">Descripción</th>
-              <th style="text-align: right; padding-bottom: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${linesHtml}
-          </tbody>
-          <tfoot>
-            <tr>
-              <td style="text-align: right; padding-top: 20px; font-size: 14px; font-weight: bold;">TOTAL:</td>
-              <td style="text-align: right; padding-top: 20px; font-size: 18px; font-weight: 800; color: #000;">S/ ${data.amount_total.toFixed(2)}</td>
-            </tr>
-          </tfoot>
-        </table>
-
-        <div style="text-align: center; border-top: 1px solid #eee; padding-top: 20px; font-size: 11px; color: #999;">
-          <p style="margin: 0; font-weight: 600;">Comprobante Generado-TinoStack</p>
-          <p style="margin: 4px 0;">Gracias por su preferencia.</p>
-        </div>
-      </div>
-    `;
-
-    modal.style.display = 'flex';
-  }
-
-  /** Muestra estado en el widget de búsqueda de PDF. */
-  function zazuPdfSearchSetStatus(text, level) {
-    const el = d.getElementById('zazu-pdf-search-status');
-    if (!el) return;
-    el.hidden = false;
-    el.className = 'zazu-pdf-search__status';
-    if (level === 'err') el.classList.add('zazu-pdf-search__status--err');
-    else if (level === 'ok') el.classList.add('zazu-pdf-search__status--ok');
-    else if (level === 'loading') el.classList.add('zazu-pdf-search__status--loading');
-    el.textContent = text;
+  function pushApiRequestLog(_entry) {
+    // Legacy network log hook retained as no-op.
   }
 
   // ── Format helpers ──
@@ -670,6 +92,14 @@
     S.theme = t;
     renderCurrentTab();
     if (S.view === 'risks' && S.invRisks) renderRiskChartsPayload(S.invRisks);
+    // Re-renderizar gráficos de Zazu con el nuevo tema
+    if (S.view === 'zazu') {
+      if (S.zazuScope === 'lima') {
+        zazuRenderLimaRankings(zazuFilteredRows(S.zazuRowsAll || []));
+      } else {
+        zazuRenderProvRankings(S.zazuProvRows || []);
+      }
+    }
   }
 
   // ── Animate counter ──
@@ -698,7 +128,7 @@
     </div>`;
   }
 
-  /** Incluye cookie de sesión; si 401, va al login. Registra cada petición para el panel «Peticiones» (Zazu). */
+  /** Incluye cookie de sesión; si 401, va al login. */
   async function apiFetch(url, init) {
     const merged = Object.assign({ credentials: 'same-origin' }, init || {});
     const method = String(merged.method || 'GET').toUpperCase();
@@ -843,38 +273,31 @@
     const inv = d.getElementById('panel-inventory');
     const risk = d.getElementById('panel-risks');
     const zazu = d.getElementById('panel-zazu');
-    const status = d.querySelector('.status-bar');
+        const status = d.querySelector('.status-bar');
+    const panels = [inv, risk, zazu];
     if (view === 'dashboard') {
       if (dash) dash.style.display = S.data ? '' : 'none';
-      if (inv) inv.hidden = true;
-      if (risk) risk.hidden = true;
-      if (zazu) zazu.hidden = true;
+      panels.forEach(p => p && (p.hidden = true));
       if (status) status.style.display = '';
     } else if (view === 'inventory') {
       if (dash) dash.style.display = 'none';
+      panels.forEach(p => p && (p.hidden = true));
       if (inv) inv.hidden = false;
-      if (risk) risk.hidden = true;
-      if (zazu) zazu.hidden = true;
       if (load) load.style.display = 'none';
       if (status) status.style.display = 'none';
     } else if (view === 'risks') {
       if (dash) dash.style.display = 'none';
-      if (inv) inv.hidden = true;
+      panels.forEach(p => p && (p.hidden = true));
       if (risk) risk.hidden = false;
-      if (zazu) zazu.hidden = true;
       if (load) load.style.display = 'none';
       if (status) status.style.display = 'none';
     } else if (view === 'zazu') {
       if (dash) dash.style.display = 'none';
-      if (inv) inv.hidden = true;
-      if (risk) risk.hidden = true;
+      panels.forEach(p => p && (p.hidden = true));
       if (zazu) zazu.hidden = false;
       if (load) load.style.display = 'none';
       if (status) status.style.display = 'none';
     }
-    const contentInner = d.querySelector('.content-inner');
-    if (contentInner) contentInner.classList.toggle('content-inner--zazu-wide', view === 'zazu');
-    if (view === 'zazu') renderZazuDevPanel();
     if (S.invRisksTimer) {
       clearInterval(S.invRisksTimer);
       S.invRisksTimer = null;
@@ -895,453 +318,1910 @@
   }
 
   function syncZazuTabsActive() {
-    const allowed = ['entregados', 'anulados', 'activos', 'todos'];
-    let t = S.zazuTab || 'entregados';
-    if (!allowed.includes(t)) t = 'entregados';
-    S.zazuTab = t;
+    const current = S.zazuTab || 'entregados';
     d.querySelectorAll('[data-zazu-tab]').forEach((btn) => {
-      const on = (btn.getAttribute('data-zazu-tab') || '') === t;
-      btn.classList.toggle('zazu-tab--active', on);
+      const on = (btn.getAttribute('data-zazu-tab') || '') === current;
+      btn.classList.toggle('active', on);
       btn.setAttribute('aria-selected', on ? 'true' : 'false');
     });
   }
 
-  function zazuShortObj(o) {
-    if (o == null || typeof o !== 'object') return '—';
-    const id = o.id != null ? `#${o.id}` : '';
-    const label = o.nombre || o.name || o.full_name || o.direccion || o.referencia || '';
-    const s = [id, label].filter(Boolean).join(' · ');
-    if (s) return s.length > 120 ? `${s.slice(0, 117)}…` : s;
-    try {
-      const j = JSON.stringify(o);
-      return j.length > 100 ? `${j.slice(0, 97)}…` : j;
-    } catch (_) {
-      return '—';
-    }
-  }
-
-  function zazuLooksLikeHttpUrl(s) {
-    const u = String(s ?? '').trim();
-    return /^https?:\/\//i.test(u);
-  }
-
-  /** Columnas cuyo nombre suelen guardar URL de evidencia / foto. */
-  function zazuColumnSuggestsPhoto(colKey) {
-    return /foto|photo|img|imagen|evidencia|comprobante|selfie|picture|url_foto|firma|recibo|adjunto|capture|screenshot/i.test(String(colKey || ''));
-  }
-
-  function zazuLooksLikeImageUrl(s, colKey) {
-    if (!zazuLooksLikeHttpUrl(s)) return false;
-    const u = String(s).trim();
-    if (/\.(jpe?g|png|gif|webp|svg|bmp)(\?|#|$)/i.test(u)) return true;
-    if (/\/image\//i.test(u) || /\/images?\//i.test(u)) return true;
-    if (zazuColumnSuggestsPhoto(colKey)) return true;
-    return false;
-  }
-
-  /** Fecha solo calendario (dd/mm/aaaa), sin hora. */
-  function zazuFormatDateOnlyDisplay(val) {
-    const d = zazuParseFlexibleDate(val);
-    if (!d || isNaN(d.getTime())) return null;
-    const dd = String(d.getDate()).padStart(2, '0');
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const yyyy = String(d.getFullYear());
-    return `${dd}/${mm}/${yyyy}`;
-  }
-
-  /** Nombre de columna sugiere fecha/hora (excluye id_* como id_envio). */
-  function zazuColumnLooksLikeDateKey(colKey) {
-    const n = zazuNormColKey(colKey);
-    if (!n || /^id_/.test(n)) return false;
-    if (/fecha|fech/.test(n)) return true;
-    if (/programad|entrega|registro/.test(n)) return true;
-    if (/_at$/.test(n)) return true;
-    if (/^(created|updated|modified)_/.test(n)) return true;
-    if (/\bdate\b/.test(n.replace(/_/g, ' '))) return true;
-    if (/_date$/.test(n) || /^date_/.test(n)) return true;
-    return false;
-  }
-
-  /** Valor string típico de instantánea ISO u hora local (no números sueltos = evita IDs largos). */
-  function zazuValueLooksLikeDateTimeString(s) {
-    const t = String(s || '').trim();
-    if (!t) return false;
-    if (/^\d{4}-\d{2}-\d{2}(T[\d:.+-]+Z?)?$/i.test(t)) return true;
-    if (/^\d{4}-\d{2}-\d{2}[ T]\d{1,2}:\d{2}/.test(t)) return true;
-    return false;
-  }
-
-  /** Quita comillas tipográficas y NBSP; formato Empresa/número sin espacios alrededor de «/». */
-  function zazuNormalizeNotaVentaRef(val) {
-    let s = String(val || '').replace(/\u00a0/g, ' ').trim();
-    if (!s) return '';
-    const edgeStart = /^[\s\u00ab\u00bb\u201c\u201d\u2018\u2019\u2039\u203a"'`´]+/;
-    const edgeEnd = /[\s\u00ab\u00bb\u201c\u201d\u2018\u2019\u2039\u203a"'`´]+$/;
-    for (let i = 0; i < 8 && (edgeStart.test(s) || edgeEnd.test(s)); i += 1) {
-      s = s.replace(edgeStart, '').replace(edgeEnd, '').trim();
-    }
-    s = s.replace(/\s*\/\s*/g, '/');
-    const slash = s.indexOf('/');
-    if (slash !== -1) {
-      s = `${s.slice(0, slash).trim()}/${s.slice(slash + 1).trim()}`;
-    }
-    if (s.length > 120) s = s.slice(0, 120);
-    return s;
-  }
-
-  /**
-   * Celda escalar: texto corto, enlace genérico como chip, URL de imagen como recuadro «Foto».
-   */
-  function zazuFormatScalarCell(colKey, val, row) {
-    if (val == null || val === '') return '<span class="zazu-cell-muted">—</span>';
-    const str = String(val).trim();
-    /* id_envio: solo texto de la nota de venta (sin botón PDF; se usa el buscador universal). */
-    if (zazuIsIdEnvioColumn(colKey) && str) {
-      const refNorm = zazuNormalizeNotaVentaRef(str);
-      if (!refNorm) return '<span class="zazu-cell-muted">—</span>';
-      const display = refNorm.length > 140 ? `${refNorm.slice(0, 137)}…` : refNorm;
-      return `<span class="zazu-envio-name">${escHtml(display)}</span>`;
-    }
-    if (zazuLooksLikeImageUrl(str, colKey)) {
-      const safeHref = escHtml(str);
-      return `<a class="zazu-photo-tile" href="${safeHref}" target="_blank" rel="noopener noreferrer" title="Abrir imagen en el navegador"><span class="zazu-photo-tile__preview" aria-hidden="true"><svg class="zazu-photo-tile__icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg></span><span class="zazu-photo-tile__label">Foto</span></a>`;
-    }
-    if (zazuLooksLikeHttpUrl(str)) {
-      const safeHref = escHtml(str);
-      return `<a class="zazu-link-chip" href="${safeHref}" target="_blank" rel="noopener noreferrer" title="${safeHref}">Abrir enlace</a>`;
-    }
-    if (zazuColumnLooksLikeDateKey(colKey)) {
-      const dOnly = zazuFormatDateOnlyDisplay(val);
-      if (dOnly) return `<span class="zazu-cell-text zazu-cell-date">${escHtml(dOnly)}</span>`;
-    } else if (zazuValueLooksLikeDateTimeString(str)) {
-      const dOnly = zazuFormatDateOnlyDisplay(str);
-      if (dOnly) return `<span class="zazu-cell-text zazu-cell-date">${escHtml(dOnly)}</span>`;
-    }
-    const t = str.length > 140 ? `${str.slice(0, 137)}…` : str;
-    return `<span class="zazu-cell-text">${escHtml(t)}</span>`;
-  }
-
-  /** Normaliza nombre de columna para comparar (mayúsculas, acentos, espacios → _). */
-  function zazuNormColKey(key) {
-    return String(key || '')
-      .trim()
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/\s+/g, '_');
-  }
-
-  /** id_envio, ID_ENVIO, idEnvio (Supabase/JSON) → misma columna de nota. */
-  function zazuIsIdEnvioColumn(colKey) {
-    const compact = zazuNormColKey(colKey).replace(/_/g, '');
-    return compact === 'idenvio';
-  }
-
-  /** Columnas que no se muestran en la tabla (pedido explícito + ids auxiliares). */
-  const ZAZU_HIDDEN_COLUMN_KEYS = new Set([
-    'id',
-    'id_motorizado',
-    'descripcion',
-    'foto_voucher',
-    'fotovoucher',
-    'hora_aproximada',
-    'is_visible',
-    'isvisible',
-    'orden_secuencia',
-    'secuencia_orden',
-    'ordensecuencia',
-    'verificacion',
-    'created_at',
-  ]);
-
-  function zazuScalarColExcluded(key) {
-    const n = zazuNormColKey(key);
-    if (ZAZU_HIDDEN_COLUMN_KEYS.has(n)) return true;
-    if (/orden/.test(n) && /secuencia/.test(n)) return true;
-    return false;
-  }
-
-  function zazuScalarCols(rows) {
-    const skip = new Set(['envio', 'motorizado']);
-    const keys = new Set();
-    (rows || []).slice(0, 80).forEach((r) => {
-      if (!r || typeof r !== 'object') return;
-      Object.keys(r).forEach((k) => {
-        if (skip.has(k) || zazuScalarColExcluded(k)) return;
-        const v = r[k];
-        if (v != null && typeof v === 'object') return;
-        keys.add(k);
-      });
+  function syncLimaEstadoCounts(allRows) {
+    const map = { todos: allRows.length, entregado: 0, no_entregado: 0, anulado: 0, reprogramado: 0 };
+    allRows.forEach((r) => {
+      const b = zazuStateBucket(r);
+      if (map[b] !== undefined) map[b] += 1;
     });
-    const keysArr = [...keys];
-    const idEnvioKey = keysArr.find((k) => zazuIsIdEnvioColumn(k));
-    const order = ['zona', 'estado_pedido', 'fecha', 'updated_at'];
-    const head = order.filter((k) => keys.has(k));
-    const rest = keysArr.filter((k) => k !== idEnvioKey && !order.includes(k)).sort();
-    const first = idEnvioKey ? [idEnvioKey] : [];
-    return [...first, ...head, ...rest].slice(0, 16);
+    d.querySelectorAll('[data-lima-estado]').forEach((btn) => {
+      const key = btn.getAttribute('data-lima-estado') || 'todos';
+      const n = map[key];
+      let pill = btn.querySelector('.tab-count');
+      if (!pill) { pill = document.createElement('span'); pill.className = 'tab-count'; btn.appendChild(pill); }
+      pill.textContent = n !== undefined ? String(n) : '';
+    });
   }
 
-  function renderZazuTable(rows, info) {
-    const thead = d.getElementById('zazu-thead');
-    const tbody = d.getElementById('zazu-tbody');
-    const meta = d.getElementById('zazu-meta-badge');
-    if (!thead || !tbody) return;
-    const inf = info || {};
-    const loaded = inf.loaded != null ? inf.loaded : (Array.isArray(rows) ? rows.length : 0);
-    const list = Array.isArray(rows) ? rows : [];
-    const lab = ZAZU_TAB_LABELS[S.zazuTab] || S.zazuTab;
-    if (meta) {
-      meta.textContent = loaded !== list.length
-        ? `${list.length} visibles · ${loaded} traídos · ${lab}`
-        : `${list.length} registros · ${lab}`;
-    }
-    if (!list.length) {
-      thead.innerHTML = '<tr><th class="zazu-th">Sin datos</th></tr>';
-      const msg = loaded > 0
-        ? 'Ningún registro cumple los filtros. Amplía el rango, borra búsqueda o elige «Todas» en Zona.'
-        : 'No hay filas para esta pestaña o la API devolvió vacío.';
-      tbody.innerHTML = `<tr><td class="zazu-empty" colspan="99">${msg}</td></tr>`;
-      return;
-    }
-    const cols = zazuScalarCols(list);
-    
-    // Inyectamos Ciudad y Distrito (ocultos) para auditoría interna como solicitó el usuario
-    const hasDistrito = list[0]?.envio?.distrito || list[0]?.distrito;
-    const hasCiudad = list[0]?.envio?.ciudad || list[0]?.ciudad;
-    
-    // Nueva cabecera fija solicitada por el usuario
-    thead.innerHTML = `
-      <tr>
-        <th class="zazu-th zazu-th--sticky-first" scope="col">ID Envío</th>
-        <th class="zazu-th" scope="col">Fecha</th>
-        <th class="zazu-th" scope="col">Cliente</th>
-        <th class="zazu-th" scope="col">Distrito</th>
-        <th class="zazu-th" scope="col">Zona</th>
-        <th class="zazu-th" scope="col">Estado</th>
-        <th class="zazu-th" scope="col" style="min-width: 280px;">Detalle Envío</th>
-      </tr>
-    `;
-    
-    tbody.innerHTML = list.map((r) => {
-      const idEnvio = r.id_envio || '—';
-      const fecha = r.fecha || r.created_at || '—';
-      const cliente = zazuResolveName(r);
-      const dist = r.envio?.distrito || r.distrito || '—';
-      const city = r.envio?.ciudad || r.ciudad || '';
-      const zona = r.zona || (r.envio && r.envio.zona) || '—';
-      const estado = r.estado_pedido || '—';
-      
-      const stClass = String(estado).toLowerCase().includes('entregado') ? 'zazu-st--ok' : 
-                      String(estado).toLowerCase().includes('anulado') ? 'zazu-st--err' : 'zazu-st--warn';
-
-      const envio = r.envio || {};
-      const orden = envio.numero_orden || r.numero_orden || '—';
-      const desc = envio.descripcion_envio || '';
-      
-      const envioHtml = `
-        <div class="zazu-envio-content">
-          <span class="zazu-envio-name">#${escHtml(orden)}</span>
-          ${desc ? `<div class="zazu-envio-meta">${escHtml(desc)}</div>` : ''}
-          <div class="zazu-envio-meta">${escHtml(dist)}${city && city !== dist ? `, ${escHtml(city)}` : ''}</div>
-        </div>
-      `;
-
-      return `
-        <tr class="zazu-row">
-          <td class="zazu-cell zazu-cell-strong">${escHtml(idEnvio)}</td>
-          <td class="zazu-cell">${escHtml(fecha.substring(0, 10))}</td>
-          <td class="zazu-cell">${escHtml(cliente)}</td>
-          <td class="zazu-cell">${escHtml(dist)}</td>
-          <td class="zazu-cell">
-            <span class="badge ${zona === 'Lima' ? 'badge-accent' : 'badge-secondary'}" style="font-size: 10px; padding: 2px 6px;">
-              ${escHtml(zona)}
-            </span>
-          </td>
-          <td class="zazu-cell"><span class="zazu-st-badge ${stClass}">${escHtml(estado)}</span></td>
-          <td class="zazu-cell zazu-cell-nested">${envioHtml}</td>
-        </tr>
-      `;
-    }).join('');
+  function syncProvEstadoCounts(allRows) {
+    const map = { todos: allRows.length, entregado: 0, pendiente: 0, devolucion: 0, retorno: 0, anulado: 0 };
+    allRows.forEach((r) => {
+      const b = zazuProvStateBucket(r);
+      if (map[b] !== undefined) map[b] += 1;
+    });
+    d.querySelectorAll('[data-prov-estado]').forEach((btn) => {
+      const key = btn.getAttribute('data-prov-estado') || 'todos';
+      const n = map[key];
+      let pill = btn.querySelector('.tab-count');
+      if (!pill) { pill = document.createElement('span'); pill.className = 'tab-count'; btn.appendChild(pill); }
+      pill.textContent = n !== undefined ? String(n) : '';
+    });
   }
 
-  /**
-   * Exporta a PDF los registros filtrados actualmente.
-   */
-  async function exportZazuPdf() {
-    if (!window.jspdf?.jsPDF) {
-      alert('jsPDF no está cargado. Revisa la conexión a internet o el archivo HTML.');
-      return;
+  function syncZazuScopeTabsActive() {
+    const current = S.zazuScope || 'lima';
+    d.querySelectorAll('[data-zazu-scope-tab]').forEach((btn) => {
+      const on = (btn.getAttribute('data-zazu-scope-tab') || '') === current;
+      btn.classList.toggle('active', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    d.querySelectorAll('[data-panel="zazu"][data-zazu-scope]').forEach((btn) => {
+      const on = (btn.getAttribute('data-zazu-scope') || 'lima') === current && S.view === 'zazu';
+      btn.classList.toggle('active', on);
+    });
+  }
+
+  function syncZazuViewTabsActive() {
+    const limaView = S.zazuLimaView || 'tabla';
+    const provView = S.zazuProvView || 'tabla';
+    d.querySelectorAll('[data-zazu-lima-view]').forEach((btn) => {
+      const on = (btn.getAttribute('data-zazu-lima-view') || '') === limaView;
+      btn.classList.toggle('active', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    d.querySelectorAll('[data-zazu-prov-view]').forEach((btn) => {
+      const on = (btn.getAttribute('data-zazu-prov-view') || '') === provView;
+      btn.classList.toggle('active', on);
+      btn.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+  }
+
+  function syncZazuSectionViews() {
+    const isProv = S.zazuScope === 'provincia';
+    const limaTable = d.getElementById('zazu-lima-table-wrap');
+    const limaRanking = d.getElementById('zazu-lima-ranking-wrap');
+    const limaKpis = d.getElementById('zazu-lima-kpis-wrap');
+    const pag = d.getElementById('zazu-pagination');
+    if (limaTable) limaTable.hidden = isProv || (S.zazuLimaView !== 'tabla');
+    if (limaRanking) limaRanking.hidden = isProv || (S.zazuLimaView !== 'ranking');
+    if (limaKpis) limaKpis.hidden = isProv || (S.zazuLimaView !== 'kpis');
+    if (pag) pag.hidden = isProv || (S.zazuLimaView !== 'tabla') || (S.zazuRowsAll || []).length <= S.zazuPageSize;
+
+    const provTable = d.getElementById('zazu-prov-table-wrap');
+    const provRanking = d.getElementById('zazu-prov-ranking-wrap');
+    const provKpis = d.getElementById('zazu-prov-kpis-wrap');
+    const provPagBar = d.getElementById('zazu-prov-pagination-bar');
+    if (provTable) provTable.hidden = !isProv || (S.zazuProvView !== 'tabla');
+    if (provRanking) provRanking.hidden = !isProv || (S.zazuProvView !== 'ranking');
+    if (provKpis) provKpis.hidden = !isProv || (S.zazuProvView !== 'kpis');
+    if (provPagBar) {
+      const showProvPag = isProv && S.zazuProvView === 'tabla' && (S.zazuProvRows || []).length > 400;
+      provPagBar.hidden = !showProvPag;
     }
-    const btn = d.getElementById('zazu-export-pdf');
-    if (btn) btn.disabled = true;
-    
-    try {
-      const tab = S.zazuTab || 'entregados';
-      const lab = ZAZU_TAB_LABELS[tab] || tab;
-      const rows = zazuApplyClientFilters(S.zazuCache?.rows || []).filtered;
-      
-      if (!rows.length) {
-        alert('No hay datos para exportar con los filtros actuales.');
-        return;
+    syncZazuViewTabsActive();
+  }
+
+  function applyZazuScope(scope) {
+    S.zazuScope = scope === 'provincia' ? 'provincia' : 'lima';
+    const isProv = S.zazuScope === 'provincia';
+    const limaSection = d.getElementById('zazu-lima-section');
+    const prov = d.getElementById('zazu-prov-card');
+    if (limaSection) limaSection.hidden = isProv;
+    if (prov) prov.hidden = !isProv;
+    syncZazuScopeTabsActive();
+    syncZazuSectionViews();
+  }
+
+  function syncZazuDateInputs() {
+    const from = d.getElementById('zazu-date-from');
+    const to = d.getElementById('zazu-date-to');
+    const co = d.getElementById('zazu-company');
+    const table = d.getElementById('zazu-table-source');
+    const limaFrom = d.getElementById('zazu-lima-date-from');
+    const limaTo = d.getElementById('zazu-lima-date-to');
+    const limaEmpresa = d.getElementById('zazu-lima-empresa');
+
+    if (from) from.value = S.zazuDateFrom || '';
+    if (to) to.value = S.zazuDateTo || '';
+    if (co) co.value = S.zazuEmpresa || '__ALL__';
+    if (table) table.value = S.zazuSourceTable || 'tb_envios_diarios_lina';
+    if (limaFrom) limaFrom.value = S.zazuDateFrom || '';
+    if (limaTo) limaTo.value = S.zazuDateTo || '';
+    if (limaEmpresa) limaEmpresa.value = S.zazuEmpresa || '__ALL__';
+  }
+
+  function zazuRowEmpresa(row) {
+    const explicit = zazuPickField(row, [
+      'empresa',
+      'empresa_nombre',
+      'company_name',
+      'marca',
+    ]);
+    const txt = String(explicit || '').trim();
+    if (txt) return txt;
+    const idEnvio = String((row && row.id_envio) || '').trim();
+    if (idEnvio.includes('/')) {
+      const prefix = idEnvio.split('/')[0].trim();
+      if (prefix) return prefix;
+    }
+    return 'Sin empresa';
+  }
+
+  function syncZazuCompanyOptions(rows) {
+    const selectors = ['zazu-company', 'zazu-lima-empresa'];
+    const uniques = Array.from(new Set(
+      (Array.isArray(rows) ? rows : [])
+        .map((r) => zazuRowEmpresa(r))
+        .filter((v) => String(v || '').trim())
+    )).sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+
+    selectors.forEach((selId) => {
+      const sel = d.getElementById(selId);
+      if (!sel) return;
+
+      sel.innerHTML = '';
+      const allOpt = d.createElement('option');
+      allOpt.value = '__ALL__';
+      allOpt.textContent = 'Todas';
+      sel.appendChild(allOpt);
+
+      uniques.forEach((name) => {
+        const opt = d.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        sel.appendChild(opt);
+      });
+
+      if (S.zazuEmpresa !== '__ALL__' && !uniques.includes(S.zazuEmpresa)) {
+        S.zazuEmpresa = '__ALL__';
       }
+      sel.value = S.zazuEmpresa || '__ALL__';
+    });
+  }
 
-      const doc = new window.jspdf.jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
-      const pageW = doc.internal.pageSize.getWidth();
-      const m = { left: 40, right: 40, top: 60 };
-      
-      // Header estético
-      doc.setFillColor(24, 24, 27);
-      doc.rect(0, 0, pageW, 50, 'F');
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(16);
-      doc.setFont('helvetica', 'bold');
-      doc.text(`Reporte de Envíos Zazu Express - ${lab.toUpperCase()}`, m.left, 32);
-      
-      doc.setFontSize(9);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(200, 200, 200);
-      const now = new Date().toLocaleString('es-PE');
-      doc.text(`Generado: ${now} · Registros: ${rows.length}`, pageW - m.right, 32, { align: 'right' });
+  function zazuFilteredRows(rows) {
+    const all = Array.isArray(rows) ? rows : [];
+    let filtered = all;
 
-      // Preparar tabla
-      const headers = [['ID Envío', 'Orden', 'Fecha', 'Estado', 'Cliente', 'Ciudad / Distrito']];
-      const body = rows.map(r => {
-        const e = r.envio || r;
-        return [
-          String(r.id_envio || ''),
-          String(e.numero_orden || r.numero_orden || ''),
-          String(r.fecha || '').split('T')[0],
-          String(r.estado_pedido || '').toUpperCase(),
-          String(e.nombre_cliente || r.nombre_cliente || '—'),
-          `${e.ciudad || ''} / ${e.distrito || ''}`
-        ];
+    // Filtrar por empresa
+    const selected = S.zazuEmpresa || '__ALL__';
+    if (selected !== '__ALL__') {
+      filtered = filtered.filter((r) => zazuRowEmpresa(r) === selected);
+    }
+
+    // Filtrar por búsqueda de texto (nombre, teléfono, dirección, etc.)
+    const searchQuery = (S.zazuLimaSearch || '').trim().toLowerCase();
+    if (searchQuery) {
+      filtered = filtered.filter((r) => {
+        const e = r && typeof r.envio === 'object' ? r.envio : {};
+        const clientName = String(zazuClientName(r) || '').toLowerCase();
+        const phone = String(r.telefono || e.telefono || r.celular || e.celular || '').toLowerCase();
+        const address = String(r.direccion || e.direccion || r.direccion_destino || e.direccion_destino || '').toLowerCase();
+        const district = String(r.distrito || e.distrito || '').toLowerCase();
+        const guia = String(r.guia || e.guia || '').toLowerCase();
+        const codigo = String(r.codigo || e.codigo || '').toLowerCase();
+
+        return clientName.includes(searchQuery) ||
+               phone.includes(searchQuery) ||
+               address.includes(searchQuery) ||
+               district.includes(searchQuery) ||
+               guia.includes(searchQuery) ||
+               codigo.includes(searchQuery);
       });
+    }
 
-      doc.autoTable({
-        head: headers,
-        body: body,
-        startY: 70,
-        margin: m,
-        styles: { fontSize: 8, cellPadding: 6 },
-        headStyles: { fillColor: [245, 158, 11], textColor: 255 },
-        alternateRowStyles: { fillColor: [250, 250, 250] }
+    // Filtrar por estado (tab client-side)
+    const estadoFiltro = S.zazuEstadoFiltro || 'todos';
+    if (estadoFiltro !== 'todos') {
+      filtered = filtered.filter((r) => {
+        const bucket = zazuStateBucket(r);
+        if (estadoFiltro === 'entregado') return bucket === 'entregado';
+        if (estadoFiltro === 'no_entregado') return bucket === 'no_entregado';
+        if (estadoFiltro === 'anulado') return bucket === 'anulado';
+        if (estadoFiltro === 'reprogramado') return bucket === 'reprogramado';
+        return true;
       });
+    }
 
-      doc.save(`zazu_reporte_${tab}_${new Date().toISOString().slice(0,10)}.pdf`);
-    } catch (err) {
-      console.error(err);
-      alert('Error al generar PDF: ' + err.message);
+    return filtered;
+  }
+
+  function zazuClientName(r) {
+    const e = r && typeof r.envio === 'object' ? r.envio : {};
+    return (
+      e.nombre_cliente ||
+      r.nombre_cliente ||
+      e.destinatario ||
+      r.destinatario ||
+      e.nombre ||
+      r.nombre ||
+      '—'
+    );
+  }
+
+  function renderZazuCourierSummary(payload) {
+    const tbody = d.getElementById('zazu-courier-tbody');
+    const tbodyL = d.getElementById('zazu-courier-lima-tbody');
+    const tbodyP = d.getElementById('zazu-courier-prov-tbody');
+    if (!tbody || !tbodyL || !tbodyP) return;
+    const rows = payload && Array.isArray(payload.rows) ? payload.rows : [];
+    if (!rows.length) {
+      tbody.innerHTML = '<tr><td colspan="6">Sin datos para mostrar.</td></tr>';
+      tbodyL.innerHTML = '<tr><td colspan="5">Sin datos para mostrar.</td></tr>';
+      tbodyP.innerHTML = '<tr><td colspan="5">Sin datos para mostrar.</td></tr>';
+      return;
+    }
+    const rangeText = (a, b) => {
+      const x = String(a || '').slice(0, 10);
+      const y = String(b || '').slice(0, 10);
+      if (!x && !y) return '—';
+      return `${x || '…'} → ${y || '…'}`;
+    };
+    const detailsHtml = rows.map((r) => {
+      const hasError = !!r.error;
+      const provCount = Number(r.provincia_count || 0);
+      const scanned = Number(r.rows_scanned || 0);
+      const status = hasError
+        ? '<span class="zazu-courier-status zazu-courier-status--bad">Error</span>'
+        : (r.has_more
+          ? '<span class="zazu-courier-status zazu-courier-status--warn">Muestreo parcial</span>'
+          : '<span class="zazu-courier-status zazu-courier-status--ok">OK</span>');
+      const warn = r.warning ? `<div class="zazu-courier-note">${escHtml(String(r.warning))}</div>` : '';
+      const err = hasError ? `<div class="zazu-courier-note zazu-courier-note--bad">${escHtml(String(r.error))}</div>` : '';
+      return `<tr>
+        <td><span class="zazu-courier-table-name">${escHtml(String(r.table || '—'))}</span>${warn}${err}</td>
+        <td>${fmt.n(scanned, 0)}</td>
+        <td><span class="zazu-courier-count ${provCount > 0 ? 'zazu-courier-count--ok' : ''}">${fmt.n(provCount, 0)}</span></td>
+        <td>${escHtml(rangeText(r.provincia_min_date, r.provincia_max_date))}</td>
+        <td>${escHtml(rangeText(r.sample_min_date, r.sample_max_date))}</td>
+        <td>${status}</td>
+      </tr>`;
+    }).join('');
+    tbody.innerHTML = detailsHtml;
+
+    const rowsL = rows.filter((r) => Number(r.provincia_count || 0) <= 0);
+    const rowsP = rows.filter((r) => Number(r.provincia_count || 0) > 0);
+    tbodyL.innerHTML = rowsL.length ? rowsL.map((r) => {
+      const hasError = !!r.error;
+      const status = hasError
+        ? '<span class="zazu-courier-status zazu-courier-status--bad">Error</span>'
+        : (r.has_more
+          ? '<span class="zazu-courier-status zazu-courier-status--warn">Muestreo parcial</span>'
+          : '<span class="zazu-courier-status zazu-courier-status--ok">OK</span>');
+      return `<tr>
+        <td><span class="zazu-courier-table-name">${escHtml(String(r.table || '—'))}</span></td>
+        <td>${fmt.n(Number(r.rows_scanned || 0), 0)}</td>
+        <td><span class="zazu-courier-count">${fmt.n(Number(r.provincia_count || 0), 0)}</span></td>
+        <td>${escHtml(rangeText(r.sample_min_date, r.sample_max_date))}</td>
+        <td>${status}</td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="5">No se detectaron tablas solo Lima/Callao.</td></tr>';
+    tbodyP.innerHTML = rowsP.length ? rowsP.map((r) => {
+      const hasError = !!r.error;
+      const status = hasError
+        ? '<span class="zazu-courier-status zazu-courier-status--bad">Error</span>'
+        : (r.has_more
+          ? '<span class="zazu-courier-status zazu-courier-status--warn">Muestreo parcial</span>'
+          : '<span class="zazu-courier-status zazu-courier-status--ok">OK</span>');
+      return `<tr>
+        <td><span class="zazu-courier-table-name">${escHtml(String(r.table || '—'))}</span></td>
+        <td>${fmt.n(Number(r.rows_scanned || 0), 0)}</td>
+        <td><span class="zazu-courier-count zazu-courier-count--ok">${fmt.n(Number(r.provincia_count || 0), 0)}</span></td>
+        <td>${escHtml(rangeText(r.provincia_min_date, r.provincia_max_date))}</td>
+        <td>${status}</td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="5">No se detectaron tablas con provincia.</td></tr>';
+  }
+
+  async function fetchZazuCourierSummary(force) {
+    if (S.view !== 'zazu') return;
+    if (!force && S.zazuCourierSummary) {
+      renderZazuCourierSummary(S.zazuCourierSummary);
+      return;
+    }
+    const load = d.getElementById('zazu-courier-loading');
+    const err = d.getElementById('zazu-courier-error');
+    if (load) load.hidden = false;
+    if (err) { err.hidden = true; err.textContent = ''; }
+    try {
+      const resp = await apiFetch('/api/supabase/courier-summary?max_rows_per_table=5000');
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+      S.zazuCourierSummary = data;
+      renderZazuCourierSummary(data);
+    } catch (e) {
+      if (err) {
+        err.hidden = false;
+        err.textContent = e && e.message ? e.message : String(e);
+      }
+      renderZazuCourierSummary(null);
     } finally {
-      if (btn) btn.disabled = false;
+      if (load) load.hidden = true;
     }
   }
 
-  /**
-   * Dispara la sincronización manual en el servidor.
-   */
-  async function triggerZazuSync() {
-    const btn = d.getElementById('zazu-refresh-data');
-    if (btn) {
-      btn.disabled = true;
-      btn.innerHTML = '<svg class="icon-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;vertical-align:text-bottom"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg> Sincronizando...';
+  function zazuProvSyncInputs() {
+    const f = d.getElementById('zazu-prov-date-from');
+    const to = d.getElementById('zazu-prov-date-to');
+    const gq = d.getElementById('zazu-prov-guide-query');
+    if (f) f.value = S.zazuProvDateFrom || '';
+    if (to) to.value = S.zazuProvDateTo || '';
+    if (gq) gq.value = S.zazuProvGuideQuery || '';
+  }
+
+  function zazuProvRenderRows(rows, _meta) {
+    const tbody = d.getElementById('zazu-prov-tbody');
+    const serviceBadge = d.getElementById('zazu-prov-service-indicator');
+    const odooBadge = d.getElementById('zazu-prov-odoo-indicator');
+    if (!tbody) return;
+    const allRowsRaw = Array.isArray(rows) ? rows : [];
+    // Counts sobre total sin filtrar para que todos los tabs muestren su número real
+    syncProvEstadoCounts(allRowsRaw);
+    // Client-side estado filter (same pattern as Lima tabs)
+    const provFiltro = S.zazuProvEstadoFiltro || 'todos';
+    const allRows = provFiltro === 'todos'
+      ? allRowsRaw
+      : allRowsRaw.filter((r) => zazuProvStateBucket(r) === provFiltro);
+    if (!allRows.length) {
+      tbody.innerHTML = '<tr><td colspan="12">Sin datos para este filtro.</td></tr>';
+      if (serviceBadge) serviceBadge.textContent = 'Costo servicio: S/ 0.00';
+      if (odooBadge) odooBadge.textContent = 'Odoo vinculados: 0';
+      zazuRenderProvRankings([]);
+      syncZazuSectionViews();
+      return;
     }
-    zazuDevConsolePush('Enviando petición de sincronización al servidor...', 'info');
-    renderZazuDevPanel();
+    // Paginación cliente: 400 filas por página
+    const pageSize = 400;
+    const totalPages = Math.max(1, Math.ceil(allRows.length / pageSize));
+    if (S.zazuProvPage > totalPages) S.zazuProvPage = totalPages;
+    if (S.zazuProvPage < 1) S.zazuProvPage = 1;
+    const start = (S.zazuProvPage - 1) * pageSize;
+    const list = allRows.slice(start, start + pageSize);
+    const money = (v) => {
+      const n = Number(v);
+      if (!Number.isFinite(n)) return '—';
+      return `S/ ${fmt.n(n, 2)}`;
+    };
+    const num = (v) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : 0;
+    };
+    // Totales desde TODOS los registros (no solo la página visible)
+    let serviceTotal = 0;
+    let odooLinked = 0;
+    allRows.forEach((r) => {
+      const c = num(r.monto_deuda);
+      if (c > 0) serviceTotal += c;
+      const od = r && typeof r.odoo === 'object' ? r.odoo : null;
+      if (od && od.found) odooLinked += 1;
+    });
+    tbody.innerHTML = list.map((r) => {
+      const clientName = zazuClientName(r);
+      const clientPhone = zazuDisplayPhone(r);
+      const geo = [r.provincia, r.departamento].filter(Boolean).join(' / ') || '—';
+      const sede = String(r.sede || '').trim();
+      const destino = [geo, sede].filter(Boolean).join(' · ') || '—';
+      const guiaCodigo = [String(r.guia || '').trim(), String(r.codigo || '').trim()].filter(Boolean).join(' / ') || '—';
+      const od = r && typeof r.odoo === 'object' ? r.odoo : null;
+      const costoServicio = num(r.monto_deuda);
+      const notaRef = String(
+        (od && (od.number_zazu || od.sale_order_name || od.pos_name || od.client_order_ref))
+        || r.nota_odoo || r.id_venta || ''
+      ).trim();
+      // CxC: total de la nota de venta vinculada
+      let cxcCell = '—';
+      if (od && od.found) {
+        const total = od.sale_amount_total ?? od.amount_to_collect ?? null;
+        if (total != null) {
+          const isPaid = !od.not_invoiced && (od.amount_residual ?? 1) === 0;
+          const cls = isPaid ? 'zazu-cxc-badge--paid' : 'zazu-cxc-badge--pending';
+          const title = od.sale_order_name || od.pos_name || od.client_order_ref || '';
+          cxcCell = `<span class="zazu-cxc-badge ${cls}" title="${escHtml(title)}">${money(total)}</span>`;
+        }
+      }
+      const odDetail = od && od.found
+        ? [
+            `Ref: ${od.number_zazu || od.sale_order_name || od.pos_name || od.client_order_ref || '—'}`,
+            `Cliente: ${od.partner || '—'}`,
+            `Total orden: ${money(od.sale_amount_total || od.amount_to_collect)}`,
+            `Saldo CxC: ${money(od.amount_residual)}`,
+          ].join(' | ')
+        : 'Sin vinculación Odoo';
+      const odPreviewCell = notaRef
+        ? `<a href="#" class="zazu-note-link" data-nota-ref="${escHtml(notaRef)}">Ver detalle</a>`
+        : '—';
+      const estadoText = String(r.estado || r.estado_qr || r.estado_odoo || '—').trim();
+      return `<tr>
+        <td><span class="zazu-prov-id">${escHtml(String(r.id_venta || '—'))}</span></td>
+        <td><span class="zazu-status ${zazuStatusClass(estadoText)}">${escHtml(estadoText)}</span></td>
+        <td>${escHtml(guiaCodigo)}</td>
+        <td>${escHtml(String(r.fecha || '—'))}</td>
+        <td>${escHtml(clientName)}</td>
+        <td>${escHtml(clientPhone)}</td>
+        <td>${escHtml(destino)}</td>
+        <td>${escHtml(String(r.tipo_pago || '—'))}</td>
+        <td>${escHtml(money(r.monto_cobrar))}</td>
+        <td>${escHtml(money(costoServicio))}</td>
+        <td>${cxcCell}</td>
+        <td title="${escHtml(odDetail)}">${odPreviewCell}</td>
+      </tr>`;
+    }).join('');
+    if (serviceBadge) serviceBadge.textContent = `Costo servicio: ${money(serviceTotal)}`;
+    if (odooBadge) odooBadge.textContent = `Odoo vinculados: ${fmt.n(odooLinked, 0)} / ${fmt.n(allRows.length, 0)}`;
+    zazuRenderProvRankings(allRows);
+    syncZazuSectionViews();
+  }
+
+  function zazuProvRenderPager() {
+    const info = d.getElementById('zazu-prov-page-info');
+    const prev = d.getElementById('zazu-prov-prev');
+    const next = d.getElementById('zazu-prov-next');
+    const bar = d.getElementById('zazu-prov-pagination-bar');
+    const total = (S.zazuProvRows || []).length;
+    const pages = Math.max(1, Math.ceil(total / 400));
+    if (S.zazuProvPage < 1) S.zazuProvPage = 1;
+    if (S.zazuProvPage > pages) S.zazuProvPage = pages;
+    if (info) info.textContent = `Pag. ${S.zazuProvPage} de ${pages}`;
+    if (prev) prev.disabled = S.zazuProvPage <= 1;
+    if (next) next.disabled = S.zazuProvPage >= pages;
+    if (bar) bar.hidden = total <= 400;
+  }
+
+  async function fetchZazuProvinciaDetail(force) {
+    if (S.view !== 'zazu' || S.zazuScope !== 'provincia') return;
+    const load = d.getElementById('zazu-prov-loading');
+    const err = d.getElementById('zazu-prov-error');
+    if (load) load.hidden = false;
+    if (err) { err.hidden = true; err.textContent = ''; }
+    if (force) {
+      S.zazuProvRows = [];
+      S.zazuProvMeta = null;
+    }
+    zazuProvSyncInputs();
     try {
-      const resp = await fetch('/api/zazu/sync', { method: 'POST' });
+      const params = new URLSearchParams({
+        limit: String(S.zazuProvPageSize || 10000),
+        offset: '0',
+      });
+      if (S.zazuProvDateFrom) params.set('date_from', S.zazuProvDateFrom);
+      if (S.zazuProvDateTo) params.set('date_to', S.zazuProvDateTo);
+      if ((S.zazuProvGuideQuery || '').trim()) params.set('guia_query', S.zazuProvGuideQuery.trim());
+      const resp = await apiFetch(`/api/supabase/provincia-envios?${params.toString()}`);
       const j = await resp.json();
       if (!resp.ok) throw new Error(j.error || `HTTP ${resp.status}`);
-      zazuDevConsolePush(`Sincronización exitosa: ${j.message || 'OK'}`, 'ok');
-      renderZazuDevPanel();
-      // Recargar la tabla actual tras sincronizar
-      await fetchZazuEnvios(true);
+      S.zazuProvRows = Array.isArray(j.rows) ? j.rows : [];
+      S.zazuProvMeta = (j && typeof j.meta === 'object') ? j.meta : null;
+      S.zazuProvPage = 1;
+      zazuProvRenderRows(S.zazuProvRows, S.zazuProvMeta);
+      zazuProvRenderPager();
+      zazuRenderKpis('zazu-kpi-strip', S.zazuProvRows);
     } catch (e) {
-      const msg = e.message || String(e);
-      zazuDevConsolePush(`Fallo en sincronización: ${msg}`, 'err');
-      renderZazuDevPanel();
-      alert(`Error al sincronizar: ${msg}`);
+      if (err) {
+        err.hidden = false;
+        err.textContent = e && e.message ? e.message : String(e);
+      }
+      S.zazuProvMeta = null;
+      zazuProvRenderRows([], null);
+      S.zazuProvHasMore = false;
+      zazuProvRenderPager();
+      zazuRenderKpis('zazu-kpi-strip', []);
     } finally {
-      if (btn) {
-        btn.disabled = false;
-        btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;vertical-align:text-bottom"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg> Actualizar';
+      if (load) load.hidden = true;
+    }
+  }
+
+  function zazuPickField(row, keys) {
+    const envio = row && typeof row.envio === 'object' ? row.envio : {};
+    const motorizado = row && typeof row.motorizado === 'object' ? row.motorizado : {};
+    const sources = [row || {}, envio, motorizado];
+    for (let i = 0; i < keys.length; i += 1) {
+      const k = keys[i];
+      for (let j = 0; j < sources.length; j += 1) {
+        const src = sources[j];
+        if (!src || typeof src !== 'object') continue;
+        if (src[k] == null || src[k] === '') continue;
+        return src[k];
+      }
+    }
+    return null;
+  }
+
+  function zazuStatusClass(estado) {
+    const s = String(estado || '').trim().toLowerCase();
+    if (!s) return 'zazu-status--neutral';
+    if (s.includes('entregado') || s.includes('done')) return 'zazu-status--ok';
+    if (s.includes('anulado') || s.includes('cancel') || s.includes('rechaz')) return 'zazu-status--bad';
+    if (s.includes('curso') || s.includes('espera') || s.includes('proceso')) return 'zazu-status--warn';
+    return 'zazu-status--neutral';
+  }
+
+  function zazuCxcRef(row) {
+    const nota = zazuNotaRef(row);
+    if (nota) return String(nota).trim();
+    const idEnvio = row && row.id_envio != null ? String(row.id_envio).trim() : '';
+    return idEnvio || '';
+  }
+
+  function zazuCxcCell(row) {
+    const ref = zazuCxcRef(row);
+    if (!ref) return '<span class="zazu-cxc zazu-cxc--na">—</span>';
+    if (S.zazuCxcPending[ref]) return '<span class="zazu-cxc zazu-cxc--loading">Consultando…</span>';
+    const info = S.zazuCxcByRef[ref];
+    if (!info) return '<span class="zazu-cxc zazu-cxc--na">—</span>';
+    if (!info.found) return '<span class="zazu-cxc zazu-cxc--na">No encontrado</span>';
+    const fromPos = info.source === 'odoo_pos_order';
+    const amtCollect = Number(info.amount_to_collect);
+    const amtResidual = Number(info.amount_residual);
+    const amt = fromPos && Number.isFinite(amtCollect) ? amtCollect : amtResidual;
+    if (!Number.isFinite(amt)) return '<span class="zazu-cxc zazu-cxc--na">—</span>';
+    if (fromPos) {
+      const paid = Number(info.amount_paid);
+      const pending = Number.isFinite(amtResidual) ? amtResidual : 0;
+      const title = `Monto cobrar POS: S/ ${fmt.n(amtCollect, 2)} · Pagado: S/ ${fmt.n(paid || 0, 2)} · Pendiente: S/ ${fmt.n(pending, 2)}`;
+      return `<span class="zazu-cxc ${Math.abs(amt) < 0.005 ? 'zazu-cxc--ok' : 'zazu-cxc--debt'}" title="${escHtml(title)}">S/ ${fmt.n(amt, 2)}</span>`;
+    }
+    if (Math.abs(amt) < 0.005) return '<span class="zazu-cxc zazu-cxc--ok">S/ 0.00</span>';
+    return `<span class="zazu-cxc zazu-cxc--debt">S/ ${fmt.n(amt, 2)}</span>`;
+  }
+
+  async function fetchZazuCxcForRows(rows) {
+    const allRefs = Array.from(new Set((Array.isArray(rows) ? rows : [])
+      .map((r) => zazuCxcRef(r))
+      .filter((v) => v && !S.zazuCxcByRef[v] && !S.zazuCxcPending[v])));
+    if (!allRefs.length) return;
+    allRefs.forEach((r) => { S.zazuCxcPending[r] = true; });
+    // Lotes de 200 para no saturar Odoo en un solo request
+    const BATCH = 200;
+    for (let i = 0; i < allRefs.length; i += BATCH) {
+      const refs = allRefs.slice(i, i + BATCH);
+      try {
+        const resp = await apiFetch('/api/odoo/accounts-receivable', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refs, match_name_only: false }),
+        });
+        const j = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(j.error || `HTTP ${resp.status}`);
+        const items = j && typeof j.items === 'object' ? j.items : {};
+        refs.forEach((r) => {
+          S.zazuCxcByRef[r] = items[r] || { found: false, reason: 'not_found' };
+        });
+      } catch (_) {
+        refs.forEach((r) => {
+          if (!S.zazuCxcByRef[r]) S.zazuCxcByRef[r] = { found: false, reason: 'lookup_error' };
+        });
+      } finally {
+        refs.forEach((r) => { delete S.zazuCxcPending[r]; });
+      }
+    }
+    renderZazuRows(S.zazuRowsAll || [], null);
+  }
+
+  function zazuDisplayDate(row) {
+    const raw = zazuPickField(row, [
+      'fecha_entrega',
+      'fecha_programada',
+      'fecha',
+      'date_order',
+      'created_at',
+      'updated_at',
+    ]);
+    return String(raw || '').slice(0, 10) || '—';
+  }
+
+  function zazuDisplayMoney(row) {
+    const raw = zazuPickField(row, [
+      'monto_cobrado',
+      'efectivo_monto',
+      'transferencia_monto',
+      'yape_monto',
+      'monto_total',
+      'monto',
+      'amount_total',
+      'total',
+      'importe',
+      'subtotal',
+    ]);
+    if (raw == null || raw === '') return '—';
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return String(raw);
+    return `S/ ${fmt.n(n, 2)}`;
+  }
+
+  function zazuDisplayPayment(row) {
+    const medio = zazuPickField(row, [
+      'medio_pago',
+      'metodo_pago',
+      'payment_method',
+      'tipo_pago',
+      'payment_type',
+    ]);
+    const yape = Number(zazuPickField(row, ['yape_monto']) || 0);
+    const transferencia = Number(zazuPickField(row, ['transferencia_monto']) || 0);
+    const efectivo = Number(zazuPickField(row, ['efectivo_monto']) || 0);
+    const tags = [];
+    if (Number.isFinite(yape) && yape > 0) tags.push('Yape');
+    if (Number.isFinite(transferencia) && transferencia > 0) tags.push('Transferencia');
+    if (Number.isFinite(efectivo) && efectivo > 0) tags.push('Efectivo');
+    if (tags.length) return tags.join(' + ');
+    if (medio != null && String(medio).trim()) return String(medio).trim();
+    return '—';
+  }
+
+  function zazuDisplayMonto(row) {
+    const montoCobrado = Number(zazuPickField(row, ['monto_cobrado']));
+    if (Number.isFinite(montoCobrado) && montoCobrado > 0) return `S/ ${fmt.n(montoCobrado, 2)}`;
+
+    const yape = Number(zazuPickField(row, ['yape_monto']) || 0);
+    const transferencia = Number(zazuPickField(row, ['transferencia_monto']) || 0);
+    const efectivo = Number(zazuPickField(row, ['efectivo_monto']) || 0);
+    const split = [yape, transferencia, efectivo].filter((v) => Number.isFinite(v) && v > 0);
+    if (split.length) {
+      const sum = split.reduce((acc, v) => acc + v, 0);
+      return `S/ ${fmt.n(sum, 2)}`;
+    }
+
+    const pedido = Number(zazuPickField(row, ['monto_cobrar', 'monto_total', 'monto', 'amount_total', 'total', 'importe', 'subtotal']));
+    if (Number.isFinite(pedido) && pedido > 0) return `S/ ${fmt.n(pedido, 2)}`;
+    return '—';
+  }
+
+  function zazuDisplayServiceCost(row) {
+    const raw = zazuPickField(row, [
+      'monto_deuda',
+      'costo_servicio',
+      'costo_envio',
+      'shipping_cost',
+      'delivery_fee',
+      'service_cost',
+    ]);
+    if (raw == null || raw === '') return '—';
+    const n = Number(raw);
+    if (!Number.isFinite(n)) return String(raw);
+    return `S/ ${fmt.n(n, 2)}`;
+  }
+
+  function zazuNum(...vals) {
+    for (let i = 0; i < vals.length; i += 1) {
+      const n = Number(vals[i]);
+      if (Number.isFinite(n)) return n;
+    }
+    return NaN;
+  }
+
+  function zazuNormalize(txt) {
+    return String(txt || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+  }
+
+  function zazuStateBucket(row) {
+    const estado = zazuNormalize(zazuPickField(row, ['estado_pedido', 'estado', 'estado_despacho', 'estado_qr']) || '');
+    const reprogramado = zazuNormalize(zazuPickField(row, ['reprogramado', 'motivo_reprogramado']) || '');
+    if (reprogramado && reprogramado !== 'false' && reprogramado !== '0' && reprogramado !== 'no') return 'reprogramado';
+    if (estado.includes('anulad') || estado.includes('cancel')) return 'anulado';
+    if (estado.includes('reprogram')) return 'reprogramado';
+    // "no entregado" / "no entregada" deben clasificarse ANTES que "entregado"
+    if (/\bno\s+entreg/.test(estado) || estado === 'no entregado' || estado === 'no entregada') return 'no_entregado';
+    if (estado.includes('entreg')) return 'entregado';
+    if (estado.includes('curso') || estado.includes('camino') || estado.includes('ruta') || estado.includes('pendiente') || estado.includes('despacho')) return 'en_curso';
+    return 'en_curso';
+  }
+
+  function zazuProvStateBucket(row) {
+    const estado = zazuNormalize(zazuPickField(row, ['estado_pedido', 'estado', 'estado_despacho', 'estado_qr']) || '');
+    if (estado.includes('anulad') || estado.includes('cancel')) return 'anulado';
+    if (estado.includes('devolu') || estado.includes('devuelt')) return 'devolucion';
+    if (estado.includes('retorn')) return 'retorno';
+    if (/\bno\s+entreg/.test(estado) || estado === 'no entregado' || estado === 'no entregada') return 'pendiente';
+    if (estado.includes('entreg')) return 'entregado';
+    return 'pendiente';
+  }
+
+  function zazuRowDateYmd(row) {
+    const raw = String(zazuPickField(row, ['fecha_entrega', 'fecha_programada', 'fecha', 'date_order', 'fecha_registro', 'created_at']) || '').trim();
+    if (!raw) return '';
+    const mIso = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (mIso) return `${mIso[1]}-${mIso[2]}-${mIso[3]}`;
+    const mLat = raw.match(/\b(\d{1,2})[/-](\d{1,2})[/-](\d{4})\b/);
+    if (mLat) {
+      const dd = mLat[1].padStart(2, '0');
+      const mm = mLat[2].padStart(2, '0');
+      return `${mLat[3]}-${mm}-${dd}`;
+    }
+    return '';
+  }
+
+  function zazuMontoCobradoResolved(row) {
+    const direct = zazuNum(zazuPickField(row, ['monto_cobrado', 'monto_cobrar']));
+    if (Number.isFinite(direct) && direct > 0) return { value: direct, fallback: false };
+    const split = ['yape_monto', 'transferencia_monto', 'efectivo_monto']
+      .map((k) => zazuNum(zazuPickField(row, [k])))
+      .filter((v) => Number.isFinite(v) && v > 0);
+    if (split.length) return { value: split.reduce((a, b) => a + b, 0), fallback: false };
+    let od = row && typeof row.odoo === 'object' ? row.odoo : null;
+    if (!od || !od.found) {
+      const ref = zazuCxcRef(row);
+      od = ref ? S.zazuCxcByRef[ref] : null;
+    }
+    if (od && od.found) {
+      const paid = zazuNum(od.amount_paid);
+      if (Number.isFinite(paid) && paid > 0) return { value: paid, fallback: true };
+      const collect = zazuNum(od.amount_to_collect);
+      if (Number.isFinite(collect) && collect > 0) return { value: collect, fallback: true };
+    }
+    return { value: 0, fallback: false };
+  }
+
+  function zazuCostoServicioResolved(row) {
+    const v = zazuNum(zazuPickField(row, ['monto_deuda', 'costo_servicio', 'costo_envio', 'shipping_cost', 'delivery_fee', 'service_cost']));
+    return Number.isFinite(v) && v > 0 ? v : 0;
+  }
+
+  function zazuComputeMetrics(rows) {
+    const list = Array.isArray(rows) ? rows : [];
+    let montoCobrado = 0;
+    let costoServicio = 0;
+    let fallbackCount = 0;
+    let entregados = 0;
+    let noEntregados = 0;
+    let reprogramados = 0;
+    let enCurso = 0;
+    let anulados = 0;
+    let minDate = '';
+    let maxDate = '';
+    const payMap = new Map();
+    list.forEach((r) => {
+      const ymd = zazuRowDateYmd(r);
+      if (ymd) {
+        if (!minDate || ymd < minDate) minDate = ymd;
+        if (!maxDate || ymd > maxDate) maxDate = ymd;
+      }
+      const bucket = zazuStateBucket(r);
+      if (bucket === 'entregado') entregados += 1;
+      else if (bucket === 'no_entregado') noEntregados += 1;
+      else if (bucket === 'reprogramado') reprogramados += 1;
+      else if (bucket === 'anulado') anulados += 1;
+      else enCurso += 1;
+      const mc = zazuMontoCobradoResolved(r);
+      montoCobrado += mc.value;
+      if (mc.fallback) fallbackCount += 1;
+      costoServicio += zazuCostoServicioResolved(r);
+      const pay = String(zazuDisplayPayment(r) || '').trim();
+      if (pay && pay !== '—') payMap.set(pay, (payMap.get(pay) || 0) + 1);
+    });
+    const cierreCaja = montoCobrado - costoServicio;
+    const topPay = Array.from(payMap.entries()).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([k, v]) => `${k} (${v})`).join(' · ') || '—';
+    const fecha = minDate && maxDate ? (minDate === maxDate ? minDate : `${minDate} → ${maxDate}`) : '—';
+    return {
+      total: list.length,
+      fecha,
+      montoCobrado,
+      costoServicio,
+      cierreCaja,
+      fallbackCount,
+      entregados,
+      noEntregados,
+      reprogramados,
+      enCurso,
+      anulados,
+      topPay,
+    };
+  }
+
+  function zazuGetKpiIcon(type) {
+    const icons = {
+      clipboard: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1" ry="1"/></svg>',
+      calendar: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
+      money: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>',
+      credit: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>',
+      truck: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>',
+      check: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
+      refresh: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>',
+      rocket: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>',
+      x: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>',
+      map: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>',
+      award: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>',
+    };
+    return icons[type] || '';
+  }
+
+  function zazuRenderKpis(targetId, rows) {
+    // Detectar el scope y usar los IDs correspondientes
+    const isProv = S.zazuScope === 'provincia';
+    const suffix = isProv ? '-prov' : '-lima';
+    const strip = d.getElementById('zazu-kpi-strip' + suffix);
+    const banner = d.getElementById('zazu-cierre-banner' + suffix);
+
+    if (!strip) return;
+    const m = zazuComputeMetrics(rows);
+    const money = (v) => `S/ ${fmt.n(v, 2)}`;
+
+    // ── Main KPI cards ──
+    const cards = isProv
+      ? [
+          { label: 'Total Envíos', value: fmt.n(m.total, 0), icon: 'clipboard', colorMod: '' },
+          { label: 'Entregados', value: fmt.n(m.entregados, 0), icon: 'check', colorMod: 'success' },
+          { label: 'Pendientes', value: fmt.n(m.enCurso, 0), icon: 'truck', colorMod: 'warning' },
+          { label: 'Anulados', value: fmt.n(m.anulados, 0), icon: 'x', colorMod: 'danger' },
+          { label: 'Monto cobrar', value: money(m.montoCobrado), icon: 'money', colorMod: '' },
+          { label: 'Costo servicio', value: money(m.costoServicio), icon: 'credit', colorMod: '' },
+          { label: 'Cierre caja', value: money(m.cierreCaja), icon: 'award', colorMod: 'accent' },
+        ]
+      : [
+          { label: 'Total Notas', value: fmt.n(m.total, 0), icon: 'clipboard', colorMod: '' },
+          { label: 'Entregados', value: fmt.n(m.entregados, 0), icon: 'check', colorMod: 'success' },
+          { label: 'No Entregados', value: fmt.n(m.noEntregados, 0), icon: 'truck', colorMod: 'warning' },
+          { label: 'Reprogramados', value: fmt.n(m.reprogramados, 0), icon: 'refresh', colorMod: '' },
+          { label: 'Anulados', value: fmt.n(m.anulados, 0), icon: 'x', colorMod: 'danger' },
+          { label: 'Monto cobrado', value: money(m.montoCobrado), icon: 'money', colorMod: '' },
+          { label: 'Costo servicio', value: money(m.costoServicio), icon: 'credit', colorMod: '' },
+          { label: 'Cierre caja', value: money(m.cierreCaja), icon: 'award', colorMod: 'accent' },
+        ];
+
+    strip.innerHTML = cards.map(({ label, value, icon, colorMod }) => `
+      <article class="zazu-kpi-card${colorMod ? ` zazu-kpi-card--${colorMod}` : ''}">
+        <div class="zazu-kpi-icon">${zazuGetKpiIcon(icon)}</div>
+        <div class="zazu-kpi-label">${escHtml(label)}</div>
+        <div class="zazu-kpi-value">${escHtml(String(value))}</div>
+      </article>
+    `).join('');
+
+    // ── Cierre de caja banner ──
+    if (banner) {
+      banner.hidden = false;
+      const cobEl = d.getElementById('zazu-cierre-cobrado' + suffix);
+      const cosEl = d.getElementById('zazu-cierre-costo' + suffix);
+      const totEl = d.getElementById('zazu-cierre-total' + suffix);
+      if (cobEl) cobEl.textContent = money(m.montoCobrado);
+      if (cosEl) cosEl.textContent = money(m.costoServicio);
+      if (totEl) totEl.textContent = money(m.cierreCaja);
+    }
+
+    strip.title = m.fallbackCount > 0
+      ? `Se aplicó fallback de monto cobrado desde Odoo en ${m.fallbackCount} registros.`
+      : '';
+  }
+
+
+  function zazuClientKey(row) {
+    const phone = String(zazuDisplayPhone(row) || '').replace(/\D+/g, '');
+    if (phone.length >= 7) return `tel:${phone}`;
+    return `nom:${zazuNormalize(zazuClientName(row) || '')}`;
+  }
+
+  function zazuZoneKey(row, scope) {
+    if (scope === 'provincia') {
+      return String(zazuPickField(row, ['departamento']) || row?.departamento || 'Sin departamento').trim() || 'Sin departamento';
+    }
+    return String(zazuPickField(row, ['distrito']) || row?.distrito || 'Sin distrito').trim() || 'Sin distrito';
+  }
+
+  function zazuAggregateRanking(rows, scope, filterText) {
+    const f = zazuNormalize(filterText || '');
+    const map = new Map();
+    (Array.isArray(rows) ? rows : []).forEach((r) => {
+      const zone = zazuZoneKey(r, scope);
+      if (f && !zazuNormalize(zone).includes(f)) return;
+      if (!map.has(zone)) {
+        map.set(zone, { zone, envios: 0, entregados: 0, clientSet: new Set(), cobrado: 0, costo: 0 });
+      }
+      const a = map.get(zone);
+      a.envios += 1;
+      const bucket = scope === 'lima' ? zazuStateBucket(r) : zazuProvStateBucket(r);
+      if (bucket === 'entregado') a.entregados += 1;
+      a.clientSet.add(zazuClientKey(r));
+      a.cobrado += zazuMontoCobradoResolved(r).value;
+      a.costo += zazuCostoServicioResolved(r);
+    });
+    const out = Array.from(map.values()).map((a) => ({
+      zone: a.zone,
+      envios: a.envios,
+      entregados: a.entregados,
+      clientes: a.clientSet.size,
+      cobrado: a.cobrado,
+      costo: a.costo,
+      cierre: a.cobrado - a.costo,
+    }));
+    return out;
+  }
+
+  function zazuRenderRankingTable(tbodyId, rows, mode) {
+    const tbody = d.getElementById(tbodyId);
+    if (!tbody) return;
+    const sorted = [...rows].sort((a, b) => {
+      if (mode === 'clientes') return (b.clientes - a.clientes) || (b.envios - a.envios);
+      return (b.envios - a.envios) || (b.clientes - a.clientes);
+    }).slice(0, 15);
+    if (!sorted.length) {
+      tbody.innerHTML = '<tr><td colspan="6">Sin datos para el ranking.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = sorted.map((r) => `
+      <tr>
+        <td>${escHtml(String(r.zone || '—'))}</td>
+        <td>${escHtml(fmt.n(r.envios, 0))}</td>
+        <td>${escHtml(fmt.n(r.clientes, 0))}</td>
+        <td>${escHtml(`S/ ${fmt.n(r.cobrado, 2)}`)}</td>
+        <td>${escHtml(`S/ ${fmt.n(r.costo, 2)}`)}</td>
+        <td>${escHtml(`S/ ${fmt.n(r.cierre, 2)}`)}</td>
+      </tr>
+    `).join('');
+  }
+
+  function zazuRenderRankingCharts(canvasId, data, mode) {
+    const canvas = d.getElementById(canvasId);
+    if (!canvas) return;
+
+    const sorted = [...data].sort((a, b) => {
+      if (mode === 'clientes') return (b.clientes - a.clientes) || (b.envios - a.envios);
+      return (b.envios - a.envios) || (b.clientes - a.clientes);
+    }).slice(0, 10);
+
+    if (!sorted.length) return;
+
+    // Destruir gráfico anterior si existe
+    const existingChart = Chart.getChart(canvas);
+    if (existingChart) existingChart.destroy();
+
+    const labels = sorted.map(r => r.zone);
+    const enviosData = sorted.map(r => r.envios);
+    const clientesData = sorted.map(r => r.clientes);
+    const cobradoData = sorted.map(r => r.cobrado);
+    const costoData = sorted.map(r => r.costo);
+    const cierreData = sorted.map(r => r.cierre);
+
+    // Colores mejorados con gradientes
+    const isDark = getComputedStyle(d.documentElement).getPropertyValue('--color-bg').trim().includes('18');
+    const colors = {
+      envios: { bg: isDark ? 'rgba(99, 102, 241, 0.8)' : 'rgba(99, 102, 241, 0.85)', border: 'rgba(99, 102, 241, 1)' },
+      clientes: { bg: isDark ? 'rgba(16, 185, 129, 0.8)' : 'rgba(16, 185, 129, 0.85)', border: 'rgba(16, 185, 129, 1)' },
+      cobrado: { bg: isDark ? 'rgba(245, 158, 11, 0.8)' : 'rgba(245, 158, 11, 0.85)', border: 'rgba(245, 158, 11, 1)' },
+      costo: { bg: isDark ? 'rgba(239, 68, 68, 0.8)' : 'rgba(239, 68, 68, 0.85)', border: 'rgba(239, 68, 68, 1)' },
+      cierre: { bg: isDark ? 'rgba(34, 197, 94, 0.8)' : 'rgba(34, 197, 94, 0.85)', border: 'rgba(34, 197, 94, 1)' }
+    };
+
+    new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [
+          {
+            label: 'Envíos',
+            data: enviosData,
+            backgroundColor: colors.envios.bg,
+            borderColor: colors.envios.border,
+            borderWidth: 2,
+            borderRadius: 6,
+            borderSkipped: false,
+            yAxisID: 'y'
+          },
+          {
+            label: 'Clientes',
+            data: clientesData,
+            backgroundColor: colors.clientes.bg,
+            borderColor: colors.clientes.border,
+            borderWidth: 2,
+            borderRadius: 6,
+            borderSkipped: false,
+            yAxisID: 'y'
+          },
+          {
+            label: 'Monto Cobrado (S/)',
+            data: cobradoData,
+            type: 'line',
+            borderColor: colors.cobrado.border,
+            backgroundColor: colors.cobrado.bg,
+            borderWidth: 3,
+            pointRadius: 5,
+            pointHoverRadius: 7,
+            pointBackgroundColor: colors.cobrado.border,
+            pointBorderColor: '#fff',
+            pointBorderWidth: 2,
+            yAxisID: 'y1',
+            tension: 0.4,
+            fill: false
+          },
+          {
+            label: 'Cierre de Caja (S/)',
+            data: cierreData,
+            type: 'line',
+            borderColor: colors.cierre.border,
+            backgroundColor: colors.cierre.bg,
+            borderWidth: 3,
+            pointRadius: 5,
+            pointHoverRadius: 7,
+            pointBackgroundColor: colors.cierre.border,
+            pointBorderColor: '#fff',
+            pointBorderWidth: 2,
+            yAxisID: 'y1',
+            tension: 0.4,
+            fill: false
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+          mode: 'index',
+          intersect: false
+        },
+        plugins: {
+          title: {
+            display: true,
+            text: mode === 'clientes' ? 'Ranking por Clientes Únicos' : 'Ranking por Cantidad de Envíos',
+            color: getComputedStyle(d.documentElement).getPropertyValue('--color-text').trim(),
+            font: { size: 15, weight: '700', family: 'Inter, system-ui, sans-serif' },
+            padding: { top: 10, bottom: 15 }
+          },
+          legend: {
+            display: true,
+            position: 'top',
+            align: 'end',
+            labels: {
+              color: getComputedStyle(d.documentElement).getPropertyValue('--color-text').trim(),
+              font: { size: 11, family: 'Inter, system-ui, sans-serif' },
+              padding: 12,
+              usePointStyle: true,
+              pointStyle: 'circle'
+            }
+          },
+          tooltip: {
+            backgroundColor: isDark ? 'rgba(24, 24, 27, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+            titleColor: getComputedStyle(d.documentElement).getPropertyValue('--color-text').trim(),
+            bodyColor: getComputedStyle(d.documentElement).getPropertyValue('--color-text-secondary').trim(),
+            borderColor: getComputedStyle(d.documentElement).getPropertyValue('--color-border').trim(),
+            borderWidth: 1,
+            padding: 12,
+            displayColors: true,
+            callbacks: {
+              label: function(context) {
+                let label = context.dataset.label || '';
+                if (label) label += ': ';
+                if (context.dataset.yAxisID === 'y1') {
+                  label += 'S/ ' + fmt.n(context.parsed.y, 2);
+                } else {
+                  label += fmt.n(context.parsed.y, 0);
+                }
+                return label;
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            ticks: {
+              color: getComputedStyle(d.documentElement).getPropertyValue('--color-text-muted').trim(),
+              font: { size: 10, family: 'Inter, system-ui, sans-serif' },
+              maxRotation: 45,
+              minRotation: 45,
+              padding: 8
+            },
+            grid: {
+              display: false,
+              drawBorder: true,
+              borderColor: getComputedStyle(d.documentElement).getPropertyValue('--color-border').trim(),
+              borderWidth: 2
+            }
+          },
+          y: {
+            type: 'linear',
+            display: true,
+            position: 'left',
+            beginAtZero: true,
+            title: {
+              display: true,
+              text: 'Cantidad',
+              color: getComputedStyle(d.documentElement).getPropertyValue('--color-text-secondary').trim(),
+              font: { size: 12, weight: '600', family: 'Inter, system-ui, sans-serif' },
+              padding: { top: 0, bottom: 10 }
+            },
+            ticks: {
+              color: getComputedStyle(d.documentElement).getPropertyValue('--color-text-muted').trim(),
+              font: { size: 11, family: 'JetBrains Mono, monospace' },
+              padding: 8,
+              callback: function(value) {
+                return fmt.n(value, 0);
+              }
+            },
+            grid: {
+              color: getComputedStyle(d.documentElement).getPropertyValue('--color-border').trim(),
+              lineWidth: 1,
+              drawBorder: false
+            }
+          },
+          y1: {
+            type: 'linear',
+            display: true,
+            position: 'right',
+            beginAtZero: true,
+            title: {
+              display: true,
+              text: 'Monto (S/)',
+              color: getComputedStyle(d.documentElement).getPropertyValue('--color-text-secondary').trim(),
+              font: { size: 12, weight: '600', family: 'Inter, system-ui, sans-serif' },
+              padding: { top: 0, bottom: 10 }
+            },
+            ticks: {
+              color: getComputedStyle(d.documentElement).getPropertyValue('--color-text-muted').trim(),
+              font: { size: 11, family: 'JetBrains Mono, monospace' },
+              padding: 8,
+              callback: function(value) {
+                return 'S/ ' + fmt.n(value, 0);
+              }
+            },
+            grid: {
+              drawOnChartArea: false,
+              drawBorder: false
+            }
+          }
+        }
+      }
+    });
+  }
+
+  function zazuRenderMultiVis(containerId, data, limit) {
+    const el = d.getElementById(containerId);
+    if (!el) return;
+
+    const sorted = [...data].sort((a, b) => b.envios - a.envios).slice(0, limit);
+    if (!sorted.length) {
+      el.innerHTML = '<div class="zrr-empty">Sin datos para mostrar</div>';
+      return;
+    }
+
+    const N = sorted.length;
+    const ROW_H = 44;
+    const PAD_TOP = 28;
+    const SVG_W = 880;
+    const SVG_H = PAD_TOP + N * ROW_H + 10;
+    const BOTTOM_START = N > 5 ? N - 3 : N;
+
+    const maxEnvios = Math.max(...sorted.map(r => r.envios), 1);
+    const maxCierre = Math.max(...sorted.map(r => r.cierre), 1);
+    const avgC = sorted.reduce((s, r) => s + r.clientes, 0) / N || 1;
+    const maxDeltaC = Math.max(...sorted.map(r => Math.abs(r.clientes - avgC)), 0.1);
+
+    const C = {
+      name:    { x: 30, w: 146 },
+      envios:  { hx: 188, bx: 188, bw: 190, vx: 382 },
+      entrega: { hx: 418, bx: 418, bw: 112, vx: 537 },
+      clients: { hx: 566, rx: 566, rw: 88,  vx: 662 },
+      cierre:  { hx: 700, bx: 700, bw: 88,  vx: 793 },
+    };
+    const clipId = `mvc_${containerId}`;
+    const RANK_F = ['#f59e0b', '#94a3b8', '#f97316'];
+    const RANK_T = ['#111', '#111', '#fff'];
+
+    function eRate(r) { return r.envios > 0 ? r.entregados / r.envios : 0; }
+    function eColor(rt) { return rt >= 0.80 ? '#10b981' : rt >= 0.50 ? '#f59e0b' : '#ef4444'; }
+    function cColor(v) {
+      const t = maxCierre > 0 ? v / maxCierre : 0;
+      return t >= 0.67 ? '#10b981' : t >= 0.33 ? '#818cf8' : '#94a3b8';
+    }
+    function trunc(s, n = 17) { return s && s.length > n ? s.slice(0, n - 1) + '…' : (s || '—'); }
+
+    let svg = `<defs><clipPath id="${clipId}"><rect x="${C.name.x}" y="0" width="${C.name.w}" height="${SVG_H}"/></clipPath></defs>`;
+
+    // Column headers
+    [
+      [C.envios.hx,   'ENVÍOS'],
+      [C.entrega.hx,  '% ENTREGA'],
+      [C.clients.hx,  'CLIENTES / Δ'],
+      [C.cierre.hx,   'CIERRE CAJA'],
+    ].forEach(([x, lbl]) => {
+      svg += `<text x="${x}" y="19" font-size="8.5" font-weight="700" fill="#4b5563" letter-spacing="0.07em">${lbl}</text>`;
+    });
+
+    // Row separators
+    for (let i = 1; i < N; i++) {
+      const ly = PAD_TOP + i * ROW_H;
+      if (i === BOTTOM_START) {
+        svg += `<line x1="0" y1="${ly}" x2="${SVG_W}" y2="${ly}" stroke="#ef4444" stroke-width="0.8" stroke-dasharray="4,3" stroke-opacity="0.35"/>`;
+        svg += `<text x="${SVG_W - 4}" y="${ly - 3}" text-anchor="end" font-size="7.5" fill="#ef4444" fill-opacity="0.6">bottom 3</text>`;
+      } else {
+        svg += `<line x1="0" y1="${ly}" x2="${SVG_W}" y2="${ly}" stroke="#1f2937" stroke-width="1"/>`;
+      }
+    }
+
+    // Rows
+    sorted.forEach((r, i) => {
+      const y0 = PAD_TOP + i * ROW_H;
+      const cy = y0 + ROW_H / 2;
+      const isTop3 = i < 3;
+      const isBot = i >= BOTTOM_START;
+      const rt = eRate(r);
+      const ec = eColor(rt);
+      const dc = r.clientes - avgC;
+      const dcSign = dc >= 0 ? '+' : '';
+      const dcCol = dc > 0.4 ? '#10b981' : dc < -0.4 ? '#ef4444' : '#6b7280';
+
+      // Rank circle
+      const rf = isTop3 ? RANK_F[i] : isBot ? 'rgba(239,68,68,0.18)' : '#111827';
+      const rs = isTop3 ? 'none' : isBot ? '#ef4444' : '#374151';
+      const rt2 = isTop3 ? RANK_T[i] : isBot ? '#f87171' : '#6b7280';
+      svg += `<circle cx="13" cy="${cy}" r="12" fill="${rf}" stroke="${rs}" stroke-width="1"/>`;
+      svg += `<text x="13" y="${cy + 4}" text-anchor="middle" font-size="9.5" font-weight="800" fill="${rt2}">${i + 1}</text>`;
+
+      // Zone name
+      const nc = isBot ? '#f87171' : isTop3 ? '#f9fafb' : '#d1d5db';
+      svg += `<text x="${C.name.x}" y="${cy + 4}" font-size="11.5" font-weight="${isTop3 ? '700' : '500'}" fill="${nc}" clip-path="url(#${clipId})">${escHtml(trunc(r.zone))}</text>`;
+
+      // Col 1 — Envíos bar
+      const bfill = isTop3 ? RANK_F[i] : isBot ? 'rgba(239,68,68,0.5)' : 'rgba(99,102,241,0.7)';
+      const bw = (r.envios / maxEnvios) * C.envios.bw;
+      svg += `<rect x="${C.envios.bx}" y="${cy - 10}" width="${C.envios.bw}" height="20" rx="4" fill="#0d1117"/>`;
+      if (bw > 0) svg += `<rect x="${C.envios.bx}" y="${cy - 10}" width="${bw.toFixed(1)}" height="20" rx="4" fill="${bfill}"/>`;
+      const evc = isTop3 ? RANK_F[i] : isBot ? '#f87171' : '#a5b4fc';
+      svg += `<text x="${C.envios.vx + 5}" y="${cy + 4}" font-size="11" font-weight="700" fill="${evc}" font-family="monospace">${fmt.n(r.envios, 0)}</text>`;
+
+      // Col 2 — % Entrega bullet
+      const ew = Math.min(1, rt) * C.entrega.bw;
+      svg += `<rect x="${C.entrega.bx}" y="${cy - 7}" width="${C.entrega.bw}" height="14" rx="3" fill="#0d1117"/>`;
+      if (ew > 0) svg += `<rect x="${C.entrega.bx}" y="${cy - 7}" width="${ew.toFixed(1)}" height="14" rx="3" fill="${ec}" fill-opacity="0.82"/>`;
+      const tx = C.entrega.bx + 0.80 * C.entrega.bw;
+      svg += `<line x1="${tx}" y1="${cy - 11}" x2="${tx}" y2="${cy + 11}" stroke="rgba(255,255,255,0.45)" stroke-width="1.5"/>`;
+      svg += `<text x="${tx}" y="${cy - 13}" text-anchor="middle" font-size="7" fill="#6b7280">▾80%</text>`;
+      svg += `<text x="${C.entrega.vx + 5}" y="${cy + 4}" font-size="11" font-weight="700" fill="${ec}" font-family="monospace">${(rt * 100).toFixed(0)}%</text>`;
+
+      // Col 3 — Clientes lollipop
+      const midX = C.clients.rx + C.clients.rw / 2;
+      const dotX = Math.max(C.clients.rx + 5, Math.min(C.clients.rx + C.clients.rw - 5, midX + (dc / maxDeltaC) * (C.clients.rw / 2)));
+      svg += `<line x1="${C.clients.rx}" y1="${cy}" x2="${C.clients.rx + C.clients.rw}" y2="${cy}" stroke="#1f2937" stroke-width="1.5"/>`;
+      svg += `<line x1="${midX}" y1="${cy - 9}" x2="${midX}" y2="${cy + 9}" stroke="#374151" stroke-width="1" stroke-dasharray="2,2"/>`;
+      svg += `<line x1="${midX}" y1="${cy}" x2="${dotX}" y2="${cy}" stroke="${dcCol}" stroke-width="2.5"/>`;
+      svg += `<circle cx="${dotX}" cy="${cy}" r="5" fill="${dcCol}"/>`;
+      svg += `<text x="${C.clients.vx + 4}" y="${cy - 2}" font-size="10" font-weight="700" fill="${dcCol}" font-family="monospace">${fmt.n(r.clientes, 0)}</text>`;
+      svg += `<text x="${C.clients.vx + 4}" y="${cy + 10}" font-size="7.5" fill="#4b5563">${dcSign}${fmt.n(Math.abs(dc), 0)} avg</text>`;
+
+      // Col 4 — Cierre heatmap bar
+      const cc = cColor(r.cierre);
+      const cw = maxCierre > 0 ? Math.max(0, r.cierre / maxCierre) * C.cierre.bw : 0;
+      svg += `<rect x="${C.cierre.bx}" y="${cy - 8}" width="${C.cierre.bw}" height="16" rx="3" fill="#0d1117"/>`;
+      if (cw > 0) svg += `<rect x="${C.cierre.bx}" y="${cy - 8}" width="${cw.toFixed(1)}" height="16" rx="3" fill="${cc}" fill-opacity="0.78"/>`;
+      svg += `<text x="${C.cierre.vx + 4}" y="${cy + 4}" font-size="10" font-weight="700" fill="${cc}" font-family="monospace">S/${fmt.n(r.cierre, 0)}</text>`;
+    });
+
+    el.innerHTML = `<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;">
+      <svg viewBox="0 0 ${SVG_W} ${SVG_H}" width="100%" style="min-width:560px;font-family:Inter,system-ui,sans-serif;display:block;">${svg}</svg>
+    </div>`;
+  }
+
+  function zazuRenderRichRank(containerId, data, limit) {
+    const el = d.getElementById(containerId);
+    if (!el) return;
+
+    const sorted = [...data].sort((a, b) => b.envios - a.envios).slice(0, limit);
+    if (!sorted.length) {
+      el.innerHTML = '<div class="zrr-empty">Sin datos para mostrar</div>';
+      return;
+    }
+
+    const N = sorted.length;
+    const BOTTOM_START = N > 5 ? N - 3 : N;
+    const maxEnvios = Math.max(...sorted.map(r => r.envios), 1);
+    const maxCierre = Math.max(...sorted.map(r => r.cierre), 1);
+    const avgC = sorted.reduce((s, r) => s + r.clientes, 0) / N || 1;
+
+    function eRate(r) { return r.envios > 0 ? r.entregados / r.envios : 0; }
+    function eTier(rt) { return rt >= 0.80 ? 'high' : rt >= 0.50 ? 'mid' : 'low'; }
+    function cTier(v) {
+      const t = maxCierre > 0 ? v / maxCierre : 0;
+      return t >= 0.67 ? 'tier1' : t >= 0.33 ? 'tier2' : 'tier3';
+    }
+
+    const header = `<div class="zrr-header">
+      <span></span><span>Zona</span><span>Envíos</span><span>% Entrega</span><span>Clientes</span><span>Cierre caja</span>
+    </div>`;
+
+    const rows = sorted.map((r, i) => {
+      const isTop = i < 3;
+      const isBot = i >= BOTTOM_START;
+      const rt = eRate(r);
+      const tier = eTier(rt);
+      const dc = r.clientes - avgC;
+      const dSign = dc >= 0 ? '+' : '';
+      const dCls = dc > 0.4 ? 'pos' : dc < -0.4 ? 'neg' : 'neu';
+      const envPct = (r.envios / maxEnvios * 100).toFixed(1);
+      const botSepCls = i === BOTTOM_START ? ' zrr-row--bottom-sep' : '';
+      const rowCls = isTop
+        ? `zrr-row zrr-row--top${i + 1}`
+        : `zrr-row${isBot ? ' zrr-row--bottom' : ''}${botSepCls}`;
+      const rnCls = isTop
+        ? `zrr-rank-num zrr-rank-num--${i + 1}`
+        : `zrr-rank-num${isBot ? ' zrr-rank-num--bot' : ''}`;
+      const zoneCls = isBot ? 'zrr-zone zrr-zone--bot' : 'zrr-zone';
+
+      return `<div class="${rowCls}">
+        <div class="zrr-rank"><span class="${rnCls}">${i + 1}</span></div>
+        <div class="${zoneCls}">${escHtml(r.zone)}</div>
+        <div class="zrr-envios">
+          <div class="zrr-bar-track"><div class="zrr-bar-fill" style="width:${envPct}%"></div></div>
+          <span class="zrr-bar-val">${fmt.n(r.envios, 0)}</span>
+        </div>
+        <div class="zrr-entrega">
+          <div class="zrr-entrega-row">
+            <span class="zrr-epct zrr-epct--${tier}">${(rt * 100).toFixed(1)}%</span>
+            <span class="zrr-etgt">obj. 80%</span>
+          </div>
+          <div class="zrr-bullet-track">
+            <div class="zrr-bullet-fill zrr-bullet-fill--${tier}" style="width:${Math.min(100, rt * 100).toFixed(1)}%"></div>
+            <div class="zrr-bullet-tgt"></div>
+          </div>
+        </div>
+        <div class="zrr-clients">
+          <span class="zrr-cval">${fmt.n(r.clientes, 0)}</span>
+          <span class="zrr-delta zrr-delta--${dCls}">${dSign}${fmt.n(Math.abs(dc), 0)} avg</span>
+        </div>
+        <div class="zrr-cierre zrr-cierre--${cTier(r.cierre)}">S/ ${fmt.n(r.cierre, 2)}</div>
+      </div>`;
+    }).join('');
+
+    el.innerHTML = header + rows;
+  }
+
+
+  function zazuRenderRankingKpis(targetId, agg) {
+    const strip = d.getElementById(targetId);
+    if (!strip) return;
+
+    const totalEnvios = agg.reduce((sum, r) => sum + (r.envios || 0), 0);
+    const totalClientes = agg.reduce((sum, r) => sum + (r.clientes || 0), 0);
+    const totalCierre = agg.reduce((sum, r) => sum + (r.cierre || 0), 0);
+    const zonas = agg.length;
+    const topZona = agg.length > 0 ? agg[0].zone : '—';
+
+    const cards = [
+      { label: 'Total Envíos', value: fmt.n(totalEnvios, 0), icon: 'truck' },
+      { label: 'Total Clientes', value: fmt.n(totalClientes, 0), icon: 'users' },
+      { label: 'Cierre Total', value: `S/ ${fmt.n(totalCierre, 2)}`, icon: 'money' },
+      { label: 'Zonas Activas', value: fmt.n(zonas, 0), icon: 'map' },
+      { label: 'Top Zona', value: topZona, icon: 'award' },
+    ];
+
+    strip.innerHTML = cards.map(({ label, value, icon }) => `
+      <article class="zazu-kpi-card">
+        <div class="zazu-kpi-icon">${zazuGetKpiIcon(icon)}</div>
+        <div class="zazu-kpi-label">${escHtml(label)}</div>
+        <div class="zazu-kpi-value">${escHtml(String(value))}</div>
+      </article>
+    `).join('');
+  }
+
+  function zazuRenderLimaRankings(rows) {
+    const filter = S.zazuLimaRankingFilter || '';
+    const agg = zazuAggregateRanking(rows, 'lima', filter);
+    zazuRenderMultiVis('zazu-lima-multivis', agg, 10);
+    zazuRenderRichRank('zazu-lima-richrank', agg, 10);
+    zazuRenderRankingKpis('zazu-lima-ranking-kpi', agg);
+  }
+
+  function zazuRenderProvRankings(rows) {
+    const filter = S.zazuProvRankingFilter || '';
+    const agg = zazuAggregateRanking(rows, 'provincia', filter);
+    zazuRenderMultiVis('zazu-prov-multivis', agg, 10);
+    zazuRenderRichRank('zazu-prov-richrank', agg, 10);
+    zazuRenderRankingKpis('zazu-prov-ranking-kpi', agg);
+  }
+
+  function zazuExtractCoords(row) {
+    const raw = zazuPickField(row, [
+      'direccion',
+      'coordenadas',
+      'coords',
+      'gps',
+      'location',
+      'ubicacion',
+    ]);
+    const text = String(raw || '').trim();
+    if (!text) return null;
+    // Acepta formatos: "-12.08,-77.01" o "-12.08, -77.01"
+    const m = text.match(/(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)/);
+    if (!m) return null;
+    const lat = Number(m[1]);
+    const lng = Number(m[2]);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return { lat, lng };
+  }
+
+  function zazuMapUrl(row) {
+    const coords = zazuExtractCoords(row);
+    if (coords) {
+      return `https://www.google.com/maps?q=${encodeURIComponent(`${coords.lat},${coords.lng}`)}`;
+    }
+    const addressText = zazuPickField(row, [
+      'direccion_texto',
+      'direccion_entrega',
+      'direccion_cliente',
+      'direccion',
+      'address',
+      'distrito',
+      'ciudad',
+      'provincia',
+      'departamento',
+    ]);
+    const q = String(addressText || '').trim();
+    if (!q) return '';
+    return `https://www.google.com/maps?q=${encodeURIComponent(q)}`;
+  }
+
+  function zazuDisplayAddress(row) {
+    const full = String(zazuPickField(row, [
+      'direccion_texto',
+      'direccion_entrega',
+      'direccion_cliente',
+      'address',
+      'direccion',
+    ]) || '').trim();
+    if (!full) return { short: '—', full: '' };
+    if (full.length <= 58) return { short: full, full };
+    return { short: `${full.slice(0, 58).trim()}…`, full };
+  }
+
+  function zazuDisplayMotorizado(row) {
+    const moto = row && typeof row.motorizado === 'object' ? row.motorizado : {};
+    const direct = [
+      row && row.nombre_motorizado,
+      row && row.motorizado_nombre,
+      moto && moto.nombre,
+      moto && moto.full_name,
+      moto && moto.name,
+      row && row.proveedor_o_agencia,
+    ].find((v) => v != null && String(v).trim() !== '');
+    if (direct) return String(direct).trim();
+    const id = row && row.id_motorizado ? String(row.id_motorizado).trim() : '';
+    if (id) return `ID ${id.slice(0, 8)}`;
+    return '—';
+  }
+
+  function zazuDisplayPhone(row) {
+    const raw = zazuPickField(row, [
+      'telefono_cliente',
+      'telefono',
+      'celular',
+      'whatsapp',
+      'phone',
+      'mobile',
+      'numero_cliente',
+      'numero',
+    ]);
+    if (raw == null || raw === '') return '—';
+    const text = String(raw).trim();
+    const digits = text.replace(/\D+/g, '');
+    // Si viene con más de 6 dígitos, normalmente es teléfono.
+    if (digits.length >= 7) return text;
+    return '—';
+  }
+
+  function zazuNotaRef(row) {
+    const e = row && typeof row.envio === 'object' ? row.envio : {};
+    // Buscar en todas las fuentes posibles; priorizar campos de nota de venta Odoo
+    const candidates = [
+      'numero_nota', 'nota_venta', 'nota_de_venta', 'sale_order_name',
+      'numero_orden', 'order_ref', 'pedido', 'nota', 'id_venta',
+      'id_envio', 'codigo', 'name',
+    ];
+    for (const k of candidates) {
+      for (const src of [row, e]) {
+        const v = src && src[k];
+        if (v != null && String(v).trim()) return String(v).trim();
+      }
+    }
+    return '';
+  }
+
+  function openReceiptModalWithData(notaRef, payload) {
+    const overlay = d.getElementById('receipt-modal-overlay');
+    const body = d.getElementById('receipt-modal-body');
+    const title = d.getElementById('receipt-modal-title');
+    if (!overlay || !body || !title) return;
+
+    const lines = Array.isArray(payload && payload.lines) ? payload.lines : [];
+    const total = Number(payload && payload.amount_total);
+    const totalSafe = Number.isFinite(total) ? `S/ ${fmt.n(total, 2)}` : '—';
+    const partner = payload && payload.partner ? String(payload.partner) : 'C/F';
+    const dateOrder = payload && payload.date_order ? String(payload.date_order) : '—';
+    const source = payload && payload.type ? String(payload.type) : '—';
+    const state = payload && payload.state ? String(payload.state) : '';
+    const amtPaid = payload && payload.amount_paid != null ? Number(payload.amount_paid) : null;
+    const amtDue = payload && payload.amount_residual != null ? Number(payload.amount_residual) : null;
+    const money = (value) => {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return '—';
+      return `S/ ${fmt.n(n, 2)}`;
+    };
+
+    // Detectar marca desde ref o payload
+    const refStr = String(notaRef || '').toUpperCase();
+    let brandIcon = '/assets/iconos-barra/zazu_icon.png';
+    let brandName = 'Zazu Express';
+    if (refStr.includes('OVER') || refStr.includes('SHARK')) {
+      brandIcon = '/assets/iconos-barra/over-icon.png'; brandName = 'Overshark';
+    } else if (refStr.includes('BRAV')) {
+      brandIcon = '/assets/iconos-barra/brav-icon.png'; brandName = 'Bravos';
+    } else if (refStr.includes('BOX') || refStr.includes('PRIME')) {
+      brandIcon = '/assets/iconos-barra/box.icon.png'; brandName = 'Box Prime';
+    }
+
+    title.textContent = `Nota de Venta ${notaRef}`;
+    body.innerHTML = `
+      <div class="receipt-wrap">
+        <div class="receipt-header">
+          <img src="${escHtml(brandIcon)}" alt="${escHtml(brandName)}" class="receipt-brand-logo" onerror="this.style.display='none'">
+          <div class="receipt-header-info">
+            <div class="receipt-company">${escHtml(brandName)}</div>
+            <div class="receipt-doc-type">NOTA DE VENTA</div>
+            <div class="receipt-doc-num">${escHtml(String(notaRef || '—'))}</div>
+          </div>
+        </div>
+        <div class="receipt-meta-grid">
+          <div class="receipt-meta-row"><span class="receipt-meta-label">Cliente</span><span class="receipt-meta-val">${escHtml(partner)}</span></div>
+          <div class="receipt-meta-row"><span class="receipt-meta-label">Fecha</span><span class="receipt-meta-val">${escHtml(dateOrder.slice(0, 16) || '—')}</span></div>
+          <div class="receipt-meta-row"><span class="receipt-meta-label">Fuente</span><span class="receipt-meta-val">${escHtml(source)}</span></div>
+          ${state ? `<div class="receipt-meta-row"><span class="receipt-meta-label">Estado</span><span class="receipt-meta-val">${escHtml(state)}</span></div>` : ''}
+        </div>
+        <div class="receipt-divider"></div>
+        <div class="receipt-lines-wrap">
+          <table class="receipt-lines-table">
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th>Cant</th>
+                <th>P. Unit</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${lines.length ? lines.map((ln) => `
+                <tr>
+                  <td>${escHtml(String(ln && ln.product ? ln.product : '—'))}</td>
+                  <td class="receipt-td-num">${escHtml(String(ln && ln.qty != null ? ln.qty : '—'))}</td>
+                  <td class="receipt-td-num">${escHtml(money(ln && ln.price_unit))}</td>
+                  <td class="receipt-td-num">${escHtml(money(ln && ln.subtotal))}</td>
+                </tr>
+              `).join('') : '<tr><td colspan="4" style="text-align:center;color:#888">Sin líneas en Odoo.</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+        <div class="receipt-totals">
+          <div class="receipt-total-row receipt-total-row--grand">
+            <span>TOTAL</span>
+            <span>${escHtml(totalSafe)}</span>
+          </div>
+          ${Number.isFinite(amtPaid) ? `<div class="receipt-total-row"><span>Pagado</span><span>${escHtml(money(amtPaid))}</span></div>` : ''}
+          ${Number.isFinite(amtDue) ? `<div class="receipt-total-row ${amtDue > 0 ? 'receipt-total-row--due' : ''}"><span>Saldo</span><span>${escHtml(money(amtDue))}</span></div>` : ''}
+        </div>
+        <div class="receipt-footer">
+          <img src="/assets/iconos-barra/zazu_icon.png" alt="Zazu" class="receipt-footer-logo" width="22" height="22" onerror="this.style.display='none'">
+          <span>Generado por Zazu Express · Sistema Odoo</span>
+        </div>
+      </div>
+    `;
+    overlay.style.display = 'flex';
+  }
+
+  async function openOdooReceiptFromNota(notaRef) {
+    const clean = String(notaRef || '').trim();
+    if (!clean) return;
+    const overlay = d.getElementById('receipt-modal-overlay');
+    const body = d.getElementById('receipt-modal-body');
+    const title = d.getElementById('receipt-modal-title');
+    if (overlay && body && title) {
+      title.textContent = `Nota ${clean}`;
+      body.innerHTML = '<p>Cargando detalle desde Odoo...</p>';
+      overlay.style.display = 'flex';
+    }
+    try {
+      const resp = await apiFetch(`/api/odoo/order-receipt-json?nota=${encodeURIComponent(clean)}`);
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data && data.error ? data.error : `HTTP ${resp.status}`);
+      openReceiptModalWithData(clean, data || {});
+    } catch (err) {
+      if (body) {
+        body.innerHTML = `<p class="text-danger">No se pudo cargar el detalle: ${escHtml(err && err.message ? err.message : String(err))}</p>`;
       }
     }
   }
 
-  /**
-   * @param {boolean} [forceFetch=true] Si false, reutiliza la última respuesta de la misma pestaña y solo aplica filtros en el navegador.
-   */
-    async function fetchZazuEnvios(forceFetch) {
-    const force = forceFetch !== false;
+  async function openVoucherModal(voucherId, guia, codigo) {
+    const overlay = d.getElementById('voucher-modal-overlay');
+    const body = d.getElementById('voucher-modal-body');
+    const title = d.getElementById('voucher-modal-title');
+    if (!overlay || !body || !title) return;
+
+    title.textContent = 'Voucher de Envío — Tracking Shalom';
+    body.innerHTML = '<div style="text-align:center;padding:32px;"><div class="spinner-inline"></div><span style="margin-left:8px;">Cargando...</span></div>';
+    overlay.style.display = 'flex';
+
+    let trackingUrl = '';
+    try {
+      const params = new URLSearchParams();
+      if (guia) params.set('guia', guia);
+      if (codigo) params.set('codigo', codigo);
+      const resp = await fetch('/api/shalom/tracking-url?' + params.toString());
+      if (resp.ok) {
+        const j = await resp.json();
+        trackingUrl = j.url || '';
+      }
+    } catch (_) {}
+
+    const qrData = trackingUrl || [
+      voucherId ? `ID:${voucherId}` : '',
+      guia ? `GUIA:${guia}` : '',
+      codigo ? `COD:${codigo}` : '',
+    ].filter(Boolean).join('|');
+
+    const qrCanvas = d.createElement('canvas');
+    qrCanvas.id = 'voucher-qr-canvas';
+    qrCanvas.style.cssText = 'display:block;margin:0 auto;border-radius:8px;';
+
+    try {
+      if (typeof QRCode !== 'undefined') {
+        await QRCode.toCanvas(qrCanvas, qrData || 'Sin datos', {
+          width: 220,
+          margin: 2,
+          color: { dark: '#18181b', light: '#ffffff' }
+        });
+      }
+    } catch (err) {
+      console.error('Error generando QR:', err);
+    }
+
+    body.innerHTML = `
+      <div class="voucher-content">
+        <div class="voucher-header">
+          <div class="voucher-logo">
+            <img src="/assets/iconos-barra/zazu_icon.png" alt="Zazu Express" style="width:100%;height:100%;object-fit:contain;">
+          </div>
+          <div class="voucher-title">Zazu Express × Shalom</div>
+          <div class="voucher-subtitle">Comprobante de Envío</div>
+        </div>
+        <div class="voucher-qr" id="voucher-qr-container" style="text-align:center;padding:16px 0;"></div>
+        <div class="voucher-info">
+          ${voucherId ? `<div class="voucher-info-row"><span class="voucher-info-label">ID Venta</span><span class="voucher-info-value">${escHtml(voucherId)}</span></div>` : ''}
+          ${guia ? `<div class="voucher-info-row"><span class="voucher-info-label">Guía Shalom</span><span class="voucher-info-value">${escHtml(guia)}</span></div>` : ''}
+          ${codigo ? `<div class="voucher-info-row"><span class="voucher-info-label">Código</span><span class="voucher-info-value">${escHtml(codigo)}</span></div>` : ''}
+          <div class="voucher-info-row"><span class="voucher-info-label">Fecha</span><span class="voucher-info-value">${new Date().toLocaleDateString('es-PE')}</span></div>
+          ${trackingUrl ? `<div class="voucher-info-row" style="margin-top:12px;">
+            <a href="${escHtml(trackingUrl)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm" style="width:100%;justify-content:center;text-decoration:none;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+              Ver en Shalom
+            </a>
+          </div>` : ''}
+        </div>
+        <p style="text-align:center;font-size:11px;color:var(--color-text-muted);margin-top:12px;">Escanea el QR para rastrear el envío</p>
+      </div>
+    `;
+
+    const container = d.getElementById('voucher-qr-container');
+    if (container && qrCanvas.width > 0) {
+      container.appendChild(qrCanvas);
+    } else if (container) {
+      container.innerHTML = `<p style="color:var(--color-text-muted);font-size:12px;padding:16px;">QR: ${escHtml(guia || codigo || voucherId || '—')}</p>`;
+    }
+  }
+
+  function zazuLooksLikeHttpUrl(value) {
+    return /^https?:\/\//i.test(String(value || '').trim());
+  }
+
+  function zazuLooksLikeImageUrl(value) {
+    const u = String(value || '').trim();
+    if (!zazuLooksLikeHttpUrl(u)) return false;
+    if (/\.(png|jpe?g|gif|webp|bmp|svg)(\?|#|$)/i.test(u)) return true;
+    return /image|imagen|foto|voucher|evidence|adjunto|attachment|public\/.+/.test(u.toLowerCase());
+  }
+
+  function zazuImageUrl(row) {
+    const candidates = [];
+    const add = (v) => { if (v != null && v !== '') candidates.push(String(v)); };
+    add(row && row.foto);
+    add(row && row.foto_voucher);
+    add(row && row.imagen);
+    add(row && row.image_url);
+    add(row && row.url_imagen);
+    add(row && row.url_foto);
+    add(row && row.voucher_url);
+    add(row && row.foto_url);
+    const envio = row && typeof row.envio === 'object' ? row.envio : null;
+    if (envio) {
+      add(envio.foto);
+      add(envio.foto_voucher);
+      add(envio.imagen);
+      add(envio.image_url);
+      add(envio.url_imagen);
+      add(envio.url_foto);
+      add(envio.voucher_url);
+      add(envio.foto_url);
+      Object.keys(envio).forEach((k) => {
+        const key = String(k).toLowerCase();
+        const v = envio[k];
+        if (!v || typeof v !== 'string') return;
+        if (!/(foto|imagen|image|voucher|evidencia|adjunto|attachment|url)/.test(key)) return;
+        add(v);
+      });
+    }
+    const picked = candidates.find((v) => zazuLooksLikeImageUrl(v)) || candidates.find((v) => zazuLooksLikeHttpUrl(v));
+    return picked || null;
+  }
+
+  function renderZazuPagination(total) {
+    const root = d.getElementById('zazu-pagination');
+    const info = d.getElementById('zazu-page-info');
+    const prev = d.getElementById('zazu-page-prev');
+    const next = d.getElementById('zazu-page-next');
+    if (!root || !info || !prev || !next) return;
+    const totalRows = Math.max(0, Number(total) || 0);
+    const pages = Math.max(1, Math.ceil(totalRows / Math.max(1, S.zazuPageSize || 400)));
+    if (S.zazuPage > pages) S.zazuPage = pages;
+    if (S.zazuPage < 1) S.zazuPage = 1;
+    root.hidden = S.zazuScope === 'provincia' || S.zazuLimaView !== 'tabla' || totalRows <= S.zazuPageSize;
+    info.textContent = `Pag. ${S.zazuPage} de ${pages}`;
+    prev.disabled = S.zazuPage <= 1;
+    next.disabled = S.zazuPage >= pages;
+  }
+
+  function zazuBuildLimaRow(r) {
+    const noPhotoIcon = `<span class="zazu-image-empty-icon" aria-label="Sin foto" title="Sin foto">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M2 2l20 20"></path><path d="M10.58 10.58a2 2 0 1 0 2.83 2.83"></path>
+        <path d="M9.88 4.24A10.94 10.94 0 0 1 12 4c5 0 9.27 3.11 11 7.5a12.2 12.2 0 0 1-4.04 5.3"></path>
+        <path d="M6.61 6.61A12.24 12.24 0 0 0 1 11.5C2.73 15.89 7 19 12 19c1.61 0 3.15-.32 4.56-.9"></path>
+      </svg></span>`;
+    const fecha = zazuDisplayDate(r);
+    const telefono = zazuDisplayPhone(r);
+    const direccionObj = zazuDisplayAddress(r);
+    const distrito = zazuPickField(r, ['distrito']) || '—';
+    const ciudad = zazuPickField(r, ['ciudad', 'provincia', 'departamento']) || '—';
+    const ubicacionTexto = `${String(distrito || '—')}${ciudad && ciudad !== distrito ? `, ${String(ciudad)}` : ''}`;
+    const mapUrl = zazuMapUrl(r);
+    const costoServicio = zazuDisplayServiceCost(r);
+    const pago = zazuDisplayPayment(r);
+    const monto = zazuDisplayMonto(r);
+    const estado = zazuPickField(r, ['estado_pedido', 'estado']) || '—';
+    const empresa = zazuRowEmpresa(r);
+    const imageUrl = zazuImageUrl(r);
+    const notaRef = zazuNotaRef(r);
+    const cxcCell = zazuCxcCell(r);
+    const imageCell = imageUrl
+      ? `<a href="${escHtml(imageUrl)}" class="zazu-image-link" target="_blank" rel="noopener noreferrer">
+          <img src="${escHtml(imageUrl)}" alt="Evidencia envío" class="zazu-image-thumb" loading="lazy" referrerpolicy="no-referrer">
+        </a>`
+      : noPhotoIcon;
+    const notaCell = notaRef
+      ? `<a href="#" class="zazu-note-link" data-nota-ref="${escHtml(notaRef)}">Ver detalle</a>`
+      : '<span class="zazu-image-empty">—</span>';
+    const ubicacionCell = mapUrl
+      ? `${escHtml(ubicacionTexto)}<br><a href="${escHtml(mapUrl)}" class="zazu-map-link" target="_blank" rel="noopener noreferrer">Ver ubicación</a>`
+      : escHtml(ubicacionTexto);
+    return `<tr>
+      <td><div class="zazu-id-cell"><span class="zazu-id-main">${escHtml(String(r.id_envio || '—'))}</span><span class="zazu-company-chip">${escHtml(String(empresa || '—'))}</span></div></td>
+      <td>${escHtml(fecha)}</td>
+      <td><span class="zazu-status ${zazuStatusClass(estado)}">${escHtml(String(estado || '—'))}</span></td>
+      <td><span class="zazu-client-name">${escHtml(String(zazuClientName(r) || '—'))}</span></td>
+      <td><span class="zazu-phone">${escHtml(String(telefono || '—'))}</span></td>
+      <td title="${escHtml(direccionObj.full || '')}"><span class="zazu-address">${escHtml(String(direccionObj.short || '—'))}</span></td>
+      <td><div class="zazu-geo-cell">${ubicacionCell}</div></td>
+      <td><span class="zazu-money-chip">${escHtml(String(costoServicio || '—'))}</span></td>
+      <td><span class="zazu-pay-chip">${escHtml(String(pago || '—'))}</span></td>
+      <td><span class="zazu-money-chip zazu-money-chip--strong">${escHtml(String(monto || '—'))}</span></td>
+      <td>${cxcCell}</td>
+      <td>${imageCell}</td>
+      <td>${notaCell}</td>
+    </tr>`;
+  }
+
+  function renderZazuRows(rows, meta) {
+    const tbody = d.getElementById('zazu-tbody');
+    const badge = d.getElementById('zazu-meta-badge');
+    if (!tbody) return;
+    // Counts siempre sobre el total sin filtrar por estado para mostrar todos los tabs
+    syncLimaEstadoCounts(Array.isArray(rows) ? rows : []);
+    const allRows = zazuFilteredRows(rows);
+    const pageSize = Math.max(1, Number(S.zazuPageSize) || 400);
+    const pages = Math.max(1, Math.ceil(allRows.length / pageSize));
+    if (S.zazuPage > pages) S.zazuPage = pages;
+    if (S.zazuPage < 1) S.zazuPage = 1;
+    const start = (S.zazuPage - 1) * pageSize;
+    const end = start + pageSize;
+    const list = allRows.slice(start, end);
+    if (badge) {
+      const label = S.zazuTab || 'entregados';
+      const range = S.zazuDateFrom || S.zazuDateTo ? ` · ${S.zazuDateFrom || '...'} → ${S.zazuDateTo || '...'}` : '';
+      const co = S.zazuEmpresa && S.zazuEmpresa !== '__ALL__' ? ` · ${S.zazuEmpresa}` : '';
+      badge.textContent = `${allRows.length} registros · ${label}${co}${range}`;
+      if (meta && meta.table) badge.title = `Tabla: ${meta.table}`;
+    }
+    renderZazuPagination(allRows.length);
+    zazuRenderLimaRankings(allRows);
+    if (!allRows.length) {
+      tbody.innerHTML = '<tr><td colspan="13">Sin datos para este filtro.</td></tr>';
+      syncZazuSectionViews();
+      return;
+    }
+    const noPhotoIcon = `<span class="zazu-image-empty-icon" aria-label="Sin foto" title="Sin foto">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M2 2l20 20"></path>
+        <path d="M10.58 10.58a2 2 0 1 0 2.83 2.83"></path>
+        <path d="M9.88 4.24A10.94 10.94 0 0 1 12 4c5 0 9.27 3.11 11 7.5a12.2 12.2 0 0 1-4.04 5.3"></path>
+        <path d="M6.61 6.61A12.24 12.24 0 0 0 1 11.5C2.73 15.89 7 19 12 19c1.61 0 3.15-.32 4.56-.9"></path>
+      </svg>
+    </span>`;
+    tbody.innerHTML = list.map((r) => zazuBuildLimaRow(r)).join('');
+    tbody.querySelectorAll('img.zazu-image-thumb').forEach((img) => {
+      img.addEventListener('error', () => {
+        const link = img.closest('a.zazu-image-link');
+        if (!link || link.dataset.broken === '1') return;
+        link.dataset.broken = '1';
+        link.classList.add('zazu-image-link--broken');
+        img.remove();
+        link.insertAdjacentHTML('beforeend', noPhotoIcon);
+      });
+    });
+    fetchZazuCxcForRows(list);
+    syncZazuSectionViews();
+  }
+
+  async function fetchZazuEnvios(force) {
+    if (S.zazuScope === 'provincia') return;
     const load = d.getElementById('zazu-loading');
     const err = d.getElementById('zazu-error');
-    const wrap = d.getElementById('zazu-table-wrap');
-    const warnBox = d.getElementById('zazu-warnings');
-    if (err) { err.hidden = true; err.textContent = ''; }
-    if (warnBox) { warnBox.hidden = true; warnBox.textContent = ''; }
-    if (wrap) wrap.hidden = true;
     if (load) load.hidden = false;
+    if (err) { err.hidden = true; err.textContent = ''; }
     syncZazuTabsActive();
-    
-    // Mejoramos la lógica de inicialización de fechas
-    initZazuDateInputsIfEmpty();
-    
+    syncZazuDateInputs();
+    S.zazuCxcByRef = {};
+    S.zazuCxcPending = {};
     try {
-      const tab = S.zazuTab || 'entregados';
-      // Obtenemos los valores de los filtros actuales (fecha y marca)
-      const df = d.getElementById('zazu-date-from')?.value || '';
-      const dt = d.getElementById('zazu-date-to')?.value || '';
-      const marca = d.getElementById('zazu-marca')?.value || 'all';
-
-      let rawRows;
-      let serverWarns = [];
-      const useCache = !force && S.zazuCache && S.zazuCache.tab === tab && Array.isArray(S.zazuCache.rows);
-      
-      if (useCache) {
-        rawRows = S.zazuCache.rows;
-        zazuDevConsolePush(`Filtros locales (${tab}, ${rawRows.length} filas)…`, 'info');
-        renderZazuDevPanel();
-      } else {
-        zazuDevConsolePush(`Cargando envíos (${tab}) desde el servidor…`, 'info');
-        renderZazuDevPanel();
-        
-        // Pasamos filtros al servidor
-        const params = new URLSearchParams({ 
-          tab, 
-          limit: '2000'
+      const pageLimit = force ? 2000 : 1200;
+      const allRows = [];
+      let offset = 0;
+      let meta = null;
+      while (true) {
+        const params = new URLSearchParams({
+          tab: 'todos',
+          table: S.zazuSourceTable || 'tb_envios_diarios_lina',
+          limit: String(pageLimit),
+          offset: String(offset),
         });
-        if (df) params.set('date_from', df);
-        if (dt) params.set('date_to', dt);
-        if (marca !== 'all') params.set('marca', marca);
-
-        const url = `/api/zazu/envios-diarios?${params.toString()}`;
-        const resp = await apiFetch(url);
-        const j = await resp.json();
-        if (!resp.ok) throw new Error(j.error || `HTTP ${resp.status}`);
-        serverWarns = j.meta && Array.isArray(j.meta.warnings) ? j.meta.warnings : [];
-        rawRows = Array.isArray(j.rows) ? j.rows : [];
-        S.zazuCache = { tab, rows: rawRows };
+        if (S.zazuDateFrom) params.set('date_from', S.zazuDateFrom);
+        if (S.zazuDateTo) params.set('date_to', S.zazuDateTo);
+        const resp = await apiFetch(`/api/supabase/zazu-envios?${params.toString()}`);
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+        const chunk = Array.isArray(data.rows) ? data.rows : [];
+        allRows.push(...chunk);
+        meta = data.meta || meta;
+        const hasMore = !!(data && data.meta && data.meta.has_more);
+        if (!hasMore) break;
+        offset += pageLimit;
       }
-      
-      const applied = zazuApplyClientFilters(rawRows);
-      const hintParts = (applied.hints || []).concat(serverWarns);
-      if (warnBox && hintParts.length) {
-        warnBox.hidden = false;
-        warnBox.textContent = hintParts.join(' ');
-      }
-      renderZazuTable(applied.filtered, { loaded: applied.total });
-      if (wrap) wrap.hidden = false;
-      const vis = applied.filtered.length;
-      const tot = applied.total;
-      zazuDevConsolePush(useCache ? `Listo: ${vis} visibles.` : `Listo: ${tot} filas, ${vis} filtradas.`, 'ok');
-      renderZazuDevPanel();
+      S.zazuRowsAll = allRows;
+      syncZazuCompanyOptions(S.zazuRowsAll);
+      S.zazuPage = 1;
+      renderZazuRows(S.zazuRowsAll, meta || {});
+      zazuRenderKpis('zazu-kpi-strip', S.zazuRowsAll);
     } catch (e) {
-      S.zazuCache = null;
-      const msg = e.message || String(e);
-      zazuDevConsolePush(`Error: ${msg}`, 'err');
-      renderZazuDevPanel();
-      if (err) { err.hidden = false; err.textContent = msg; }
+      if (err) {
+        err.hidden = false;
+        err.textContent = e && e.message ? e.message : String(e);
+      }
+      S.zazuRowsAll = [];
+      syncZazuCompanyOptions(S.zazuRowsAll);
+      S.zazuPage = 1;
+      renderZazuRows([], null);
+      zazuRenderKpis('zazu-kpi-strip', []);
     } finally {
       if (load) load.hidden = true;
     }
@@ -2752,10 +3632,11 @@
       case 'analysis': renderAnalysisChart(); break;
       case 'table': renderTable(); break;
       case 'depletion': renderDepletionChart(); break;
+      case 'insights': break;
     }
   }
 
-  const TAB_IDS = ['income', 'analysis', 'table', 'depletion'];
+  const TAB_IDS = ['income', 'analysis', 'table', 'depletion', 'insights'];
 
   /** Actualiza pestaña, panel y resaltado de accesos rápidos de riesgo. */
   function applyTabSelection(tab, opts) {
@@ -2791,13 +3672,9 @@
       if (heading) heading.textContent = APP_NAME;
       if (label) label.textContent = 'Vista general';
     }
-    if (S.view === 'inventory' || S.view === 'risks') {
-      fetchInventoryRisks();
-    } else if (S.view === 'zazu') {
-      /* datos del panel Zazu; no recargar Odoo */
-    } else {
-      fetchData();
-    }
+    if (S.view === 'inventory' || S.view === 'risks') fetchInventoryRisks();
+    else if (S.view === 'zazu') fetchZazuEnvios(false);
+    else fetchData();
   }
 
   // ── Insights ──
@@ -2919,9 +3796,10 @@
   }
 
   async function exportProjectionPdf() {
-    if (!S.data || !window.jspdf?.jsPDF) return;
+    if (!window.jspdf?.jsPDF) { alert('Error: librería PDF no disponible. Verifique su conexión a internet y recargue la página.'); return; }
+    if (!S.data) { alert('Cargue primero los datos del dashboard antes de exportar el PDF.'); return; }
     const btnPdf = d.getElementById('btn-pdf');
-    if (btnPdf) btnPdf.disabled = true;
+    if (btnPdf) { btnPdf.disabled = true; btnPdf.textContent = 'Generando...'; }
     try {
       const [appImg, brandImg] = await Promise.all([
         fetchPdfImageDataUrl('/assets/odooreport-icon.png'),
@@ -2929,6 +3807,10 @@
       ]);
 
       const doc = new window.jspdf.jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+      if (typeof doc.autoTable !== 'function') {
+        alert('Error: plugin de tablas PDF no disponible. Recargue la página e intente de nuevo.');
+        return;
+      }
       const lineCol = isBravosAggregation() ? 'Producto' : (isBoxPrimeAggregation() ? 'Producto' : 'Familia');
       const headers = [[lineCol, 'Stock', 'Cantidad', 'Ticket', 'Ventas', 'Ingresos', 'Porcentaje', 'Dias']];
       const body = getProjectionRows().map(r => [
@@ -3039,6 +3921,234 @@
       });
       doc.save(`proyecciones_${new Date().toISOString().slice(0, 10)}.pdf`);
     } finally {
+      if (btnPdf) {
+        btnPdf.disabled = false;
+        btnPdf.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2h9l5 5v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/></svg> PDF';
+      }
+    }
+  }
+
+  // ── Export Zazu PDF ──
+  async function exportZazuPdf() {
+    const btnPdf = d.getElementById('btn-zazu-pdf');
+    if (btnPdf) btnPdf.disabled = true;
+    try {
+      const { jsPDF } = window.jspdf || {};
+      if (!jsPDF) { alert('Error: librería PDF no disponible. Verifique conexión a internet y recargue la página.'); return; }
+
+      // Datos actuales
+      const rows = S.zazuScope === 'provincia' ? (S.zazuProvRows || []) : zazuFilteredRows(S.zazuRowsAll || []);
+      if (!rows || rows.length === 0) { alert('No hay datos para exportar. Cargue primero los envíos en la sección Logística.'); return; }
+      const m = zazuComputeMetrics(rows);
+      const money = (v) => `S/ ${fmt.n(Number(v) || 0, 2)}`;
+      const scope = S.zazuScope === 'provincia' ? 'Provincia' : 'Lima';
+      const tabLabel = String(S.zazuTab || 'todos');
+
+      const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+      const pageW = doc.internal.pageSize.getWidth();
+      const pageH = doc.internal.pageSize.getHeight();
+      const mg = { top: 72, bottom: 40, left: 28, right: 28 };
+
+      // ── Header background ──
+      doc.setFillColor(9, 9, 11);
+      doc.rect(0, 0, pageW, 62, 'F');
+
+      // Logo Zazu
+      try {
+        const zazuResp = await fetch('/assets/iconos-barra/zazu_icon.png');
+        const zazuBlob = await zazuResp.blob();
+        const zazuDataUrl = await new Promise((res) => {
+          const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(zazuBlob);
+        });
+        doc.addImage(zazuDataUrl, 'PNG', mg.left, 8, 46, 46);
+      } catch (_) { /* sin logo */ }
+
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(18);
+      doc.text('Zazu Express — Reporte de Envíos', pageW / 2, 34, { align: 'center' });
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(180, 180, 190);
+      doc.text(`${scope} · ${tabLabel} · ${rows.length} registros · Generado: ${new Date().toLocaleString('es-PE')}`, pageW / 2, 52, { align: 'center' });
+
+      // ── Tabla de datos ──
+      const isProv = S.zazuScope === 'provincia';
+
+      // Compute numeric totals from raw rows
+      let totalMonto = 0;
+      let totalCosto = 0;
+      let totalCxC = 0; // CxC (cuentas por cobrar) for Lima
+      rows.forEach((r) => {
+        if (isProv) {
+          totalMonto += Number(r.monto_cobrar) || 0;
+          totalCosto += Number(r.monto_deuda) || 0;
+        } else {
+          totalMonto += zazuMontoCobradoResolved(r).value;
+          totalCosto += zazuCostoServicioResolved(r);
+          // CxC: amount_residual from matched Odoo order
+          const nota = zazuNotaRef(r);
+          const cxc = nota ? S.zazuCxcByRef?.[nota] : null;
+          if (cxc) totalCxC += Number(cxc.amount_residual) || 0;
+        }
+      });
+
+      let headers, body, foot;
+      if (isProv) {
+        // cols: 0:ID, 1:Guía, 2:Fecha, 3:Destino, 4:TipoPago, 5:MontoCobrar, 6:CostoServicio, 7:Estado
+        headers = [['ID Venta', 'Guía/Código', 'Fecha', 'Destino', 'Tipo pago', 'Monto cobrar', 'Costo servicio', 'Estado']];
+        body = rows.map((r) => {
+          const geo = [r.provincia, r.departamento].filter(Boolean).join(' / ') || '—';
+          const guia = [String(r.guia || ''), String(r.codigo || '')].filter(Boolean).join(' / ') || '—';
+          return [
+            String(r.id_venta || '—'),
+            guia,
+            String(r.fecha || '—'),
+            geo,
+            String(r.tipo_pago || '—'),
+            money(r.monto_cobrar),
+            money(r.monto_deuda),
+            String(r.estado || r.estado_qr || r.estado_odoo || '—'),
+          ];
+        });
+        foot = [[
+          { content: `TOTAL (${rows.length} reg.)`, colSpan: 5, styles: { halign: 'right', fontStyle: 'bold' } },
+          { content: money(totalMonto), styles: { halign: 'right', fontStyle: 'bold' } },
+          { content: money(totalCosto), styles: { halign: 'right', fontStyle: 'bold' } },
+          { content: '', styles: {} },
+        ]];
+      } else {
+        // cols: 0:ID, 1:Empresa, 2:Fecha, 3:Estado, 4:Cliente, 5:Pago, 6:Monto, 7:CostoServicio
+        headers = [['ID Envío', 'Empresa', 'Fecha', 'Estado', 'Cliente', 'Pago', 'Monto cobrado', 'Costo Servicio']];
+        body = rows.map((r) => [
+          String(r.id_envio || '—'),
+          zazuRowEmpresa(r),
+          zazuDisplayDate(r),
+          String(zazuPickField(r, ['estado_pedido', 'estado']) || '—'),
+          zazuClientName(r),
+          zazuDisplayPayment(r),
+          zazuDisplayMonto(r),
+          zazuDisplayServiceCost(r),
+        ]);
+        foot = [[
+          { content: `TOTAL (${rows.length} reg.)`, colSpan: 6, styles: { halign: 'right', fontStyle: 'bold' } },
+          { content: money(totalMonto), styles: { halign: 'right', fontStyle: 'bold' } },
+          { content: money(totalCosto), styles: { halign: 'right', fontStyle: 'bold' } },
+        ]];
+      }
+
+      doc.autoTable({
+        head: headers,
+        body,
+        foot,
+        startY: mg.top,
+        margin: { left: mg.left, right: mg.right, bottom: mg.bottom },
+        styles: {
+          fontSize: 7.5,
+          cellPadding: { top: 5, bottom: 5, left: 5, right: 5 },
+          lineColor: [220, 220, 225],
+          lineWidth: 0.3,
+          valign: 'middle',
+          textColor: [39, 39, 42],
+          overflow: 'ellipsize',
+        },
+        headStyles: {
+          fillColor: [15, 23, 42],
+          textColor: [255, 255, 255],
+          fontStyle: 'bold',
+          fontSize: 8,
+        },
+        footStyles: {
+          fillColor: [15, 23, 42],
+          textColor: [255, 255, 255],
+          fontStyle: 'bold',
+          fontSize: 8,
+          lineWidth: 0,
+        },
+        showFoot: 'lastPage',
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+        didDrawPage: (data) => {
+          const n = doc.internal.getNumberOfPages();
+          doc.setFontSize(7.5);
+          doc.setTextColor(150, 150, 160);
+          doc.setFont('helvetica', 'normal');
+          doc.text(`Pág. ${data.pageNumber} / ${n} · Zazu Express · ${scope}`, mg.left, pageH - 18);
+          doc.text(`Generado: ${new Date().toLocaleString('es-PE')}`, pageW - mg.right, pageH - 18, { align: 'right' });
+        },
+      });
+
+      // ── Bloque de totales post-tabla ──
+      const finalY = doc.lastAutoTable.finalY + 12;
+      const needsNewPage = finalY + 52 > pageH - mg.bottom;
+      if (needsNewPage) doc.addPage();
+      const blockY = needsNewPage ? mg.top : finalY;
+      const blockX = mg.left;
+      const blockW = pageW - mg.left - mg.right;
+
+      doc.setFillColor(15, 23, 42);
+      doc.roundedRect(blockX, blockY, blockW, 44, 4, 4, 'F');
+
+      const totalItems = isProv
+        ? [
+            ['Registros', String(rows.length)],
+            ['Total Monto cobrar', money(totalMonto)],
+            ['Total Costo servicio', money(totalCosto)],
+            ['Diferencia neta', money(totalMonto - totalCosto)],
+          ]
+        : [
+            ['Registros', String(rows.length)],
+            ['Total Monto cobrado', money(totalMonto)],
+            ['Total Costo servicio', money(totalCosto)],
+            ['Cierre de caja', money(totalMonto - totalCosto)],
+          ];
+
+      const itemW = blockW / totalItems.length;
+      totalItems.forEach(([lbl, val], i) => {
+        const cx = blockX + i * itemW + itemW / 2;
+        doc.setFontSize(6.5);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(150, 160, 180);
+        doc.text(lbl.toUpperCase(), cx, blockY + 14, { align: 'center' });
+        doc.setFontSize(10);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(i === totalItems.length - 1 ? 245 : 255, i === totalItems.length - 1 ? 158 : 255, i === totalItems.length - 1 ? 11 : 255);
+        doc.text(val, cx, blockY + 30, { align: 'center' });
+      });
+
+      // ── KPI strip de estados (debajo del bloque de totales) ──
+      const kpiY = blockY + 56;
+      const kpiNeedPage = kpiY + 34 > pageH - 20;
+      if (kpiNeedPage) doc.addPage();
+      const kpiStartY = kpiNeedPage ? mg.top : kpiY;
+      const kpis = [
+        ['Total envíos', fmt.n(m.total, 0)],
+        ['Entregados', fmt.n(m.entregados, 0)],
+        ['No Entregados', fmt.n(m.noEntregados, 0)],
+        ['Reprogramados', fmt.n(m.reprogramados, 0)],
+        ['Anulados', fmt.n(m.anulados, 0)],
+        ['Monto cobrado', money(m.montoCobrado)],
+        ['Costo servicio', money(m.costoServicio)],
+        ['Cierre caja', money(m.cierreCaja)],
+      ];
+      const kpiColW = blockW / kpis.length;
+      doc.setDrawColor(220, 220, 225);
+      doc.setLineWidth(0.3);
+      doc.line(blockX, kpiStartY - 4, blockX + blockW, kpiStartY - 4);
+      kpis.forEach(([lbl, val], i) => {
+        const cx = blockX + i * kpiColW + kpiColW / 2;
+        doc.setFontSize(6.5);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(113, 113, 122);
+        doc.text(lbl.toUpperCase(), cx, kpiStartY + 8, { align: 'center' });
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'bold');
+        const isLast = i === kpis.length - 1;
+        doc.setTextColor(isLast ? 180 : 39, isLast ? 100 : 39, isLast ? 9 : 42);
+        doc.text(val, cx, kpiStartY + 22, { align: 'center' });
+      });
+
+      doc.save(`zazu_${scope.toLowerCase()}_${tabLabel}_${new Date().toISOString().slice(0, 10)}.pdf`);
+    } finally {
       if (btnPdf) btnPdf.disabled = false;
     }
   }
@@ -3071,6 +4181,8 @@
   function init() {
     applyTheme(S.theme);
     syncAnalysisLineUi();
+    applyZazuScope(S.zazuScope || 'lima');
+    zazuProvRenderPager();
     syncSidebarDetailsForViewport();
     syncTopbarFiltersDetails();
     w.addEventListener('resize', () => {
@@ -3132,7 +4244,16 @@
     d.getElementById('btn-csv')?.addEventListener('click', exportCSV);
     d.getElementById('btn-xlsx')?.addEventListener('click', exportProjectionXlsx);
     d.getElementById('btn-pdf')?.addEventListener('click', () => {
-      exportProjectionPdf().catch(() => {});
+      exportProjectionPdf().catch((err) => {
+        console.error('Error exportando PDF de proyección:', err);
+        alert('Error al generar el PDF. Verifica tu conexión a internet y que los datos estén cargados, luego intenta de nuevo.');
+      });
+    });
+    d.getElementById('btn-zazu-pdf')?.addEventListener('click', () => {
+      exportZazuPdf().catch((err) => {
+        console.error('Error exportando PDF de Zazu:', err);
+        alert('Error al generar PDF. Revisa la consola para más detalles.');
+      });
     });
     d.getElementById('table-body')?.addEventListener('change', ev => {
       const t = ev.target;
@@ -3162,64 +4283,244 @@
       setNav(btn.dataset.nav || 'produccion', {});
     }));
 
-    d.querySelectorAll('[data-panel="zazu"]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const label = d.getElementById('page-label');
-        const heading = d.getElementById('page-heading');
-        if (label) label.textContent = 'Zazu Express · Supabase';
-        if (heading) heading.textContent = 'Envíos diarios';
-        setView('zazu');
-        fetchZazuEnvios(true);
-      });
-    });
-
-    d.querySelectorAll('[data-zazu-tab]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        S.zazuTab = btn.getAttribute('data-zazu-tab') || 'entregados';
-        fetchZazuEnvios(true);
-      });
-    });
-
-    d.getElementById('zazu-apply-filters')?.addEventListener('click', () => {
-      fetchZazuEnvios(true); // Siempre forzamos fetch si pulsa aplicar filtros
-    });
-
-    d.getElementById('zazu-refresh-data')?.addEventListener('click', () => {
-      triggerZazuSync();
-    });
-
-    d.getElementById('zazu-dev-clear')?.addEventListener('click', () => {
-      clearZazuDevLogs();
-    });
-
-    // Zazu Global Search
-    d.getElementById('zazu-global-search')?.addEventListener('input', () => {
-      fetchZazuEnvios(false); // Refiltrar localmente
-    });
-
-    // Zazu PDF Export
-    d.getElementById('zazu-export-pdf')?.addEventListener('click', () => {
-      exportZazuPdf();
-    });
-
-    d.getElementById('zazu-pdf-search-form')?.addEventListener('submit', (ev) => {
-      ev.preventDefault();
-      const input = d.getElementById('zazu-pdf-so-id');
-      if (!input) return;
-      const val = input.value.trim();
-      if (!val) {
-        zazuPdfSearchSetStatus('Ingresa la nota de venta o el ID.', 'err');
-        return;
-      }
-      zazuSearchAndOpenPdf(val);
-    });
-
     d.querySelectorAll('[data-panel="risks"]').forEach((btn) => {
       btn.addEventListener('click', () => {
         S.riskFocus = btn.getAttribute('data-risk-focus') || 'dias';
         setView('risks');
         fetchInventoryRisks();
       });
+    });
+
+    d.querySelectorAll('[data-panel="zazu"]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const label = d.getElementById('page-label');
+        const heading = d.getElementById('page-heading');
+        const scope = btn.getAttribute('data-zazu-scope') || 'lima';
+        if (label) label.textContent = 'Logística';
+        if (heading) heading.textContent = scope === 'provincia' ? 'Zazu Provincia' : 'Zazu Lima';
+        setView('zazu');
+        applyZazuScope(scope);
+        if (scope === 'provincia') {
+          fetchZazuProvinciaDetail(true);
+        } else {
+          fetchZazuEnvios(true);
+        }
+      });
+    });
+
+    d.querySelectorAll('[data-zazu-scope-tab]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const scope = btn.getAttribute('data-zazu-scope-tab') || 'lima';
+        applyZazuScope(scope);
+        const heading = d.getElementById('page-heading');
+        if (heading && S.view === 'zazu') heading.textContent = scope === 'provincia' ? 'Zazu Provincia' : 'Zazu Lima';
+        if (scope === 'provincia') {
+          fetchZazuProvinciaDetail(false);
+        }
+        else fetchZazuEnvios(true);
+      });
+    });
+
+    // ── Tabs de estado Lima (filtro client-side) ──
+    d.querySelectorAll('[data-lima-estado]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const estado = btn.getAttribute('data-lima-estado') || 'todos';
+        S.zazuEstadoFiltro = estado;
+        S.zazuPage = 1;
+        d.querySelectorAll('[data-lima-estado]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        renderZazuRows(S.zazuRowsAll || [], null);
+      });
+    });
+
+    d.querySelectorAll('[data-prov-estado]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const estado = btn.getAttribute('data-prov-estado') || 'todos';
+        S.zazuProvEstadoFiltro = estado;
+        S.zazuProvPage = 1;
+        d.querySelectorAll('[data-prov-estado]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        zazuProvRenderRows(S.zazuProvRows || [], S.zazuProvMeta);
+        zazuProvRenderPager();
+      });
+    });
+
+    d.querySelectorAll('[data-zazu-lima-view]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        S.zazuLimaView = btn.getAttribute('data-zazu-lima-view') || 'tabla';
+        zazuRenderLimaRankings(zazuFilteredRows(S.zazuRowsAll || []));
+        syncZazuSectionViews();
+      });
+    });
+
+    d.querySelectorAll('[data-zazu-prov-view]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        S.zazuProvView = btn.getAttribute('data-zazu-prov-view') || 'tabla';
+        zazuRenderProvRankings(S.zazuProvRows || []);
+        syncZazuSectionViews();
+      });
+    });
+
+    // Pestañas de sección Lima (Gráficos/Tops)
+    d.querySelectorAll('[data-zazu-lima-section]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const section = btn.getAttribute('data-zazu-lima-section') || 'graficos';
+        d.querySelectorAll('[data-zazu-lima-section]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        d.getElementById('zazu-lima-section-graficos').hidden = (section !== 'graficos');
+        d.getElementById('zazu-lima-section-tops').hidden = (section !== 'tops');
+      });
+    });
+
+    // Pestañas de sección Provincia (Gráficos/Tops)
+    d.querySelectorAll('[data-zazu-prov-section]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const section = btn.getAttribute('data-zazu-prov-section') || 'graficos';
+        d.querySelectorAll('[data-zazu-prov-section]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        d.getElementById('zazu-prov-section-graficos').hidden = (section !== 'graficos');
+        d.getElementById('zazu-prov-section-tops').hidden = (section !== 'tops');
+      });
+    });
+
+    d.getElementById('zazu-lima-ranking-filter')?.addEventListener('input', () => {
+      S.zazuLimaRankingFilter = (d.getElementById('zazu-lima-ranking-filter')?.value || '').trim();
+      zazuRenderLimaRankings(zazuFilteredRows(S.zazuRowsAll || []));
+    });
+    d.getElementById('zazu-prov-ranking-filter')?.addEventListener('input', () => {
+      S.zazuProvRankingFilter = (d.getElementById('zazu-prov-ranking-filter')?.value || '').trim();
+      zazuRenderProvRankings(S.zazuProvRows || []);
+    });
+
+    // Búsqueda en tiempo real para Lima
+    d.getElementById('zazu-lima-search')?.addEventListener('input', () => {
+      S.zazuLimaSearch = (d.getElementById('zazu-lima-search')?.value || '').trim();
+      S.zazuPage = 1;
+      renderZazuRows(S.zazuRowsAll || [], null);
+    });
+
+    d.getElementById('zazu-lima-apply')?.addEventListener('click', () => {
+      S.zazuDateFrom = (d.getElementById('zazu-lima-date-from')?.value || '').trim();
+      S.zazuDateTo = (d.getElementById('zazu-lima-date-to')?.value || '').trim();
+      S.zazuEmpresa = (d.getElementById('zazu-lima-empresa')?.value || '__ALL__').trim() || '__ALL__';
+      S.zazuLimaSearch = (d.getElementById('zazu-lima-search')?.value || '').trim();
+      S.zazuPage = 1;
+      fetchZazuEnvios(true);
+    });
+
+    d.getElementById('zazu-lima-clear')?.addEventListener('click', () => {
+      S.zazuDateFrom = ZAZU_DEFAULT_DATE_FROM;
+      S.zazuDateTo = '';
+      S.zazuEmpresa = '__ALL__';
+      S.zazuLimaSearch = '';
+      S.zazuPage = 1;
+      const fromInput = d.getElementById('zazu-lima-date-from');
+      const toInput = d.getElementById('zazu-lima-date-to');
+      const empresaSelect = d.getElementById('zazu-lima-empresa');
+      const searchInput = d.getElementById('zazu-lima-search');
+      if (fromInput) fromInput.value = ZAZU_DEFAULT_DATE_FROM;
+      if (toInput) toInput.value = '';
+      if (empresaSelect) empresaSelect.value = '__ALL__';
+      if (searchInput) searchInput.value = '';
+      fetchZazuEnvios(true);
+    });
+
+    d.getElementById('zazu-filter-apply')?.addEventListener('click', () => {
+      S.zazuSourceTable = (d.getElementById('zazu-table-source')?.value || 'tb_envios_diarios_lina').trim() || 'tb_envios_diarios_lina';
+      S.zazuEmpresa = (d.getElementById('zazu-company')?.value || '__ALL__').trim() || '__ALL__';
+      S.zazuDateFrom = (d.getElementById('zazu-date-from')?.value || '').trim();
+      S.zazuDateTo = (d.getElementById('zazu-date-to')?.value || '').trim();
+      fetchZazuEnvios(true);
+    });
+    d.getElementById('zazu-filter-clear')?.addEventListener('click', () => {
+      S.zazuSourceTable = 'tb_envios_diarios_lina';
+      S.zazuEmpresa = '__ALL__';
+      S.zazuDateFrom = ZAZU_DEFAULT_DATE_FROM;
+      S.zazuDateTo = '';
+      syncZazuDateInputs();
+      fetchZazuEnvios(true);
+    });
+    d.getElementById('zazu-prov-clear')?.addEventListener('click', () => {
+      S.zazuProvDateFrom = ZAZU_DEFAULT_DATE_FROM;
+      S.zazuProvDateTo = '';
+      S.zazuProvEstado = 'todos';
+      S.zazuProvEstadoFiltro = 'todos';
+      S.zazuProvGuideQuery = '';
+      S.zazuProvRankingFilter = '';
+      S.zazuProvPage = 1;
+      d.querySelectorAll('[data-prov-estado]').forEach(b => b.classList.toggle('active', b.getAttribute('data-prov-estado') === 'todos'));
+      zazuProvSyncInputs();
+      fetchZazuProvinciaDetail(true);
+    });
+    d.getElementById('zazu-prov-apply')?.addEventListener('click', () => {
+      S.zazuProvDateFrom = (d.getElementById('zazu-prov-date-from')?.value || '').trim();
+      S.zazuProvDateTo = (d.getElementById('zazu-prov-date-to')?.value || '').trim();
+      S.zazuProvGuideQuery = (d.getElementById('zazu-prov-guide-query')?.value || '').trim();
+      S.zazuProvPage = 1;
+      fetchZazuProvinciaDetail(true);
+    });
+    d.getElementById('zazu-prov-prev')?.addEventListener('click', () => {
+      if ((S.zazuProvPage || 1) <= 1) return;
+      S.zazuProvPage = Math.max(1, (S.zazuProvPage || 1) - 1);
+      zazuProvRenderRows(S.zazuProvRows || [], S.zazuProvMeta);
+      zazuProvRenderPager();
+      d.getElementById('zazu-prov-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    d.getElementById('zazu-prov-next')?.addEventListener('click', () => {
+      const total = (S.zazuProvRows || []).length;
+      const pages = Math.max(1, Math.ceil(total / 400));
+      if ((S.zazuProvPage || 1) >= pages) return;
+      S.zazuProvPage = (S.zazuProvPage || 1) + 1;
+      zazuProvRenderRows(S.zazuProvRows || [], S.zazuProvMeta);
+      zazuProvRenderPager();
+      d.getElementById('zazu-prov-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    d.getElementById('zazu-page-prev')?.addEventListener('click', () => {
+      if (S.zazuPage <= 1) return;
+      S.zazuPage -= 1;
+      renderZazuRows(S.zazuRowsAll || [], null);
+      d.getElementById('panel-zazu')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    d.getElementById('zazu-page-next')?.addEventListener('click', () => {
+      const pages = Math.max(1, Math.ceil(zazuFilteredRows(S.zazuRowsAll || []).length / Math.max(1, S.zazuPageSize || 400)));
+      if (S.zazuPage >= pages) return;
+      S.zazuPage += 1;
+      renderZazuRows(S.zazuRowsAll || [], null);
+      d.getElementById('panel-zazu')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    ['zazu-date-from', 'zazu-date-to', 'zazu-company', 'zazu-table-source'].forEach((id) => {
+      d.getElementById(id)?.addEventListener('change', () => {
+        S.zazuSourceTable = (d.getElementById('zazu-table-source')?.value || 'tb_envios_diarios_lina').trim() || 'tb_envios_diarios_lina';
+        S.zazuEmpresa = (d.getElementById('zazu-company')?.value || '__ALL__').trim() || '__ALL__';
+        S.zazuDateFrom = (d.getElementById('zazu-date-from')?.value || '').trim();
+        S.zazuDateTo = (d.getElementById('zazu-date-to')?.value || '').trim();
+        if (id === 'zazu-company') {
+          S.zazuPage = 1;
+          renderZazuRows(S.zazuRowsAll || [], null);
+        } else if (id === 'zazu-table-source') {
+          fetchZazuEnvios(true);
+        }
+      });
+    });
+    // Aplicar filtros de provincia automáticamente al cambiar fecha
+    ['zazu-prov-date-from', 'zazu-prov-date-to'].forEach((id) => {
+      d.getElementById(id)?.addEventListener('change', () => {
+        S.zazuProvDateFrom = (d.getElementById('zazu-prov-date-from')?.value || '').trim();
+        S.zazuProvDateTo = (d.getElementById('zazu-prov-date-to')?.value || '').trim();
+        S.zazuProvPage = 1;
+        fetchZazuProvinciaDetail(true);
+      });
+    });
+
+    // Búsqueda por guía/código en tiempo real
+    d.getElementById('zazu-prov-guide-query')?.addEventListener('input', () => {
+      S.zazuProvGuideQuery = (d.getElementById('zazu-prov-guide-query')?.value || '').trim();
+      S.zazuProvPage = 1;
+      // Usar debounce para evitar demasiadas peticiones
+      clearTimeout(window.zazuProvSearchTimeout);
+      window.zazuProvSearchTimeout = setTimeout(() => {
+        fetchZazuProvinciaDetail(true);
+      }, 500);
     });
 
     d.querySelectorAll('[data-risk-company]').forEach((btn) => {
@@ -3266,9 +4567,6 @@
       d.querySelectorAll('#inv-detail-root details.inv-grupo-card').forEach((el) => { el.open = false; });
     });
 
-    d.getElementById('zazu-zona')?.addEventListener('change', updateZazuDetalleDropdown);
-    // ----------------------------------------
-
     // Controladores del Modal de Recibo
     const closeReceipt = () => {
       const modal = d.getElementById('receipt-modal-overlay');
@@ -3282,10 +4580,63 @@
     d.getElementById('receipt-modal-print')?.addEventListener('click', () => {
       window.print();
     });
+    d.getElementById('zazu-tbody')?.addEventListener('click', (ev) => {
+      const target = ev.target;
+      if (!target || !target.closest) return;
+      const noteLink = target.closest('a.zazu-note-link[data-nota-ref]');
+      if (!noteLink) return;
+      ev.preventDefault();
+      const notaRef = noteLink.getAttribute('data-nota-ref') || '';
+      openOdooReceiptFromNota(notaRef).catch(() => {});
+    });
+    d.getElementById('zazu-prov-tbody')?.addEventListener('click', (ev) => {
+      const target = ev.target;
+      if (!target || !target.closest) return;
+
+      // Handle nota link
+      const noteLink = target.closest('a.zazu-note-link[data-nota-ref]');
+      if (noteLink) {
+        ev.preventDefault();
+        const notaRef = noteLink.getAttribute('data-nota-ref') || '';
+        openOdooReceiptFromNota(notaRef).catch(() => {});
+        return;
+      }
+
+      // Handle voucher button
+      const voucherBtn = target.closest('button.zazu-voucher-btn');
+      if (voucherBtn) {
+        ev.preventDefault();
+        const voucherId = voucherBtn.getAttribute('data-voucher-id') || '';
+        const guia = voucherBtn.getAttribute('data-guia') || '';
+        const codigo = voucherBtn.getAttribute('data-codigo') || '';
+        openVoucherModal(voucherId, guia, codigo).catch((err) => {
+          console.error('Error abriendo voucher:', err);
+        });
+      }
+    });
+
+    // Controladores del Modal de Voucher
+    const closeVoucher = () => {
+      const modal = d.getElementById('voucher-modal-overlay');
+      if (modal) modal.style.display = 'none';
+    };
+    d.getElementById('voucher-modal-close')?.addEventListener('click', closeVoucher);
+    d.getElementById('voucher-modal-close-x')?.addEventListener('click', closeVoucher);
+    d.getElementById('voucher-modal-overlay')?.addEventListener('click', (ev) => {
+      if (ev.target === d.getElementById('voucher-modal-overlay')) closeVoucher();
+    });
+    d.getElementById('voucher-modal-print')?.addEventListener('click', () => {
+      window.print();
+    });
 
     // Load
     fetchCompanies().then(() => fetchData());
   }
+
+  // ════════════════════════════════════════════════════════════════
+  // POS GEOGRAPHIC FUNCTIONS
+  // ════════════════════════════════════════════════════════════════
+
 
   d.readyState === 'loading' ? d.addEventListener('DOMContentLoaded', init) : init();
 })(window, document);

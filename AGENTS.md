@@ -4,21 +4,25 @@ Guía operativa para desarrollar este proyecto de reportes Odoo con calidad y es
 
 ## Flujo oficial por tarea
 
-1) **Plan**
+1. **Plan**
+
 - Definir alcance y contrato de datos.
 - Confirmar fuente Odoo, filtros y métricas.
 
-2) **Implementación**
+1. **Implementación**
+
 - Hacer cambios mínimos y modulares.
 - Evitar duplicar lógica de negocio entre capas.
 
-3) **QA**
+1. **QA**
+
 - Validar consistencia:
   - `total_qty == sum(by_size.qty)`
   - `sum(by_size.qty) == sum(matrix_rows.by_size[*])`
 - Probar filtros principales (año, meses, semanas).
 
-4) **Cierre**
+1. **Cierre**
+
 - Resumen breve de causa/solución.
 - Riesgos residuales y próximos pasos.
 
@@ -61,11 +65,13 @@ Guía operativa para desarrollar este proyecto de reportes Odoo con calidad y es
 - `webapp-testing`
 
 Ver inventario y estado de migración en:
+
 - `.cursor/skills/MIGRATION_CLAUDE_TO_CURSOR.md`
 
 ## Playbooks de agentes migrados
 
 Se copiaron guías de agentes a:
+
 - `.cursor/agents-migrated`
 
 Estas guías se usan como referencia local para orquestar los subagentes nativos equivalentes.
@@ -78,6 +84,7 @@ Estas guías se usan como referencia local para orquestar los subagentes nativos
 ## Criterio de terminado
 
 No se considera terminado un cambio si falta:
+
 - contrato de datos claro,
 - validación de consistencia,
 - manejo de error útil para usuario.

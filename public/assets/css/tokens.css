@@ -1,0 +1,114 @@
+/* Tokens — CSS Custom Properties */
+/* ==================================================
+   Proyección Inventario — Design System
+   Panel de stock y proyección (Odoo)
+   Estilo: Linear/Vercel/Stripe
+   ================================================== */
+
+/* --------------------------------------------------
+   CSS TOKENS - Design Variables
+   -------------------------------------------------- */
+:root {
+  /* Color Palette - Dark Mode (Default) */
+  --color-bg: #09090b;
+  --color-surface: #121214;
+  --color-surface-2: #1a1a1e;
+  --color-surface-3: #232327;
+  --color-elevated: #2a2a2e;
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-hover: rgba(255, 255, 255, 0.12);
+  --color-border-strong: rgba(255, 255, 255, 0.18);
+  
+  /* Accents - Warm Amber/Gold */
+  --color-accent: #f59e0b;
+  --color-accent-2: #fbbf24;
+  --color-accent-3: #fcd34d;
+  --color-accent-subtle: rgba(245, 158, 11, 0.15);
+  --color-accent-hover: rgba(245, 158, 11, 0.25);
+  
+  /* Semantic Colors */
+  --color-success: #22c55e;
+  --color-success-subtle: rgba(34, 197, 94, 0.15);
+  --color-warning: #f59e0b;
+  --color-warning-subtle: rgba(245, 158, 11, 0.15);
+  --color-danger: #ef4444;
+  --color-danger-subtle: rgba(239, 68, 68, 0.15);
+  --color-info: #3b82f6;
+  --color-info-subtle: rgba(59, 130, 246, 0.15);
+  
+  /* Text Colors */
+  --color-text: #fafafa;
+  --color-text-secondary: #a1a1aa;
+  --color-text-muted: #71717a;
+  --color-text-inverse: #09090b;
+  
+  /* Typography */
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  
+  /* Spacing (8px base) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  
+  /* Radii */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-full: 9999px;
+  
+  /* Layout */
+  --sidebar-width: 240px;
+  --sidebar-collapsed: 72px;
+  --topbar-height: 64px;
+  --max-content-width: 1440px;
+  
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.6);
+  --shadow-glow: 0 0 40px rgba(245, 158, 11, 0.3);
+  --shadow-accent: 0 0 20px rgba(245, 158, 11, 0.4);
+  
+  /* Transitions */
+  --transition-fast: 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-base: 250ms cubic-bezier(0.16, 1, 0.3, 1);
+  --transition-slow: 400ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Light Mode */
+[data-theme="light"] {
+  --color-bg: #fafafa;
+  --color-surface: #ffffff;
+  --color-surface-2: #f4f4f5;
+  --color-surface-3: #e4e4e7;
+  --color-elevated: #d4d4d8;
+  --color-border: rgba(0, 0, 0, 0.08);
+  --color-border-hover: rgba(0, 0, 0, 0.12);
+  --color-border-strong: rgba(0, 0, 0, 0.18);
+  
+  --color-accent: #d97706;
+  --color-accent-2: #f59e0b;
+  --color-accent-3: #fbbf24;
+  --color-accent-subtle: rgba(217, 119, 6, 0.12);
+  --color-accent-hover: rgba(217, 119, 6, 0.2);
+  
+  --color-text: #18181b;
+  --color-text-secondary: #52525b;
+  --color-text-muted: #71717a;
+  --color-text-inverse: #ffffff;
+  
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.12);
+  --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.15);
+  --shadow-glow: 0 0 40px rgba(217, 119, 6, 0.2);
+  --shadow-accent: 0 0 20px rgba(217, 119, 6, 0.3);
+}

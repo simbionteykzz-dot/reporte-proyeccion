@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="es" data-theme="dark">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -7,13 +8,26 @@
   <link rel="icon" type="image/png" href="/assets/odooreport-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
-  <link rel="stylesheet" href="/assets/style.css">
+  <!-- Modular CSS — cada archivo cubre una sola responsabilidad -->
+  <link rel="stylesheet" href="/assets/css/tokens.css">
+  <link rel="stylesheet" href="/assets/css/base.css">
+  <link rel="stylesheet" href="/assets/css/layout.css">
+  <link rel="stylesheet" href="/assets/css/dashboard.css">
+  <link rel="stylesheet" href="/assets/css/responsive.css">
+  <link rel="stylesheet" href="/assets/css/panels.css">
+  <link rel="stylesheet" href="/assets/css/receipt.css">
+  <link rel="stylesheet" href="/assets/css/zazu.css">
+  <!-- Fallback / override local -->
+  <link rel="stylesheet" href="/assets/css/sections.css">
 </head>
+
 <body>
   <div class="app-shell" id="app">
     <!-- Sidebar -->
@@ -32,15 +46,18 @@
           <summary class="nav-section-label">Marcas</summary>
           <div class="nav-section__body">
             <button class="nav-item active" data-nav="produccion" data-panel="dashboard" type="button">
-              <img class="nav-icon" src="/assets/iconos-barra/over-icon.png" alt="" width="20" height="20" decoding="async">
+              <img class="nav-icon" src="/assets/iconos-barra/over-icon.png" alt="" width="20" height="20"
+                decoding="async">
               <span class="nav-text">Overshark</span>
             </button>
             <button class="nav-item" data-nav="bravos" data-panel="dashboard" type="button">
-              <img class="nav-icon" src="/assets/iconos-barra/brav-icon.png" alt="" width="20" height="20" decoding="async">
+              <img class="nav-icon" src="/assets/iconos-barra/brav-icon.png" alt="" width="20" height="20"
+                decoding="async">
               <span class="nav-text">Bravos</span>
             </button>
             <button class="nav-item" data-nav="boxprime" data-panel="dashboard" type="button">
-              <img class="nav-icon" src="/assets/iconos-barra/box.icon.png" alt="" width="20" height="20" decoding="async">
+              <img class="nav-icon" src="/assets/iconos-barra/box.icon.png" alt="" width="20" height="20"
+                decoding="async">
               <span class="nav-text">Box Prime</span>
             </button>
           </div>
@@ -48,16 +65,22 @@
         <details class="nav-section">
           <summary class="nav-section-label">Inventario</summary>
           <div class="nav-section__body">
-            <button class="nav-item nav-item--inv" data-nav="produccion" data-panel="inventory" type="button" title="Stock por variante y marca — Overshark">
-              <img class="nav-icon" src="/assets/iconos-barra/over-icon.png" alt="" width="20" height="20" decoding="async">
+            <button class="nav-item nav-item--inv" data-nav="produccion" data-panel="inventory" type="button"
+              title="Stock por variante y marca — Overshark">
+              <img class="nav-icon" src="/assets/iconos-barra/over-icon.png" alt="" width="20" height="20"
+                decoding="async">
               <span class="nav-text">Overshark</span>
             </button>
-            <button class="nav-item nav-item--inv" data-nav="bravos" data-panel="inventory" type="button" title="Stock por variante y marca — Bravos">
-              <img class="nav-icon" src="/assets/iconos-barra/brav-icon.png" alt="" width="20" height="20" decoding="async">
+            <button class="nav-item nav-item--inv" data-nav="bravos" data-panel="inventory" type="button"
+              title="Stock por variante y marca — Bravos">
+              <img class="nav-icon" src="/assets/iconos-barra/brav-icon.png" alt="" width="20" height="20"
+                decoding="async">
               <span class="nav-text">Bravos</span>
             </button>
-            <button class="nav-item nav-item--inv" data-nav="boxprime" data-panel="inventory" type="button" title="Stock por variante y marca — Box Prime">
-              <img class="nav-icon" src="/assets/iconos-barra/box.icon.png" alt="" width="20" height="20" decoding="async">
+            <button class="nav-item nav-item--inv" data-nav="boxprime" data-panel="inventory" type="button"
+              title="Stock por variante y marca — Box Prime">
+              <img class="nav-icon" src="/assets/iconos-barra/box.icon.png" alt="" width="20" height="20"
+                decoding="async">
               <span class="nav-text">Box Prime</span>
             </button>
           </div>
@@ -65,28 +88,38 @@
         <details class="nav-section">
           <summary class="nav-section-label">Logística</summary>
           <div class="nav-section__body">
-            <button class="nav-item nav-item--zazu" type="button" data-panel="zazu" title="Envíos diarios desde Zazu (Supabase)">
-              <img class="nav-icon" src="/assets/iconos-barra/zazu-icon.jpg" alt="" width="20" height="20" decoding="async">
-              <span class="nav-text">Envíos diarios (Zazu)</span>
+            <button class="nav-item" type="button" data-panel="zazu" data-zazu-scope="lima">
+              <img class="nav-icon" src="/assets/iconos-barra/zazu_icon.png" alt="Zazu" width="20" height="20"
+                decoding="async">
+              <span class="nav-text">Zazu Lima</span>
+            </button>
+            <button class="nav-item" type="button" data-panel="zazu" data-zazu-scope="provincia">
+              <img class="nav-icon" src="/assets/iconos-barra/zazu_icon.png" alt="Zazu" width="20" height="20"
+                decoding="async">
+              <span class="nav-text">Zazu Provincia</span>
             </button>
           </div>
         </details>
         <details class="nav-section">
           <summary class="nav-section-label">Riesgos</summary>
           <div class="nav-section__body">
-            <button class="nav-item nav-item--risk" type="button" data-panel="risks" data-risk-focus="bajo" title="Alertas de stock bajo">
+            <button class="nav-item nav-item--risk" type="button" data-panel="risks" data-risk-focus="bajo"
+              title="Alertas de stock bajo">
               <span class="nav-risk-dot" aria-hidden="true"></span>
               <span class="nav-text">Stock por agotarse</span>
             </button>
-            <button class="nav-item nav-item--risk" type="button" data-panel="risks" data-risk-focus="agotado" title="Sin stock">
+            <button class="nav-item nav-item--risk" type="button" data-panel="risks" data-risk-focus="agotado"
+              title="Sin stock">
               <span class="nav-risk-dot nav-risk-dot--danger" aria-hidden="true"></span>
               <span class="nav-text">Stock agotado</span>
             </button>
-            <button class="nav-item nav-item--risk" type="button" data-panel="risks" data-risk-focus="compra" title="Pocas compras vs ventas">
+            <button class="nav-item nav-item--risk" type="button" data-panel="risks" data-risk-focus="compra"
+              title="Pocas compras vs ventas">
               <span class="nav-risk-dot nav-risk-dot--warn" aria-hidden="true"></span>
               <span class="nav-text">Baja compra</span>
             </button>
-            <button class="nav-item nav-item--risk" type="button" data-panel="risks" data-risk-focus="dias" title="Días hasta agotar y salida diaria">
+            <button class="nav-item nav-item--risk" type="button" data-panel="risks" data-risk-focus="dias"
+              title="Días hasta agotar y salida diaria">
               <span class="nav-risk-dot nav-risk-dot--accent" aria-hidden="true"></span>
               <span class="nav-text">Días por agotarse</span>
             </button>
@@ -95,11 +128,19 @@
       </nav>
       <div class="sidebar-footer">
         <button type="button" class="btn btn-ghost" id="theme-toggle" data-theme-toggle style="width:100%">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="5" />
+            <line x1="12" y1="1" x2="12" y2="3" />
+            <line x1="12" y1="21" x2="12" y2="23" />
+          </svg>
           <span class="nav-text">Cambiar tema</span>
         </button>
         <button type="button" class="btn btn-ghost" id="btn-logout" data-logout style="width:100%">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+            <polyline points="16 17 21 12 16 7" />
+            <line x1="21" y1="12" x2="9" y2="12" />
+          </svg>
           <span class="nav-text">Salir</span>
         </button>
       </div>
@@ -115,11 +156,20 @@
           </div>
         </div>
         <div class="mobile-app-actions">
-          <button type="button" class="btn btn-ghost mobile-theme-btn" data-theme-toggle aria-label="Cambiar tema claro u oscuro">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/></svg>
+          <button type="button" class="btn btn-ghost mobile-theme-btn" data-theme-toggle
+            aria-label="Cambiar tema claro u oscuro">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="5" />
+              <line x1="12" y1="1" x2="12" y2="3" />
+              <line x1="12" y1="21" x2="12" y2="23" />
+            </svg>
           </button>
           <button type="button" class="btn btn-ghost mobile-logout-btn" data-logout aria-label="Cerrar sesión">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
           </button>
         </div>
       </div>
@@ -145,7 +195,10 @@
               <input type="date" id="date-to" class="input-date">
             </div>
             <button class="btn btn-primary" id="btn-refresh" type="button">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="23 4 23 10 17 10" />
+                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+              </svg>
               <span>Actualizar</span>
             </button>
           </div>
@@ -161,131 +214,202 @@
             <span class="badge" id="badge-qa">Validando...</span>
             <span class="badge" id="badge-source">Fuente: --</span>
             <span class="badge" id="badge-time">--:--:--</span>
-            <span class="badge badge-cache" id="badge-cache" hidden title="Vista servida desde memoria; Actualizar fuerza Odoo">Instantáneo (caché)</span>
+            <span class="badge badge-cache" id="badge-cache" hidden
+              title="Vista servida desde memoria; Actualizar fuerza Odoo">Instantáneo (caché)</span>
           </div>
 
           <!-- Loading -->
           <div id="loading-panel" style="text-align:center;padding:60px 0;">
-            <div style="display:inline-block;width:36px;height:36px;border:3px solid var(--color-surface-3);border-top-color:var(--color-accent);border-radius:50%;animation:spin 1s linear infinite"></div>
-            <p style="margin-top:16px;color:var(--color-text-muted);">Conectando con Odoo y calculando metricas reales...</p>
+            <div
+              style="display:inline-block;width:36px;height:36px;border:3px solid var(--color-surface-3);border-top-color:var(--color-accent);border-radius:50%;animation:spin 1s linear infinite">
+            </div>
+            <p style="margin-top:16px;color:var(--color-text-muted);">Conectando con Odoo y calculando metricas
+              reales...</p>
           </div>
 
           <!-- Dashboard content (hidden until data loads) -->
           <div id="dashboard-content" style="display:none;">
             <div id="view-produccion">
-            <!-- KPI Section -->
-            <section class="kpi-section animate-fade-in">
-              <div class="kpi-hero">
-                <div>
-                  <div class="kpi-label">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                    Valoración proyectada de Inventario
+              <!-- KPI Section -->
+              <section class="kpi-section animate-fade-in">
+                <div class="kpi-hero">
+                  <div>
+                    <div class="kpi-label">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2">
+                        <line x1="12" y1="1" x2="12" y2="23" />
+                        <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                      </svg>
+                      Valoración proyectada de Inventario
+                    </div>
+                    <div class="kpi-value kpi-value-accent" id="kpi-ingresos">--</div>
+                    <div class="kpi-subtitle">Proyección desde stock y reglas de ticket por familia</div>
+                    <div class="kpi-projection-toolbar" id="kpi-projection-toolbar" hidden>
+                      <span class="kpi-projection-toolbar-label">Incluir en proyección</span>
+                      <span class="kpi-projection-toolbar-actions">
+                        <button type="button" class="kpi-projection-link" id="kpi-projection-all"
+                          title="Marcar todas">Todas</button>
+                        <button type="button" class="kpi-projection-link" id="kpi-projection-none"
+                          title="Desmarcar todas">Ninguna</button>
+                      </span>
+                    </div>
+                    <div class="kpi-projection-filters" id="kpi-projection-filters"
+                      aria-label="Líneas incluidas en valoración proyectada"></div>
+                    <p class="kpi-projection-note" id="kpi-projection-note" hidden></p>
                   </div>
-                  <div class="kpi-value kpi-value-accent" id="kpi-ingresos">--</div>
-                  <div class="kpi-subtitle">Proyección desde stock y reglas de ticket por familia</div>
-                  <div class="kpi-projection-toolbar" id="kpi-projection-toolbar" hidden>
-                    <span class="kpi-projection-toolbar-label">Incluir en proyección</span>
-                    <span class="kpi-projection-toolbar-actions">
-                      <button type="button" class="kpi-projection-link" id="kpi-projection-all" title="Marcar todas">Todas</button>
-                      <button type="button" class="kpi-projection-link" id="kpi-projection-none" title="Desmarcar todas">Ninguna</button>
-                    </span>
+                  <div style="display:flex;gap:24px;padding-top:20px;border-top:1px solid var(--color-border);">
+                    <div>
+                      <div class="kpi-micro-label">Ticket medio (empresa)</div>
+                      <div style="font-family:var(--font-mono);font-size:1.125rem;font-weight:600" id="kpi-ticket-mini">
+                        --</div>
+                    </div>
+                    <div>
+                      <div class="kpi-micro-label">Familias</div>
+                      <div style="font-family:var(--font-mono);font-size:1.125rem;font-weight:600"
+                        id="kpi-familias-mini">--</div>
+                    </div>
+                    <div>
+                      <div class="kpi-micro-label">Ventas / TPV</div>
+                      <div style="font-size:0.8125rem;color:var(--color-text-secondary)" id="kpi-ticket-pedidos">--
+                      </div>
+                    </div>
                   </div>
-                  <div class="kpi-projection-filters" id="kpi-projection-filters" aria-label="Líneas incluidas en valoración proyectada"></div>
-                  <p class="kpi-projection-note" id="kpi-projection-note" hidden></p>
                 </div>
-                <div style="display:flex;gap:24px;padding-top:20px;border-top:1px solid var(--color-border);">
-                  <div><div class="kpi-micro-label">Ticket medio (empresa)</div><div style="font-family:var(--font-mono);font-size:1.125rem;font-weight:600" id="kpi-ticket-mini">--</div></div>
-                  <div><div class="kpi-micro-label">Familias</div><div style="font-family:var(--font-mono);font-size:1.125rem;font-weight:600" id="kpi-familias-mini">--</div></div>
-                  <div><div class="kpi-micro-label">Ventas / TPV</div><div style="font-size:0.8125rem;color:var(--color-text-secondary)" id="kpi-ticket-pedidos">--</div></div>
+                <div class="kpi-card">
+                  <div class="kpi-label">Ventas Proyectadas</div>
+                  <div class="kpi-value" style="font-size:2.5rem" id="kpi-ventas">--</div>
+                  <div class="kpi-subtitle">Unidades estimadas a vender</div>
                 </div>
-              </div>
-              <div class="kpi-card"><div class="kpi-label">Ventas Proyectadas</div><div class="kpi-value" style="font-size:2.5rem" id="kpi-ventas">--</div><div class="kpi-subtitle">Unidades estimadas a vender</div></div>
-              <div class="kpi-card"><div class="kpi-label">Ticket Promedio Global</div><div class="kpi-value" style="font-size:2.5rem" id="kpi-ticket">--</div><div class="kpi-subtitle">Notas de venta y TPV del periodo (por empresa)</div></div>
-              <div class="kpi-card kpi-card-small"><div><div class="kpi-label">Stock Total</div><div class="kpi-value-small" id="kpi-stock">--</div></div><div class="kpi-subtitle" id="kpi-stock-sub">unidades en inventario</div></div>
-            </section>
+                <div class="kpi-card">
+                  <div class="kpi-label">Ticket Promedio Global</div>
+                  <div class="kpi-value" style="font-size:2.5rem" id="kpi-ticket">--</div>
+                  <div class="kpi-subtitle">Notas de venta y TPV del periodo (por empresa)</div>
+                </div>
+                <div class="kpi-card kpi-card-small">
+                  <div>
+                    <div class="kpi-label">Stock Total</div>
+                    <div class="kpi-value-small" id="kpi-stock">--</div>
+                  </div>
+                  <div class="kpi-subtitle" id="kpi-stock-sub">unidades en inventario</div>
+                </div>
+              </section>
 
-            <!-- Tabs -->
-            <section class="tabs-container">
-              <div class="tabs-header">
-                <button class="tab-button active" data-tab="income">Distribucion Ingresos</button>
-                <button class="tab-button" data-tab="analysis">Ticket vs Ventas</button>
-                <button class="tab-button" data-tab="table">Tabla Detallada</button>
-                <button class="tab-button" data-tab="depletion">Agotamiento</button>
-              </div>
-              <div class="tab-content active" id="tab-income">
-                <div class="income-distribution-panel">
-                  <div class="income-distribution-head">
-                    <h3 class="income-distribution-title">Participación por familia (empresa actual)</h3>
-                    <p class="income-distribution-desc">Dona = reparto de <strong>ingresos proyectados</strong> entre familias con métricas. El centro muestra el total del API; la leyenda detalla cada franja.</p>
-                  </div>
-                  <div class="chart-grid chart-grid-income">
-                    <div class="chart-container chart-container-donut" style="min-height:400px;height:420px"><canvas id="chart-income" aria-label="Gráfico dona ingresos por familia"></canvas></div>
-                    <div class="chart-legend chart-legend-income" id="income-legend"></div>
-                  </div>
+              <!-- Tabs -->
+              <section class="tabs-container">
+                <div class="tabs-header">
+                  <button class="tab-button active" data-tab="income">Distribucion Ingresos</button>
+                  <button class="tab-button" data-tab="analysis">Ticket vs Ventas</button>
+                  <button class="tab-button" data-tab="table">Tabla Detallada</button>
+                  <button class="tab-button" data-tab="depletion">Agotamiento</button>
+                  <button class="tab-button" data-tab="insights">Insights &amp; Alertas</button>
                 </div>
-                <div id="income-hint" style="margin-top:12px;padding:12px;background:var(--color-surface-2);border-radius:var(--radius-lg);font-size:0.8125rem;color:var(--color-text-secondary)">
-                  <strong style="color:var(--color-text)">Lectura:</strong> Dona de ingresos proyectados por familía en esta vista. Para el total del KPI, marca filas en <strong>Tabla detallada</strong> (columna Incl.).
-                </div>
-              </div>
-              <div class="tab-content" id="tab-analysis">
-                <div class="analysis-line-toolbar" role="toolbar" aria-label="Métrica de la línea naranja (eje derecho)">
-                  <span class="analysis-line-toolbar__label">Línea (eje derecho)</span>
-                  <div class="analysis-line-toolbar__chips">
-                    <button type="button" class="risk-co-chip risk-co-chip--active" data-analysis-line="commercial" id="analysis-line-commercial">Ticket comercial</button>
-                    <button type="button" class="risk-co-chip" data-analysis-line="ratio" id="analysis-line-ratio">Ticket ÷ cant. por orden</button>
+                <div class="tab-content active" id="tab-income">
+                  <div class="income-distribution-panel">
+                    <div class="income-distribution-head">
+                      <h3 class="income-distribution-title">Participación por familia (empresa actual)</h3>
+                      <p class="income-distribution-desc">Dona = reparto de <strong>ingresos proyectados</strong> entre
+                        familias con métricas. El centro muestra el total del API; la leyenda detalla cada franja.</p>
+                    </div>
+                    <div class="chart-grid chart-grid-income">
+                      <div class="chart-container chart-container-donut" style="min-height:400px;height:420px"><canvas
+                          id="chart-income" aria-label="Gráfico dona ingresos por familia"></canvas></div>
+                      <div class="chart-legend chart-legend-income" id="income-legend"></div>
+                    </div>
+                  </div>
+                  <div id="income-hint"
+                    style="margin-top:12px;padding:12px;background:var(--color-surface-2);border-radius:var(--radius-lg);font-size:0.8125rem;color:var(--color-text-secondary)">
+                    <strong style="color:var(--color-text)">Lectura:</strong> Dona de ingresos proyectados por familía
+                    en esta vista. Para el total del KPI, marca filas en <strong>Tabla detallada</strong> (columna
+                    Incl.).
                   </div>
                 </div>
-                <p class="chart-explainer" id="analysis-explainer"><strong>Barras (verde)</strong> = unidades que el modelo proyecta vender. <strong>Línea (ámbar)</strong> = ticket comercial usado en la regla (S/). Así se comparan volumen y precio por familia sin mezclar ambos en un solo color.</p>
-                <div class="chart-container chart-container-fixed" id="chart-analysis-wrap"><canvas id="chart-analysis"></canvas></div>
-                <div id="analysis-hint" style="margin-top:12px;padding:12px;background:var(--color-surface-2);border-radius:var(--radius-lg);font-size:0.8125rem;color:var(--color-text-secondary)">
-                  <strong style="color:var(--color-text)">Lectura:</strong> <span id="analysis-hint-body">Dos ejes: izquierda unidades, derecha soles del ticket de regla. Misma fila = misma familía.</span>
+                <div class="tab-content" id="tab-analysis">
+                  <div class="analysis-line-toolbar" role="toolbar"
+                    aria-label="Métrica de la línea naranja (eje derecho)">
+                    <span class="analysis-line-toolbar__label">Línea (eje derecho)</span>
+                    <div class="analysis-line-toolbar__chips">
+                      <button type="button" class="risk-co-chip risk-co-chip--active" data-analysis-line="commercial"
+                        id="analysis-line-commercial">Ticket comercial</button>
+                      <button type="button" class="risk-co-chip" data-analysis-line="ratio"
+                        id="analysis-line-ratio">Ticket ÷ cant. por orden</button>
+                    </div>
+                  </div>
+                  <p class="chart-explainer" id="analysis-explainer"><strong>Barras (verde)</strong> = unidades que el
+                    modelo proyecta vender. <strong>Línea (ámbar)</strong> = ticket comercial usado en la regla (S/).
+                    Así se comparan volumen y precio por familia sin mezclar ambos en un solo color.</p>
+                  <div class="chart-container chart-container-fixed" id="chart-analysis-wrap"><canvas
+                      id="chart-analysis"></canvas></div>
+                  <div id="analysis-hint"
+                    style="margin-top:12px;padding:12px;background:var(--color-surface-2);border-radius:var(--radius-lg);font-size:0.8125rem;color:var(--color-text-secondary)">
+                    <strong style="color:var(--color-text)">Lectura:</strong> <span id="analysis-hint-body">Dos ejes:
+                      izquierda unidades, derecha soles del ticket de regla. Misma fila = misma familía.</span>
+                  </div>
                 </div>
-              </div>
-              <div class="tab-content" id="tab-table">
-                <div style="display:flex;justify-content:flex-end;margin-bottom:12px;gap:8px">
-                  <button class="btn btn-ghost" id="btn-csv"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> CSV</button>
-                  <button class="btn btn-ghost" id="btn-xlsx"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Excel</button>
-                  <button class="btn btn-primary" id="btn-pdf"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2h9l5 5v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z"/></svg> PDF</button>
+                <div class="tab-content" id="tab-table">
+                  <div style="display:flex;justify-content:flex-end;margin-bottom:12px;gap:8px">
+                    <button class="btn btn-ghost" id="btn-csv"><svg width="16" height="16" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="7 10 12 15 17 10" />
+                        <line x1="12" y1="15" x2="12" y2="3" />
+                      </svg> CSV</button>
+                    <button class="btn btn-ghost" id="btn-xlsx"><svg width="16" height="16" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <polyline points="14 2 14 8 20 8" />
+                      </svg> Excel</button>
+                    <button class="btn btn-primary" id="btn-pdf"><svg width="16" height="16" viewBox="0 0 24 24"
+                        fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M6 2h9l5 5v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z" />
+                      </svg> PDF</button>
+                  </div>
+                  <div class="table-container">
+                    <table class="data-table">
+                      <thead>
+                        <tr>
+                          <th class="th-proj-check" scope="col"
+                            title="Incluir fila en valoración y ventas proyectadas (KPI superior)"><abbr
+                              title="Incluir en proyección">Incl.</abbr></th>
+                          <th data-sort="nombre" class="sortable">Familia</th>
+                          <th data-sort="stock" class="sortable">Stock</th>
+                          <th data-sort="cantidad_promedio" class="sortable">Cant/Orden</th>
+                          <th data-sort="ticket_usado" class="sortable">Ticket</th>
+                          <th data-sort="ticket_real" class="sortable">Ticket Real</th>
+                          <th data-sort="ventas_proyectadas" class="sortable">Ventas Proy.</th>
+                          <th data-sort="ingresos_brutos" class="sortable">Ingresos</th>
+                          <th data-sort="porcentaje" class="sortable">%</th>
+                          <th data-sort="dias_para_agotar" class="sortable">Dias Agotar</th>
+                        </tr>
+                      </thead>
+                      <tbody id="table-body"></tbody>
+                      <tfoot id="table-footer"></tfoot>
+                    </table>
+                  </div>
                 </div>
-                <div class="table-container">
-                  <table class="data-table">
-                    <thead><tr>
-                      <th class="th-proj-check" scope="col" title="Incluir fila en valoración y ventas proyectadas (KPI superior)"><abbr title="Incluir en proyección">Incl.</abbr></th>
-                      <th data-sort="nombre" class="sortable">Familia</th>
-                      <th data-sort="stock" class="sortable">Stock</th>
-                      <th data-sort="cantidad_promedio" class="sortable">Cant/Orden</th>
-                      <th data-sort="ticket_usado" class="sortable">Ticket</th>
-                      <th data-sort="ticket_real" class="sortable">Ticket Real</th>
-                      <th data-sort="ventas_proyectadas" class="sortable">Ventas Proy.</th>
-                      <th data-sort="ingresos_brutos" class="sortable">Ingresos</th>
-                      <th data-sort="porcentaje" class="sortable">%</th>
-                      <th data-sort="dias_para_agotar" class="sortable">Dias Agotar</th>
-                    </tr></thead>
-                    <tbody id="table-body"></tbody>
-                    <tfoot id="table-footer"></tfoot>
-                  </table>
+                <div class="tab-content" id="tab-depletion">
+                  <p class="chart-explainer">Días hasta agotar stock con la <strong>salida diaria estimada</strong> del
+                    periodo; prioriza reposición donde la barra es más corta.</p>
+                  <div class="chart-container" style="height:420px"><canvas id="chart-depletion"></canvas></div>
+                  <div
+                    style="margin-top:12px;padding:12px;background:var(--color-surface-2);border-radius:var(--radius-lg);font-size:0.8125rem;color:var(--color-text-secondary)">
+                    <strong style="color:var(--color-text)">Lectura:</strong> Estima los dias para agotar stock segun
+                    salida historica. Menos dias = mayor prioridad de reposicion.
+                  </div>
                 </div>
-              </div>
-              <div class="tab-content" id="tab-depletion">
-                <p class="chart-explainer">Días hasta agotar stock con la <strong>salida diaria estimada</strong> del periodo; prioriza reposición donde la barra es más corta.</p>
-                <div class="chart-container" style="height:420px"><canvas id="chart-depletion"></canvas></div>
-                <div style="margin-top:12px;padding:12px;background:var(--color-surface-2);border-radius:var(--radius-lg);font-size:0.8125rem;color:var(--color-text-secondary)">
-                  <strong style="color:var(--color-text)">Lectura:</strong> Estima los dias para agotar stock segun salida historica. Menos dias = mayor prioridad de reposicion.
-                </div>
-              </div>
-            </section>
+                <div class="tab-content" id="tab-insights">
+                  <!-- Insights -->
+                  <section class="insights-section">
+                    <h2 class="insights-section__title">Insights Automaticos</h2>
+                    <div class="insights-grid" id="insights-container"></div>
+                  </section>
 
-            <!-- Insights -->
-            <section>
-              <h2 style="font-size:0.875rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--color-text-muted);margin-bottom:16px;font-weight:600">Insights Automaticos</h2>
-              <div class="insights-grid" id="insights-container"></div>
-            </section>
-
-            <!-- Alerts -->
-            <section>
-              <h2 style="font-size:0.875rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--color-text-muted);margin-bottom:16px;font-weight:600">Alertas y Oportunidades</h2>
-              <div class="alerts-container" id="alerts-container"></div>
-            </section>
+                  <!-- Alerts -->
+                  <section class="alerts-section">
+                    <h2 class="alerts-section__title">Alertas y Oportunidades</h2>
+                    <div class="alerts-container" id="alerts-container"></div>
+                  </section>
+                </div>
+              </section>
             </div>
           </div>
 
@@ -294,11 +418,13 @@
             <div class="app-panel-head">
               <div>
                 <h2 class="app-panel-title">Inventario en tiempo real</h2>
-                <p class="app-panel-desc">Stock por variante, plantilla y marca. Se actualiza al cambiar fechas o cada 5 minutos.</p>
+                <p class="app-panel-desc">Stock por variante, plantilla y marca. Se actualiza al cambiar fechas o cada 5
+                  minutos.</p>
               </div>
               <div class="app-panel-head-badges">
                 <span class="badge badge-accent" id="inv-meta-badge">—</span>
-                <span class="badge badge-cache" id="inv-badge-cache" hidden title="Datos desde caché local; Actualizar fuerza Odoo">Instantáneo</span>
+                <span class="badge badge-cache" id="inv-badge-cache" hidden
+                  title="Datos desde caché local; Actualizar fuerza Odoo">Instantáneo</span>
               </div>
             </div>
             <div id="inv-loading" class="app-panel-loading" hidden>
@@ -310,31 +436,36 @@
               <div class="inv-filters-grid">
                 <div class="inv-filter-field">
                   <label class="inv-filter-label" for="inv-filter-grupo">Familia / tipo de prenda</label>
-                  <select id="inv-filter-grupo" class="soni-select" title="Primera palabra del nombre de plantilla (ej. CLASICO)">
+                  <select id="inv-filter-grupo" class="soni-select"
+                    title="Primera palabra del nombre de plantilla (ej. CLASICO)">
                     <option value="__ALL__">Todas las familias</option>
                   </select>
                 </div>
                 <div class="inv-filter-field">
                   <label class="inv-filter-label" for="inv-filter-color">Color</label>
-                  <select id="inv-filter-color" class="soni-select" title="Colores disponibles según la familia elegida">
+                  <select id="inv-filter-color" class="soni-select"
+                    title="Colores disponibles según la familia elegida">
                     <option value="__ALL__">Todos los colores</option>
                   </select>
                 </div>
               </div>
             </div>
-            <div class="inv-matrix-block">
-              <h3 class="inv-subtitle">Stock por talla (matriz)</h3>
+            <div class="inv-matrix-block panel-section">
+              <h3 class="inv-subtitle panel-section__title">Stock por talla (matriz)</h3>
               <div class="table-container inv-matrix-scroll" id="inv-matrix-wrap"></div>
             </div>
-            <hr class="inv-sep" />
-            <div class="inv-detail-head">
-              <h3 class="inv-subtitle inv-detail-head__title">Detalle por variante</h3>
-              <div class="inv-detail-actions" id="inv-detail-actions" hidden>
-                <button type="button" class="btn btn-ghost inv-detail-action" id="inv-expand-all">Expandir todo</button>
-                <button type="button" class="btn btn-ghost inv-detail-action" id="inv-collapse-all">Contraer todo</button>
+            <div class="inv-detail-section panel-section">
+              <div class="inv-detail-head">
+                <h3 class="inv-subtitle inv-detail-head__title panel-section__title">Detalle por variante</h3>
+                <div class="inv-detail-actions" id="inv-detail-actions" hidden>
+                  <button type="button" class="btn btn-ghost inv-detail-action" id="inv-expand-all">Expandir
+                    todo</button>
+                  <button type="button" class="btn btn-ghost inv-detail-action" id="inv-collapse-all">Contraer
+                    todo</button>
+                </div>
               </div>
+              <div class="inv-detail-root" id="inv-detail-root"></div>
             </div>
-            <div class="inv-detail-root" id="inv-detail-root"></div>
           </div>
 
           <!-- Riesgos: una categoría visible por pestaña; empresa desde barra o selector -->
@@ -342,11 +473,13 @@
             <div class="app-panel-head">
               <div>
                 <h2 class="app-panel-title">Riesgos de inventario</h2>
-                <p class="app-panel-desc">Una vista por tipo de alerta. Elige la empresa aquí abajo para ver Bravos, Box Prime u Overshark sin salir de esta pantalla.</p>
+                <p class="app-panel-desc">Una vista por tipo de alerta. Elige la empresa aquí abajo para ver Bravos, Box
+                  Prime u Overshark sin salir de esta pantalla.</p>
               </div>
               <div class="app-panel-head-badges">
                 <span class="badge" id="risk-meta-badge">—</span>
-                <span class="badge badge-cache" id="risk-badge-cache" hidden title="Datos desde caché local; Actualizar fuerza Odoo">Instantáneo</span>
+                <span class="badge badge-cache" id="risk-badge-cache" hidden
+                  title="Datos desde caché local; Actualizar fuerza Odoo">Instantáneo</span>
               </div>
             </div>
             <div id="risk-loading" class="app-panel-loading" hidden>
@@ -358,37 +491,64 @@
             <div class="risk-toolbar" role="toolbar" aria-label="Empresa para datos de riesgo">
               <span class="risk-toolbar__label">Empresa</span>
               <div class="risk-toolbar__chips">
-                <button type="button" class="risk-co-chip" data-risk-company="produccion" title="Stock y ventas en contexto Overshark">Overshark</button>
-                <button type="button" class="risk-co-chip" data-risk-company="bravos" title="Filtrar por compañía Bravos">Bravos</button>
-                <button type="button" class="risk-co-chip" data-risk-company="boxprime" title="Filtrar por Box Prime">Box Prime</button>
+                <button type="button" class="risk-co-chip" data-risk-company="produccion"
+                  title="Stock y ventas en contexto Overshark">Overshark</button>
+                <button type="button" class="risk-co-chip" data-risk-company="bravos"
+                  title="Filtrar por compañía Bravos">Bravos</button>
+                <button type="button" class="risk-co-chip" data-risk-company="boxprime"
+                  title="Filtrar por Box Prime">Box Prime</button>
               </div>
             </div>
 
             <div class="risk-overview" id="risk-overview-strip" aria-label="Resumen de alertas">
-              <button type="button" class="risk-overview__card risk-overview__card--amber risk-overview__card--jump" data-risk-focus-tab="bajo" title="Ver solo Stock bajo">
+              <button type="button" class="risk-overview__card risk-overview__card--amber risk-overview__card--jump"
+                data-risk-focus-tab="bajo" title="Ver solo Stock bajo">
                 <div class="risk-card-icon">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+                    <path d="M12 9v4" />
+                    <path d="M12 17h.01" />
+                  </svg>
                 </div>
                 <span class="risk-overview__value" id="risk-kpi-bajo">0</span>
                 <span class="risk-overview__label">Stock bajo</span>
               </button>
-              <button type="button" class="risk-overview__card risk-overview__card--danger risk-overview__card--jump" data-risk-focus-tab="agotado" title="Ver solo Agotado">
+              <button type="button" class="risk-overview__card risk-overview__card--danger risk-overview__card--jump"
+                data-risk-focus-tab="agotado" title="Ver solo Agotado">
                 <div class="risk-card-icon">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></svg>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="m4.9 4.9 14.2 14.2" />
+                  </svg>
                 </div>
                 <span class="risk-overview__value" id="risk-kpi-agotado">0</span>
                 <span class="risk-overview__label">Agotado</span>
               </button>
-              <button type="button" class="risk-overview__card risk-overview__card--warn risk-overview__card--jump" data-risk-focus-tab="compra" title="Ver solo Baja compra">
+              <button type="button" class="risk-overview__card risk-overview__card--warn risk-overview__card--jump"
+                data-risk-focus-tab="compra" title="Ver solo Baja compra">
                 <div class="risk-card-icon">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 20V10" />
+                    <path d="M18 20V4" />
+                    <path d="M6 20v-4" />
+                  </svg>
                 </div>
                 <span class="risk-overview__value" id="risk-kpi-compra">0</span>
                 <span class="risk-overview__label">Baja compra</span>
               </button>
-              <button type="button" class="risk-overview__card risk-overview__card--info risk-overview__card--jump" data-risk-focus-tab="dias" title="Ver solo Días hasta agotar">
+              <button type="button" class="risk-overview__card risk-overview__card--info risk-overview__card--jump"
+                data-risk-focus-tab="dias" title="Ver solo Días hasta agotar">
                 <div class="risk-card-icon">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 22h14"/><path d="M5 2h14"/><path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"/><path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"/></svg>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M5 22h14" />
+                    <path d="M5 2h14" />
+                    <path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22" />
+                    <path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2" />
+                  </svg>
                 </div>
                 <span class="risk-overview__value" id="risk-kpi-dias">0</span>
                 <span class="risk-overview__label">Días</span>
@@ -396,10 +556,14 @@
             </div>
 
             <div class="risk-type-tabs" role="tablist" aria-label="Tipo de riesgo">
-              <button type="button" class="risk-type-tab" role="tab" data-risk-tab="bajo" aria-selected="false" id="risk-tab-bajo">Stock bajo</button>
-              <button type="button" class="risk-type-tab" role="tab" data-risk-tab="agotado" aria-selected="false" id="risk-tab-agotado">Agotado</button>
-              <button type="button" class="risk-type-tab" role="tab" data-risk-tab="compra" aria-selected="false" id="risk-tab-compra">Baja compra</button>
-              <button type="button" class="risk-type-tab" role="tab" data-risk-tab="dias" aria-selected="false" id="risk-tab-dias">Días p. agotar</button>
+              <button type="button" class="risk-type-tab" role="tab" data-risk-tab="bajo" aria-selected="false"
+                id="risk-tab-bajo">Stock bajo</button>
+              <button type="button" class="risk-type-tab" role="tab" data-risk-tab="agotado" aria-selected="false"
+                id="risk-tab-agotado">Agotado</button>
+              <button type="button" class="risk-type-tab" role="tab" data-risk-tab="compra" aria-selected="false"
+                id="risk-tab-compra">Baja compra</button>
+              <button type="button" class="risk-type-tab" role="tab" data-risk-tab="dias" aria-selected="false"
+                id="risk-tab-dias">Días p. agotar</button>
             </div>
 
             <div class="risk-sections risk-sections--stack" id="risk-sections">
@@ -419,12 +583,26 @@
                   </div>
                   <div class="risk-chart-explain" role="note">
                     <p class="risk-chart-explain__title">Qué es «Stock bajo»</p>
-                    <p class="risk-chart-explain__text">Productos con stock &gt; 0 pero igual o por debajo del umbral. Sirve para decidir qué repedir o mover antes de quedarse sin existencias.</p>
+                    <p class="risk-chart-explain__text">Productos con stock &gt; 0 pero igual o por debajo del umbral.
+                      Sirve para decidir qué repedir o mover antes de quedarse sin existencias.</p>
                   </div>
                   <div class="risk-table-panel">
                     <h4 class="risk-table-panel__title">Referencias</h4>
                     <p class="risk-table-note" id="risk-table-note-bajo"></p>
-                    <div class="table-container risk-card__scroll"><table class="data-table risk-mini-table"><thead><tr><th>Producto</th><th>Marca prod.</th><th>Stock</th><th>Días</th><th>Venta /día</th></tr></thead><tbody id="risk-tbody-bajo"></tbody></table></div>
+                    <div class="table-container risk-card__scroll">
+                      <table class="data-table risk-mini-table">
+                        <thead>
+                          <tr>
+                            <th>Producto</th>
+                            <th>Marca prod.</th>
+                            <th>Stock</th>
+                            <th>Días</th>
+                            <th>Venta /día</th>
+                          </tr>
+                        </thead>
+                        <tbody id="risk-tbody-bajo"></tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               </section>
@@ -444,12 +622,26 @@
                   </div>
                   <div class="risk-chart-explain" role="note">
                     <p class="risk-chart-explain__title">Qué es «Agotado»</p>
-                    <p class="risk-chart-explain__text">Variantes sin unidades en almacén interno. El gráfico compara compras y ventas del periodo: si las ventas son mayores, hubo demanda sin cobertura de abastecimiento.</p>
+                    <p class="risk-chart-explain__text">Variantes sin unidades en almacén interno. El gráfico compara
+                      compras y ventas del periodo: si las ventas son mayores, hubo demanda sin cobertura de
+                      abastecimiento.</p>
                   </div>
                   <div class="risk-table-panel">
                     <h4 class="risk-table-panel__title">Referencias</h4>
                     <p class="risk-table-note" id="risk-table-note-agotado"></p>
-                    <div class="table-container risk-card__scroll"><table class="data-table risk-mini-table"><thead><tr><th>Producto</th><th>Marca prod.</th><th>Compras período</th><th>Ventas período</th></tr></thead><tbody id="risk-tbody-agotado"></tbody></table></div>
+                    <div class="table-container risk-card__scroll">
+                      <table class="data-table risk-mini-table">
+                        <thead>
+                          <tr>
+                            <th>Producto</th>
+                            <th>Marca prod.</th>
+                            <th>Compras período</th>
+                            <th>Ventas período</th>
+                          </tr>
+                        </thead>
+                        <tbody id="risk-tbody-agotado"></tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               </section>
@@ -469,12 +661,27 @@
                   </div>
                   <div class="risk-chart-explain" role="note">
                     <p class="risk-chart-explain__title">Qué es «Baja compra»</p>
-                    <p class="risk-chart-explain__text">Referencias que sí vendieron en el periodo pero con compras en el percentil más bajo respecto al resto. Indica posible desalineación entre pedidos a proveedor y ritmo de salida.</p>
+                    <p class="risk-chart-explain__text">Referencias que sí vendieron en el periodo pero con compras en
+                      el percentil más bajo respecto al resto. Indica posible desalineación entre pedidos a proveedor y
+                      ritmo de salida.</p>
                   </div>
                   <div class="risk-table-panel">
                     <h4 class="risk-table-panel__title">Referencias</h4>
                     <p class="risk-table-note" id="risk-table-note-compra"></p>
-                    <div class="table-container risk-card__scroll"><table class="data-table risk-mini-table"><thead><tr><th>Producto</th><th>Marca prod.</th><th>Compras</th><th>Ventas</th><th>Stock</th></tr></thead><tbody id="risk-tbody-compra"></tbody></table></div>
+                    <div class="table-container risk-card__scroll">
+                      <table class="data-table risk-mini-table">
+                        <thead>
+                          <tr>
+                            <th>Producto</th>
+                            <th>Marca prod.</th>
+                            <th>Compras</th>
+                            <th>Ventas</th>
+                            <th>Stock</th>
+                          </tr>
+                        </thead>
+                        <tbody id="risk-tbody-compra"></tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               </section>
@@ -494,149 +701,381 @@
                   </div>
                   <div class="risk-chart-explain" role="note">
                     <p class="risk-chart-explain__title">Qué es «Días p. agotar»</p>
-                    <p class="risk-chart-explain__text">Estimación de cuántos días alcanza el stock actual usando la salida diaria del periodo filtrado. Barras más cortas = más urgencia de reposición.</p>
+                    <p class="risk-chart-explain__text">Estimación de cuántos días alcanza el stock actual usando la
+                      salida diaria del periodo filtrado. Barras más cortas = más urgencia de reposición.</p>
                   </div>
                   <div class="risk-table-panel">
                     <h4 class="risk-table-panel__title">Referencias</h4>
                     <p class="risk-table-note" id="risk-table-note-dias"></p>
-                    <div class="table-container risk-card__scroll"><table class="data-table risk-mini-table"><thead><tr><th>Producto</th><th>Marca prod.</th><th>Stock</th><th>Días</th><th>Salida / día</th><th>Compras</th></tr></thead><tbody id="risk-tbody-dias"></tbody></table></div>
+                    <div class="table-container risk-card__scroll">
+                      <table class="data-table risk-mini-table">
+                        <thead>
+                          <tr>
+                            <th>Producto</th>
+                            <th>Marca prod.</th>
+                            <th>Stock</th>
+                            <th>Días</th>
+                            <th>Salida / día</th>
+                            <th>Compras</th>
+                          </tr>
+                        </thead>
+                        <tbody id="risk-tbody-dias"></tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               </section>
             </div>
           </div>
 
-          <!-- Zazu: envíos diarios (API /api/zazu/envios-diarios → Supabase) -->
-          <div id="panel-zazu" class="app-panel app-panel--zazu" hidden>
+          <!-- ══════════════════════════════════════════════════
+               Logística Zazu — Lima y Provincia
+               ══════════════════════════════════════════════════ -->
+          <div id="panel-zazu" class="app-panel" hidden>
             <div class="app-panel-head">
-              <div>
-                <h2 class="app-panel-title">Envíos diarios</h2>
+              <div class="zazu-panel-brand">
+                <img src="/assets/iconos-barra/zazu_icon.png" alt="Zazu Express" class="zazu-panel-logo" width="36"
+                  height="36">
+                <div>
+                  <h2 class="app-panel-title">Zazu Envíos</h2>
+                  <p class="app-panel-desc">Registros desde Supabase (tabla configurable por entorno).</p>
+                </div>
               </div>
               <div class="app-panel-head-badges">
-                <span class="badge badge-accent" id="zazu-meta-badge">—</span>
+                <span class="badge" id="zazu-meta-badge">—</span>
+                <button type="button" class="btn btn-primary btn-sm" id="btn-zazu-pdf"
+                  title="Exportar tabla Zazu a PDF">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M6 2h9l5 5v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z" />
+                    <polyline points="14 2 14 8 20 8" />
+                    <line x1="9" y1="13" x2="15" y2="13" />
+                    <line x1="9" y1="17" x2="15" y2="17" />
+                  </svg>
+                  PDF
+                </button>
               </div>
             </div>
-            <div id="zazu-warnings" class="zazu-api-warnings" role="status" hidden></div>
-            <div class="zazu-toolbar zazu-toolbar--tabs" role="tablist" aria-label="Estado del envío">
-              <button type="button" class="zazu-tab zazu-tab--active" data-zazu-tab="entregados" role="tab" aria-selected="true">Entregados</button>
-              <button type="button" class="zazu-tab" data-zazu-tab="activos" role="tab" aria-selected="false">En proceso</button>
-              <button type="button" class="zazu-tab" data-zazu-tab="anulados" role="tab" aria-selected="false">Anulados</button>
-              <button type="button" class="zazu-tab" data-zazu-tab="todos" role="tab" aria-selected="false">Todos</button>
-            </div>
-            <div class="zazu-filters" aria-label="Filtros de listado">
-              <p class="zazu-filters-hint">Las fechas son <strong>opcionales</strong>. Si eliges rango y zona y no ves filas, deja vacío «Desde/Hasta» y pulsa <strong>Aplicar filtros</strong> para filtrar solo por Lima/Provincia.</p>
-              <div class="zazu-filters__grid">
-                <div class="zazu-filter-field">
-                  <label class="zazu-filter-label" for="zazu-date-from">Desde</label>
-                  <input type="date" id="zazu-date-from" class="input-date zazu-filter-input">
+
+            <!-- ══ SECCIÓN LIMA ══ -->
+            <div id="zazu-lima-section">
+              <!-- Tabs de estado (filtro client-side) -->
+              <div class="risk-type-tabs zazu-tabs" id="zazu-lima-estado-tabs" role="tablist" aria-label="Filtrar por estado">
+                <button type="button" class="risk-type-tab active" data-lima-estado="todos">Todos</button>
+                <button type="button" class="risk-type-tab" data-lima-estado="entregado">Entregados</button>
+                <button type="button" class="risk-type-tab" data-lima-estado="no_entregado">No entregados</button>
+                <button type="button" class="risk-type-tab" data-lima-estado="anulado">Anulados</button>
+                <button type="button" class="risk-type-tab" data-lima-estado="reprogramado">Reprogramados</button>
+              </div>
+              <!-- Filtros Lima -->
+              <div class="zazu-lima-filters" id="zazu-lima-filters" role="group" aria-label="Filtros de envíos Lima">
+                <div class="filter-group">
+                  <label class="filter-label" for="zazu-lima-date-from">Desde</label>
+                  <input type="date" id="zazu-lima-date-from" class="input-date">
                 </div>
-                <div class="zazu-filter-field">
-                  <label class="zazu-filter-label" for="zazu-date-to">Hasta</label>
-                  <input type="date" id="zazu-date-to" class="input-date zazu-filter-input">
+                <div class="filter-group">
+                  <label class="filter-label" for="zazu-lima-date-to">Hasta</label>
+                  <input type="date" id="zazu-lima-date-to" class="input-date">
                 </div>
-                <div class="zazu-filter-field zazu-filter-field--grow">
-                  <label class="zazu-filter-label" for="zazu-marca">Empresa</label>
-                  <select id="zazu-marca" class="soni-select">
-                    <option value="all">Todas</option>
-                    <option value="Overshark">Overshark</option>
-                    <option value="Bravos">Bravos</option>
-                    <option value="Box Prime">Box Prime</option>
+                <div class="filter-group">
+                  <label class="filter-label" for="zazu-lima-empresa">Empresa</label>
+                  <select id="zazu-lima-empresa" class="soni-select">
+                    <option value="__ALL__">Todas</option>
                   </select>
                 </div>
-                <div class="zazu-filter-actions">
-                  <button type="button" class="btn btn-primary" id="zazu-apply-filters">Aplicar filtros</button>
-                  <button type="button" class="btn btn-secondary" id="zazu-refresh-data" title="Sincronizar datos desde Zazu Express">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;vertical-align:text-bottom"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
-                    Actualizar
-                  </button>
+                <div class="filter-group">
+                  <label class="filter-label" for="zazu-lima-search">Buscar</label>
+                  <input type="text" id="zazu-lima-search" class="input-date" placeholder="Cliente, teléfono, etc.">
                 </div>
+                <button type="button" class="btn btn-primary btn-sm" id="zazu-lima-apply">Aplicar</button>
+                <button type="button" class="btn btn-ghost btn-sm" id="zazu-lima-clear">Limpiar</button>
               </div>
-              
-              <!-- Nueva barra de búsqueda global y acciones de exportación -->
-              <div class="zazu-filter-actions" style="margin-top: 16px; border-top: 1px solid var(--color-border); padding-top: 16px; flex-wrap: wrap;">
-                <div class="zazu-search-container">
-                  <span class="zazu-search-icon">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                  </span>
-                  <input type="text" id="zazu-global-search" class="zazu-search-input" placeholder="Buscar cliente, ID, número de orden, distrito..." />
-                </div>
-                
-                <button type="button" id="zazu-export-pdf" class="zazu-btn-pdf">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-                  Exportar reporte PDF
+              <!-- Vista Lima (tabla / ranking / kpis) -->
+              <div class="risk-type-tabs zazu-tabs" id="zazu-lima-view-tabs" role="tablist" aria-label="Vista Lima">
+                <button type="button" class="risk-type-tab active" data-zazu-lima-view="tabla">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path
+                      d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18" />
+                  </svg>
+                  Tabla General
+                </button>
+                <button type="button" class="risk-type-tab" data-zazu-lima-view="ranking">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="20" x2="18" y2="10" />
+                    <line x1="12" y1="20" x2="12" y2="4" />
+                    <line x1="6" y1="20" x2="6" y2="14" />
+                  </svg>
+                  Rankings
+                </button>
+                <button type="button" class="risk-type-tab" data-zazu-lima-view="kpis">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                  </svg>
+                  KPIs y Resumen
                 </button>
               </div>
-            </div>
-            <!-- Búsqueda universal de PDF de nota de venta (por nombre o ID numérico) -->
-            <div class="zazu-pdf-search" id="zazu-pdf-search-panel">
-              <div class="zazu-pdf-search__inner">
-                <div class="zazu-pdf-search__icon" aria-hidden="true">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>
+              <!-- Loading / Error Lima -->
+              <div id="zazu-loading" class="app-panel-loading" hidden>
+                <div class="spinner-inline"></div>
+                <span>Cargando envíos...</span>
+              </div>
+              <div id="zazu-error" class="app-panel-error" hidden></div>
+              <!-- Paginación Lima -->
+              <div class="zazu-pagination" id="zazu-pagination" hidden>
+                <button type="button" class="btn btn-ghost btn-sm zazu-page-btn" id="zazu-page-prev">Anterior</button>
+                <span class="zazu-pagination__info zazu-page-pill" id="zazu-page-info">Pag. 1 de 1</span>
+                <button type="button" class="btn btn-ghost btn-sm zazu-page-btn" id="zazu-page-next">Siguiente</button>
+              </div>
+              <!-- Tabla Lima -->
+              <div class="table-container zazu-table-wrap" id="zazu-lima-table-wrap">
+                <table class="data-table zazu-table">
+                  <thead>
+                    <tr>
+                      <th>ID Envío</th>
+                      <th>Fecha</th>
+                      <th>Estado</th>
+                      <th>Cliente</th>
+                      <th>Teléfono</th>
+                      <th>Dirección</th>
+                      <th>Ubicación</th>
+                      <th>Costo Servicio</th>
+                      <th>Pago</th>
+                      <th>Monto</th>
+                      <th>CxC Odoo</th>
+                      <th>Imagen</th>
+                      <th>Nota Odoo</th>
+                    </tr>
+                  </thead>
+                  <tbody id="zazu-tbody">
+                    <tr>
+                      <td colspan="13">Sin datos.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Rankings Lima -->
+              <section class="zazu-ranking-wrap" id="zazu-lima-ranking-wrap" hidden>
+                <div class="zazu-ranking-head">
+                  <h3 class="zazu-ranking-title">Rankings por Distrito (Lima)</h3>
+                  <input type="text" id="zazu-lima-ranking-filter" class="input-date" placeholder="Filtrar distrito...">
                 </div>
-                <div class="zazu-pdf-search__body">
-                  <h3 class="zazu-pdf-search__title">Obtener PDF de Nota de Venta</h3>
-                  <p class="zazu-pdf-search__desc">Ingresa el <strong>nombre de la nota</strong> (ej. <code>S000084</code>) o el <strong>ID numérico</strong> del pedido en Odoo para generar el PDF.</p>
+                <div class="zazu-kpi-strip" id="zazu-lima-ranking-kpi" style="margin-bottom:24px;"></div>
+                <div class="risk-type-tabs zazu-tabs" role="tablist" aria-label="Tipo de vista Lima">
+                  <button type="button" class="risk-type-tab active" data-zazu-lima-section="graficos">Mapa visual</button>
+                  <button type="button" class="risk-type-tab" data-zazu-lima-section="tops">Ranking</button>
+                </div>
+                <div class="zazu-section-content" id="zazu-lima-section-graficos">
+                  <div class="zazu-multivis-card">
+                    <div class="zazu-top-header">
+                      <h4 class="zazu-top-title">Vista comparativa · Top 10 Distritos</h4>
+                      <div class="zazu-vis-legend">
+                        <span class="zazu-vis-dot" style="background:#f59e0b"></span><span>Top 3</span>
+                        <span class="zazu-vis-dot" style="background:#ef4444"></span><span>Bottom 3</span>
+                        <span class="zazu-vis-dot" style="background:#10b981"></span><span>≥80% entrega</span>
+                        <span class="zazu-vis-dot" style="background:#f59e0b;opacity:.6"></span><span>50–79%</span>
+                        <span class="zazu-vis-dot" style="background:#ef4444;opacity:.6"></span><span>&lt;50%</span>
+                      </div>
+                    </div>
+                    <div id="zazu-lima-multivis"></div>
+                  </div>
+                </div>
+                <div class="zazu-section-content" id="zazu-lima-section-tops" hidden>
+                  <div class="zazu-multivis-card">
+                    <div class="zazu-top-header">
+                      <h4 class="zazu-top-title">Ranking detallado · Top 10 Distritos</h4>
+                      <span class="zazu-top-badge">Top 10</span>
+                    </div>
+                    <div id="zazu-lima-richrank"></div>
+                  </div>
+                </div>
+              </section>
+              <!-- KPIs Lima -->
+              <section class="zazu-kpis-wrap" id="zazu-lima-kpis-wrap" hidden>
+                <div class="zazu-ranking-head">
+                  <h3 class="zazu-ranking-title">KPIs y Resumen General — Lima</h3>
+                </div>
+                <div class="zazu-kpi-strip" id="zazu-kpi-strip-lima" style="margin-bottom:24px;"></div>
+                <div class="zazu-cierre-banner" id="zazu-cierre-banner-lima">
+                  <div class="zazu-cierre-formula">
+                    <span class="zazu-cierre-item"><span class="zazu-cierre-label">∑ Monto cobrado</span><span
+                        class="zazu-cierre-val" id="zazu-cierre-cobrado-lima">—</span></span>
+                    <span class="zazu-cierre-op">−</span>
+                    <span class="zazu-cierre-item"><span class="zazu-cierre-label">∑ Costo servicio</span><span
+                        class="zazu-cierre-val" id="zazu-cierre-costo-lima">—</span></span>
+                    <span class="zazu-cierre-op">=</span>
+                    <span class="zazu-cierre-item zazu-cierre-item--total"><span class="zazu-cierre-label">Total a abonar a la
+                        marca</span><span class="zazu-cierre-val zazu-cierre-val--total"
+                        id="zazu-cierre-total-lima">—</span></span>
+                  </div>
+                </div>
+              </section>
+            </div><!-- /zazu-lima-section -->
+
+            <!-- ══ SECCIÓN PROVINCIA ══ -->
+            <section class="zazu-courier-card" id="zazu-prov-card" aria-label="Cobertura courier provincia" hidden>
+              <header class="zazu-courier-head">
+                <h3 class="zazu-courier-title">Pedidos enviados a provincia</h3>
+                <p class="zazu-courier-subtitle">Consulta detalle de envíos por courier y vínculo con Odoo.</p>
+                <div class="app-panel-head-badges">
+                  <span class="badge" id="zazu-prov-service-indicator">Costo servicio: S/ 0.00</span>
+                  <span class="badge" id="zazu-prov-odoo-indicator">Odoo vinculados: 0</span>
+                </div>
+              </header>
+              <!-- Filtros Provincia -->
+              <div class="zazu-prov-filters" role="group" aria-label="Filtros de envíos provincia">
+                <div class="filter-group">
+                  <label class="filter-label" for="zazu-prov-date-from">Desde</label>
+                  <input type="date" id="zazu-prov-date-from" class="input-date">
+                </div>
+                <div class="filter-group">
+                  <label class="filter-label" for="zazu-prov-date-to">Hasta</label>
+                  <input type="date" id="zazu-prov-date-to" class="input-date">
+                </div>
+                <div class="filter-group">
+                  <label class="filter-label" for="zazu-prov-guide-query">Guía / Código</label>
+                  <input type="text" id="zazu-prov-guide-query" class="input-date" placeholder="Ej: 6580496 o KD3H">
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                  <button type="button" class="btn btn-primary btn-sm" id="zazu-prov-apply">Aplicar</button>
+                  <button type="button" class="btn btn-ghost btn-sm" id="zazu-prov-clear">Limpiar</button>
                 </div>
               </div>
-              <form class="zazu-pdf-search__form" id="zazu-pdf-search-form" autocomplete="off">
-                <div class="zazu-pdf-search__field">
-                  <label class="zazu-pdf-search__label" for="zazu-pdf-so-id">Nota de venta o ID de Odoo</label>
-                  <input type="text" id="zazu-pdf-so-id" class="zazu-pdf-search__input" placeholder="Ej: S000084 o 146" required>
-                </div>
-                <button type="submit" class="btn btn-primary zazu-pdf-search__btn" id="zazu-pdf-search-btn">
-                  <svg class="zazu-pdf-search__btn-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>
-                  Obtener PDF
+              <!-- Tabs de estado Provincia -->
+              <div class="risk-type-tabs zazu-tabs" id="zazu-prov-estado-tabs" role="tablist" aria-label="Filtrar por estado provincia">
+                <button type="button" class="risk-type-tab active" data-prov-estado="todos">Todos</button>
+                <button type="button" class="risk-type-tab" data-prov-estado="entregado">Entregados</button>
+                <button type="button" class="risk-type-tab" data-prov-estado="pendiente">Pendiente</button>
+                <button type="button" class="risk-type-tab" data-prov-estado="devolucion">Devolución</button>
+                <button type="button" class="risk-type-tab" data-prov-estado="retorno">Retorno</button>
+                <button type="button" class="risk-type-tab" data-prov-estado="anulado">Anulados</button>
+              </div>
+              <!-- Vista Provincia (tabla / ranking / kpis) -->
+              <div class="risk-type-tabs zazu-tabs" role="tablist" aria-label="Vista Provincia">
+                <button type="button" class="risk-type-tab active" data-zazu-prov-view="tabla">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path
+                      d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18" />
+                  </svg>
+                  Tabla General
                 </button>
-              </form>
-              <div class="zazu-pdf-search__status" id="zazu-pdf-search-status" hidden></div>
-            </div>
-
-            <div id="zazu-loading" class="app-panel-loading" hidden>
-              <div class="spinner-inline"></div>
-              <span>Consultando Supabase…</span>
-            </div>
-            <div id="zazu-error" class="app-panel-error" hidden></div>
-            <div id="zazu-table-wrap" class="table-container zazu-table-scroll" hidden>
-              <table class="data-table zazu-data-table">
-                <thead id="zazu-thead">
-                  <tr>
-                    <th>ID Envío</th>
-                    <th>Fecha</th>
-                    <th>Cliente</th>
-                    <th>Distrito</th>
-                    <th>Zona</th>
-                    <th>Estado</th>
-                    <th>Acciones</th>
-                  </tr>
-                </thead>
-                <tbody id="zazu-tbody"></tbody>
-              </table>
-            </div>
-            <details class="zazu-dev-panel" id="zazu-dev-panel">
-              <summary class="zazu-dev-panel__summary">
-                <span class="zazu-dev-panel__summary-title">Consola y peticiones</span>
-                <span class="zazu-dev-panel__summary-hint">Registro de llamadas a la API y mensajes del módulo</span>
-              </summary>
-              <div class="zazu-dev-panel__grid">
-                <section class="zazu-dev-section" aria-labelledby="zazu-req-heading">
-                  <h3 class="zazu-dev-section__title" id="zazu-req-heading">Peticiones</h3>
-                  <div class="zazu-dev-scroll" id="zazu-req-log" role="log" aria-live="polite"></div>
-                </section>
-                <section class="zazu-dev-section" aria-labelledby="zazu-console-heading">
-                  <h3 class="zazu-dev-section__title" id="zazu-console-heading">Consola</h3>
-                  <div class="zazu-dev-scroll zazu-dev-scroll--mono" id="zazu-console-log" role="log" aria-live="polite"></div>
-                </section>
+                <button type="button" class="risk-type-tab" data-zazu-prov-view="ranking">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="20" x2="18" y2="10" />
+                    <line x1="12" y1="20" x2="12" y2="4" />
+                    <line x1="6" y1="20" x2="6" y2="14" />
+                  </svg>
+                  Rankings
+                </button>
+                <button type="button" class="risk-type-tab" data-zazu-prov-view="kpis">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                  </svg>
+                  KPIs y Resumen
+                </button>
               </div>
-              <div class="zazu-dev-panel__actions">
-                <button type="button" class="btn btn-ghost" id="zazu-dev-clear">Limpiar registros</button>
+              <!-- Loading / Error Provincia -->
+              <div id="zazu-prov-loading" class="app-panel-loading" hidden>
+                <div class="spinner-inline"></div>
+                <span>Cargando pedidos de provincia...</span>
               </div>
-            </details>
-          </div>
+              <div id="zazu-prov-error" class="app-panel-error" hidden></div>
+              <!-- Paginación Provincia -->
+              <div class="zazu-pagination" id="zazu-prov-pagination-bar" hidden>
+                <button type="button" class="btn btn-ghost btn-sm zazu-page-btn" id="zazu-prov-prev">Anterior</button>
+                <span class="zazu-pagination__info zazu-page-pill" id="zazu-prov-page-info">Pag. 1 de 1</span>
+                <button type="button" class="btn btn-ghost btn-sm zazu-page-btn" id="zazu-prov-next">Siguiente</button>
+              </div>
+              <!-- Tabla Provincia -->
+              <div class="table-container zazu-table-wrap" id="zazu-prov-table-wrap">
+                <table class="data-table zazu-prov-table">
+                  <thead>
+                    <tr>
+                      <th>ID venta</th>
+                      <th>Estado</th>
+                      <th>Guía / Código</th>
+                      <th>Fecha</th>
+                      <th>Cliente</th>
+                      <th>Teléfono</th>
+                      <th>Destino (Provincia/Depto + Sede)</th>
+                      <th>Tipo pago</th>
+                      <th>Monto cobrar</th>
+                      <th>Costo servicio</th>
+                      <th>CxC Odoo</th>
+                      <th>Nota Odoo</th>
+                    </tr>
+                  </thead>
+                  <tbody id="zazu-prov-tbody">
+                    <tr>
+                      <td colspan="12">Sin datos.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <!-- Rankings Provincia -->
+              <section class="zazu-ranking-wrap" id="zazu-prov-ranking-wrap" hidden>
+                <div class="zazu-ranking-head">
+                  <h3 class="zazu-ranking-title">Rankings por Departamento (Provincia)</h3>
+                  <input type="text" id="zazu-prov-ranking-filter" class="input-date"
+                    placeholder="Filtrar departamento...">
+                </div>
+                <div class="zazu-kpi-strip" id="zazu-prov-ranking-kpi" style="margin-bottom:24px;"></div>
+                <div class="risk-type-tabs zazu-tabs" role="tablist" aria-label="Tipo de vista Provincia">
+                  <button type="button" class="risk-type-tab active" data-zazu-prov-section="graficos">Mapa visual</button>
+                  <button type="button" class="risk-type-tab" data-zazu-prov-section="tops">Ranking</button>
+                </div>
+                <div class="zazu-section-content" id="zazu-prov-section-graficos">
+                  <div class="zazu-multivis-card">
+                    <div class="zazu-top-header">
+                      <h4 class="zazu-top-title">Vista comparativa · Top 10 Departamentos</h4>
+                      <div class="zazu-vis-legend">
+                        <span class="zazu-vis-dot" style="background:#f59e0b"></span><span>Top 3</span>
+                        <span class="zazu-vis-dot" style="background:#ef4444"></span><span>Bottom 3</span>
+                        <span class="zazu-vis-dot" style="background:#10b981"></span><span>≥80% entrega</span>
+                        <span class="zazu-vis-dot" style="background:#f59e0b;opacity:.6"></span><span>50–79%</span>
+                        <span class="zazu-vis-dot" style="background:#ef4444;opacity:.6"></span><span>&lt;50%</span>
+                      </div>
+                    </div>
+                    <div id="zazu-prov-multivis"></div>
+                  </div>
+                </div>
+                <div class="zazu-section-content" id="zazu-prov-section-tops" hidden>
+                  <div class="zazu-multivis-card">
+                    <div class="zazu-top-header">
+                      <h4 class="zazu-top-title">Ranking detallado · Top 10 Departamentos</h4>
+                      <span class="zazu-top-badge">Top 10</span>
+                    </div>
+                    <div id="zazu-prov-richrank"></div>
+                  </div>
+                </div>
+              </section>
+              <!-- KPIs Provincia -->
+              <section class="zazu-kpis-wrap" id="zazu-prov-kpis-wrap" hidden>
+                <div class="zazu-ranking-head">
+                  <h3 class="zazu-ranking-title">KPIs y Resumen General — Provincia</h3>
+                </div>
+                <div class="zazu-kpi-strip" id="zazu-kpi-strip-prov" style="margin-bottom:24px;"></div>
+                <div class="zazu-cierre-banner" id="zazu-cierre-banner-prov">
+                  <div class="zazu-cierre-formula">
+                    <span class="zazu-cierre-item"><span class="zazu-cierre-label">∑ Monto cobrado</span><span
+                        class="zazu-cierre-val" id="zazu-cierre-cobrado-prov">—</span></span>
+                    <span class="zazu-cierre-op">−</span>
+                    <span class="zazu-cierre-item"><span class="zazu-cierre-label">∑ Costo servicio</span><span
+                        class="zazu-cierre-val" id="zazu-cierre-costo-prov">—</span></span>
+                    <span class="zazu-cierre-op">=</span>
+                    <span class="zazu-cierre-item zazu-cierre-item--total"><span class="zazu-cierre-label">Total a abonar a la
+                        marca</span><span class="zazu-cierre-val zazu-cierre-val--total"
+                        id="zazu-cierre-total-prov">—</span></span>
+                  </div>
+                </div>
+              </section>
+            </section><!-- /zazu-prov-card -->
 
-        </div>
-      </div>
+          </div><!-- /panel-zazu -->
+        </div><!-- /content-inner -->
+      </div><!-- /content-scroll -->
     </main>
-  </div>
+  </div><!-- /app-shell -->
+
   <!-- Modal de Recibo -->
   <div class="receipt-overlay" id="receipt-modal-overlay">
     <div class="receipt-modal">
@@ -650,13 +1089,45 @@
       <div class="receipt-modal__footer">
         <button type="button" class="btn btn-ghost" id="receipt-modal-close">Cerrar</button>
         <button type="button" class="btn btn-primary" id="receipt-modal-print">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            style="margin-right:4px">
+            <path d="M6 9V2h12v7" />
+            <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+            <rect x="6" y="14" width="12" height="8" />
+          </svg>
           Imprimir / Guardar PDF
         </button>
       </div>
     </div>
   </div>
 
+  <!-- Modal de Voucher con QR -->
+  <div class="receipt-overlay" id="voucher-modal-overlay">
+    <div class="receipt-modal voucher-modal">
+      <div class="receipt-modal__header">
+        <h3 class="receipt-modal__title" id="voucher-modal-title">Voucher de Envío</h3>
+        <button type="button" class="btn btn-ghost btn-sm" id="voucher-modal-close-x">&times;</button>
+      </div>
+      <div class="receipt-modal__body" id="voucher-modal-body">
+        <!-- El contenido del voucher se inyecta aquí -->
+      </div>
+      <div class="receipt-modal__footer">
+        <button type="button" class="btn btn-ghost" id="voucher-modal-close">Cerrar</button>
+        <button type="button" class="btn btn-primary" id="voucher-modal-print">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            style="margin-right:4px">
+            <path d="M6 9V2h12v7" />
+            <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+            <rect x="6" y="14" width="12" height="8" />
+          </svg>
+          Imprimir Voucher
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
   <script src="/assets/dashboard.js"></script>
 </body>
+
 </html>

@@ -28,6 +28,7 @@ from odoo_connector import (
     _sale_order_states_from_env,
     is_configured,
     missing_config_keys,
+    fetch_pos_orders_geographic,
 )
 
 # ============================================================
@@ -93,9 +94,26 @@ EXCLUDE_CATEGORIES = {
 }
 
 # Líneas Bravos (product.template) en UI: orden de filas (POLERA NERU, PANTALON OPRA, CLASICOS DE REGALO).
-BRAVOS_TEMPLATE_IDS_DEFAULT = (89, 143, 154)
-# Plantillas que entran en stock, POS, KPIs y totales (las tres líneas Bravos en panel).
-BRAVOS_TEMPLATE_METRICS_IDS_DEFAULT = (89, 143, 154)
+BRAVOS_TEMPLATE_IDS_DEFAULT = (89, 143, 154, 196)
+# Plantillas que entran en stock, POS, KPIs y totales (las cuatro líneas Bravos en panel).
+BRAVOS_TEMPLATE_METRICS_IDS_DEFAULT = (89, 143, 154, 196)
+
+# Cantidad fija de unidades/pedido por product.template en Bravos.
+# Sobreescribe el promedio calculado desde historial POS.
+BRAVOS_TEMPLATE_QTY_OVERRIDE: dict[int, float] = {
+    196: 3.0,  # POLERA BOXYFIT
+}
+
+# product.template IDs de Overshark/Producción a forzar como una sola fila por template.
+# El stock se agrega sobre todas las variantes; se inyectan tras compute_all().
+OVERSHARK_FORCE_TEMPLATE_IDS: frozenset[int] = frozenset({197, 198})
+
+# Cantidad fija de unidades/pedido por product.template (Overshark).
+# Aplicado al calcular ventas_proyectadas del template completo.
+OVERSHARK_TEMPLATE_QTY_OVERRIDE: dict[int, float] = {
+    197: 7.0,  # BABY TY ESCOTADO MANGA
+    198: 7.0,  # BABY TY ESCOTE
+}
 
 
 def parse_bravos_template_ids_from_env() -> list[int]:
@@ -635,7 +653,10 @@ class BusinessEngine:
                     date_from: str | None = None,
                     date_to: str | None = None,
                     pos_orders: list[dict] | None = None,
+                    product_qty_override: dict[int, float] | None = None,
                     ) -> tuple[list[FamilyData], DashboardTotals]:
+        # pid → cantidad fija (productos con template override resuelto en runtime)
+        _pid_qty_ov: dict[int, float] = product_qty_override or {}
 
         # ── Aggregate by family ──
         cat_stock = defaultdict(float)
@@ -643,8 +664,26 @@ class BusinessEngine:
         cat_list_prices = defaultdict(list)
         cat_ids_map = {}
 
+        # Nombres de familias virtuales para productos con qty override
+        virtual_family_names: dict[int, str] = {}
+
         for pid, stock_qty in stock_by_product.items():
             detail = product_details.get(pid, {})
+
+            # Productos con qty override: familia virtual propia
+            if pid in _pid_qty_ov:
+                raw_name = (detail.get("display_name") or detail.get("name") or f"PRODUCTO {pid}").strip()
+                # Quitar prefijos tipo "[OVERSHARK/197] " del nombre
+                clean_name = re.sub(r"^\[[^\]]+\]\s*", "", raw_name).strip().upper() or raw_name.upper()
+                fname = clean_name
+                virtual_family_names[pid] = fname
+                cat_stock[fname] += float(stock_qty)
+                cat_products[fname].add(pid)
+                lp = float(detail.get("list_price") or 0)
+                if lp > 0:
+                    cat_list_prices[fname].append(lp)
+                continue
+
             cat_id = detail.get("cat_id", 0)
             cat_name = categ_names.get(cat_id, f"Sin categoria (cat_id={cat_id})")
             if not self.should_include_category(cat_name):
@@ -668,6 +707,23 @@ class BusinessEngine:
             pid_t = ln.get("product_id")
             pid = pid_t[0] if isinstance(pid_t, (list, tuple)) else int(pid_t or 0)
             detail = product_details.get(pid, {})
+
+            oid_t = ln.get("order_id")
+            oid = oid_t[0] if isinstance(oid_t, (list, tuple)) else int(oid_t or 0)
+            qty = float(ln.get("qty", 0))
+            sub = float(ln.get("price_subtotal", 0) or ln.get("price_subtotal_incl", 0))
+            if qty <= 0:
+                continue
+
+            # Productos con qty override: acumular en su familia virtual
+            if pid in _pid_qty_ov:
+                fname = virtual_family_names.get(pid)
+                if fname:
+                    cat_sales_qty[fname] += qty
+                    cat_sales_subtotal[fname] += sub
+                    cat_order_qty[fname][oid] += qty
+                continue
+
             cat_id = detail.get("cat_id", 0)
             cat_name = categ_names.get(cat_id, f"Sin categoria (cat_id={cat_id})")
             if not self.should_include_category(cat_name):
@@ -676,13 +732,6 @@ class BusinessEngine:
             if not family_name:
                 continue
 
-            oid_t = ln.get("order_id")
-            oid = oid_t[0] if isinstance(oid_t, (list, tuple)) else int(oid_t or 0)
-            qty = float(ln.get("qty", 0))
-            sub = float(ln.get("price_subtotal", 0) or ln.get("price_subtotal_incl", 0))
-
-            if qty <= 0:
-                continue
             cat_sales_qty[family_name] += qty
             cat_sales_subtotal[family_name] += sub
             cat_order_qty[family_name][oid] += qty
@@ -720,13 +769,26 @@ class BusinessEngine:
 
         # ── Build family data ──
         families: list[FamilyData] = []
-        all_cat_names = set(BUSINESS_QTY_BY_FAMILY.keys()) | set(cat_stock.keys()) | set(cat_sales_qty.keys())
+
+        # Qty efectiva: BUSINESS_QTY_BY_FAMILY + familias virtuales de productos con override
+        virtual_family_qty: dict[str, float] = {}
+        for pid, qty_ov in _pid_qty_ov.items():
+            fname = virtual_family_names.get(pid)
+            if fname:
+                virtual_family_qty[fname] = qty_ov
+
+        effective_qty_by_family: dict[str, float | None] = {
+            **{k: (float(v) if v is not None else None) for k, v in BUSINESS_QTY_BY_FAMILY.items()},
+            **{k: v for k, v in virtual_family_qty.items()},
+        }
+
+        all_cat_names = set(effective_qty_by_family.keys()) | set(cat_stock.keys()) | set(cat_sales_qty.keys())
 
         # First pass: compute ingresos for total
         pre_ingresos = {}
         for cat_name in all_cat_names:
             stock = cat_stock.get(cat_name, 0)
-            cantidad_regla = BUSINESS_QTY_BY_FAMILY.get(cat_name)
+            cantidad_regla = effective_qty_by_family.get(cat_name)
             if cantidad_regla is None:
                 pre_ingresos[cat_name] = 0.0
                 continue
@@ -750,7 +812,7 @@ class BusinessEngine:
             total_qty_sold = cat_sales_qty.get(cat_name, 0)
             subtotal = cat_sales_subtotal.get(cat_name, 0)
 
-            cantidad_regla = BUSINESS_QTY_BY_FAMILY.get(cat_name)
+            cantidad_regla = effective_qty_by_family.get(cat_name)
             if cantidad_regla is None:
                 cantidad = 0.0
             else:
@@ -1115,7 +1177,9 @@ class BusinessEngine:
             num_orders = len(orders_dict)
             total_qty_sold = float(tmpl_sales_qty.get(tid, 0.0))
 
-            if num_orders > 0 and total_qty_sold > 0:
+            if tid in BRAVOS_TEMPLATE_QTY_OVERRIDE:
+                cantidad = BRAVOS_TEMPLATE_QTY_OVERRIDE[tid]
+            elif num_orders > 0 and total_qty_sold > 0:
                 cantidad = total_qty_sold / num_orders
             else:
                 cantidad = 1.0
@@ -1165,7 +1229,9 @@ class BusinessEngine:
             total_qty_sold = float(tmpl_sales_qty.get(tid, 0.0))
             subtotal = float(tmpl_sales_sub.get(tid, 0.0))
 
-            if num_orders > 0 and total_qty_sold > 0:
+            if tid in BRAVOS_TEMPLATE_QTY_OVERRIDE:
+                cantidad = BRAVOS_TEMPLATE_QTY_OVERRIDE[tid]
+            elif num_orders > 0 and total_qty_sold > 0:
                 cantidad = total_qty_sold / num_orders
             else:
                 cantidad = 1.0
@@ -1708,14 +1774,51 @@ def generate_dashboard_payload(
     else:
         stock_by_product = stock_all
         product_ids = sorted(stock_by_product.keys())
-        products_with_stock_count = len(product_ids)
+        products_with_stock_count = len([p for p in product_ids if stock_all.get(p, 0) > 0])
         product_details = extractor.get_product_details(product_ids)
         pos_lines = extractor.get_pos_lines(product_ids, date_from, date_to)
         pos_orders = extractor.get_pos_orders_dates(date_from, date_to)
         families, totals = engine.compute_all(
             stock_by_product, product_details, pos_lines,
-            categ_names, date_from, date_to, pos_orders
+            categ_names, date_from, date_to, pos_orders,
         )
+        # Inyectar productos Overshark forzados como una sola fila por product.template
+        quant_domain_base: list[Any] = [("location_id", "in", loc_ids)]
+        if extractor.company_id:
+            quant_domain_base.append(("company_id", "=", extractor.company_id))
+        for tmpl_id in sorted(OVERSHARK_FORCE_TEMPLATE_IDS):
+            qty_per_order = OVERSHARK_TEMPLATE_QTY_OVERRIDE.get(tmpl_id, 7.0)
+            # Nombre desde product.template
+            tmpl_rows = extractor._sr(
+                "product.template",
+                [("id", "=", tmpl_id)],
+                ["id", "name", "display_name"],
+            )
+            if tmpl_rows:
+                tmpl_name = (tmpl_rows[0].get("display_name") or tmpl_rows[0].get("name") or f"Producto {tmpl_id}").strip()
+            else:
+                tmpl_name = f"Producto {tmpl_id}"
+            # Stock total sumando todas las variantes del template
+            quant_domain = quant_domain_base + [("product_id.product_tmpl_id", "=", tmpl_id)]
+            quants = extractor._sr("stock.quant", quant_domain, ["quantity"])
+            tmpl_stock = sum(float(q.get("quantity") or 0) for q in quants)
+            ventas_proy = round(tmpl_stock / qty_per_order) if qty_per_order else 0.0
+            ingresos = round(ventas_proy * TICKET_COMERCIAL_DEFAULT, 2)
+            fd = FamilyData(
+                nombre=tmpl_name,
+                cat_id=0,
+                stock=tmpl_stock,
+                cantidad_promedio=qty_per_order,
+                ticket_comercial=TICKET_COMERCIAL_DEFAULT,
+                ticket_usado=TICKET_COMERCIAL_DEFAULT,
+                ventas_proyectadas=ventas_proy,
+                ingresos_brutos=ingresos,
+                clasificacion_criticidad="sin_historial",
+            )
+            families.append(fd)
+            totals.stock += tmpl_stock
+            totals.ventas_proyectadas += ventas_proy
+            totals.ingresos_brutos += ingresos
         ticket_promedio, ticket_promedio_meta = compute_ticket_promedio_por_empresa(
             extractor, date_from, date_to
         )
@@ -2529,3 +2632,167 @@ if __name__ == "__main__":
     with open(out, "w", encoding="utf-8") as fp:
         json.dump(data, fp, ensure_ascii=False, indent=2)
     print(f"\n[SAVED] {out}")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# POS GEOGRAPHIC PAYLOAD
+# ─────────────────────────────────────────────────────────────────────────────
+
+def generate_pos_geographic_payload(
+    date_from: str | None = None,
+    date_to: str | None = None,
+    company_id: int | None = None,
+) -> dict:
+    """
+    Segmentación geográfica de pos.order: departamento, distrito y ciudad.
+    Retorna KPIs globales, rankings y tablas para Lima y Provincia.
+    """
+    cfg = config_from_environ()
+    cfg.date_from = date_from
+    cfg.date_to = date_to
+
+    orders = fetch_pos_orders_geographic(cfg)
+
+    empty_kpis = {
+        "total_ventas": 0.0,
+        "total_ordenes": 0,
+        "ticket_promedio": 0.0,
+        "clientes_unicos": 0,
+        "departamentos": 0,
+        "lima_ventas": 0.0,
+        "lima_ordenes": 0,
+        "provincia_ventas": 0.0,
+        "provincia_ordenes": 0,
+        "fecha_desde": date_from or "",
+        "fecha_hasta": date_to or "",
+    }
+
+    if not orders:
+        return {
+            "kpis": empty_kpis,
+            "by_departamento": [],
+            "by_distrito_lima": [],
+            "by_ciudad_provincia": [],
+            "top10_depto_ventas": [],
+            "top10_depto_ordenes": [],
+            "top10_distrito_lima": [],
+            "top10_ciudad_provincia": [],
+            "total_registros": 0,
+        }
+
+    total_ventas = sum(o["amount_total"] for o in orders)
+    total_ordenes = len(orders)
+    ticket_promedio = total_ventas / total_ordenes if total_ordenes else 0.0
+    clientes_unicos = len({o["partner_id"] for o in orders if o.get("partner_id")})
+
+    # ── Group by departamento ──
+    depto_agg: dict[str, dict] = {}
+    distrito_lima_agg: dict[str, dict] = {}
+    ciudad_prov_agg: dict[str, dict] = {}
+
+    for o in orders:
+        depto = o["departamento"] or "Sin departamento"
+        distrito = o["distrito"] or "Sin distrito"
+        ciudad = o["ciudad"] or "Sin ciudad"
+        monto = float(o["amount_total"])
+        pid = o.get("partner_id")
+        is_lima = "lima" in depto.lower()
+
+        # Departamento
+        if depto not in depto_agg:
+            depto_agg[depto] = {"ventas": 0.0, "ordenes": 0, "clientes": set(), "ciudades": set(), "is_lima": is_lima}
+        depto_agg[depto]["ventas"] += monto
+        depto_agg[depto]["ordenes"] += 1
+        if pid:
+            depto_agg[depto]["clientes"].add(pid)
+        depto_agg[depto]["ciudades"].add(ciudad)
+
+        if is_lima:
+            if distrito not in distrito_lima_agg:
+                distrito_lima_agg[distrito] = {"ventas": 0.0, "ordenes": 0, "clientes": set()}
+            distrito_lima_agg[distrito]["ventas"] += monto
+            distrito_lima_agg[distrito]["ordenes"] += 1
+            if pid:
+                distrito_lima_agg[distrito]["clientes"].add(pid)
+        else:
+            key = f"{ciudad}||{depto}"
+            if key not in ciudad_prov_agg:
+                ciudad_prov_agg[key] = {"ciudad": ciudad, "departamento": depto, "ventas": 0.0, "ordenes": 0, "clientes": set()}
+            ciudad_prov_agg[key]["ventas"] += monto
+            ciudad_prov_agg[key]["ordenes"] += 1
+            if pid:
+                ciudad_prov_agg[key]["clientes"].add(pid)
+
+    lima_ventas = sum(v["ventas"] for v in distrito_lima_agg.values())
+    lima_ordenes = sum(v["ordenes"] for v in distrito_lima_agg.values())
+    provincia_ventas = sum(v["ventas"] for v in ciudad_prov_agg.values())
+    provincia_ordenes = sum(v["ordenes"] for v in ciudad_prov_agg.values())
+
+    # ── Build sorted lists ──
+    def _pct(val, total):
+        return round(val / total * 100, 2) if total else 0.0
+
+    by_departamento = sorted([
+        {
+            "departamento": k,
+            "ventas": round(v["ventas"], 2),
+            "ordenes": v["ordenes"],
+            "clientes": len(v["clientes"]),
+            "ciudades": len(v["ciudades"]),
+            "ticket_promedio": round(v["ventas"] / v["ordenes"], 2) if v["ordenes"] else 0.0,
+            "porcentaje": _pct(v["ventas"], total_ventas),
+            "es_lima": v["is_lima"],
+        }
+        for k, v in depto_agg.items()
+    ], key=lambda x: x["ventas"], reverse=True)
+
+    by_distrito_lima = sorted([
+        {
+            "distrito": k,
+            "ventas": round(v["ventas"], 2),
+            "ordenes": v["ordenes"],
+            "clientes": len(v["clientes"]),
+            "ticket_promedio": round(v["ventas"] / v["ordenes"], 2) if v["ordenes"] else 0.0,
+            "porcentaje": _pct(v["ventas"], lima_ventas),
+        }
+        for k, v in distrito_lima_agg.items()
+    ], key=lambda x: x["ventas"], reverse=True)
+
+    by_ciudad_provincia = sorted([
+        {
+            "ciudad": v["ciudad"],
+            "departamento": v["departamento"],
+            "ventas": round(v["ventas"], 2),
+            "ordenes": v["ordenes"],
+            "clientes": len(v["clientes"]),
+            "ticket_promedio": round(v["ventas"] / v["ordenes"], 2) if v["ordenes"] else 0.0,
+            "porcentaje": _pct(v["ventas"], provincia_ventas),
+        }
+        for v in ciudad_prov_agg.values()
+    ], key=lambda x: x["ventas"], reverse=True)
+
+    kpis = {
+        "total_ventas": round(total_ventas, 2),
+        "total_ordenes": total_ordenes,
+        "ticket_promedio": round(ticket_promedio, 2),
+        "clientes_unicos": clientes_unicos,
+        "departamentos": len(depto_agg),
+        "lima_ventas": round(lima_ventas, 2),
+        "lima_ordenes": lima_ordenes,
+        "provincia_ventas": round(provincia_ventas, 2),
+        "provincia_ordenes": provincia_ordenes,
+        "fecha_desde": date_from or "",
+        "fecha_hasta": date_to or "",
+    }
+
+    return {
+        "kpis": kpis,
+        "by_departamento": by_departamento[:80],
+        "by_distrito_lima": by_distrito_lima[:80],
+        "by_ciudad_provincia": by_ciudad_provincia[:80],
+        "top10_depto_ventas": by_departamento[:10],
+        "top10_depto_ordenes": sorted(by_departamento, key=lambda x: x["ordenes"], reverse=True)[:10],
+        "top10_distrito_lima": by_distrito_lima[:10],
+        "top10_ciudad_provincia": by_ciudad_provincia[:10],
+        "total_registros": total_ordenes,
+    }
