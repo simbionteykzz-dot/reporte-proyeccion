@@ -2701,6 +2701,7 @@
     }
 
     const params = buildQueryParams();
+    if (force) params.push('force_refresh=1');
     let url = '/api/dashboard';
     if (params.length) url += '?' + params.join('&');
 

@@ -77,6 +77,8 @@ if os.environ.get("SESSION_COOKIE_SECURE", "").strip().lower() in ("1", "true", 
 
 CORS(app, supports_credentials=True)
 
+DASHBOARD_CACHE: dict[str, dict] = {}
+
 
 def _env_strip(name: str) -> str:
     """Evita fallos por espacios o saltos al pegar variables en Vercel."""
@@ -485,16 +487,28 @@ def api_dashboard():
     try:
         date_from, date_to = _request_dates()
         company_id = _request_company_id()
+        bravos_tab = _request_bravos_tab()
+        force_refresh = request.args.get("force_refresh", "0") == "1"
+
         if company_id is not None:
             ctx = get_companies_for_dashboard_user()
             if not company_id_allowed(company_id, ctx["companies"]):
                 return jsonify({"error": "company_id no permitido para este usuario"}), 403
+
+        cache_key = f"{date_from}_{date_to}_{company_id}_{bravos_tab}"
+        if not force_refresh and cache_key in DASHBOARD_CACHE:
+            payload = DASHBOARD_CACHE[cache_key]
+            # Agregar indicador de que viene del caché del servidor
+            payload["_server_cached"] = True
+            return jsonify(payload)
+
         payload = generate_dashboard_payload(
             date_from,
             date_to,
             company_id=company_id,
-            bravos_tab=_request_bravos_tab(),
+            bravos_tab=bravos_tab,
         )
+        DASHBOARD_CACHE[cache_key] = payload
         return jsonify(payload)
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
