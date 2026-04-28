@@ -18,6 +18,7 @@
     boxPrimeCompanyId: null,
     boxPrimeName: 'Box Prime',
     defaultCompanyId: null,
+    companies: [],
     /** clave estable `cat_id::nombre` → incluir en KPI de proyección (valoración / unidades / stock fila) */
     projectionInclude: {},
     view: 'dashboard',
@@ -163,6 +164,7 @@
       S.boxPrimeCompanyId = j.box_prime_company_id != null ? j.box_prime_company_id : null;
       S.boxPrimeName = (j.box_prime_name || 'Box Prime').trim() || 'Box Prime';
       S.defaultCompanyId = j.default_company_id;
+      S.companies = j.companies || [];
     } catch (_) { /* ignore */ }
   }
 
@@ -273,12 +275,23 @@
     const inv = d.getElementById('panel-inventory');
     const risk = d.getElementById('panel-risks');
     const zazu = d.getElementById('panel-zazu');
-        const status = d.querySelector('.status-bar');
-    const panels = [inv, risk, zazu];
+    const prodDash = d.getElementById('panel-productos_dashboard');
+    const status = d.querySelector('.status-bar');
+    const panels = [inv, risk, zazu, prodDash];
     if (view === 'dashboard') {
       if (dash) dash.style.display = S.data ? '' : 'none';
       panels.forEach(p => p && (p.hidden = true));
+      if (prodDash) prodDash.style.display = 'none';
       if (status) status.style.display = '';
+    } else if (view === 'productos_dashboard') {
+      if (dash) dash.style.display = 'none';
+      panels.forEach(p => p && (p.hidden = true));
+      if (prodDash) {
+        prodDash.hidden = false;
+        prodDash.style.display = '';
+      }
+      if (load) load.style.display = 'none';
+      if (status) status.style.display = 'none';
     } else if (view === 'inventory') {
       if (dash) dash.style.display = 'none';
       panels.forEach(p => p && (p.hidden = true));
@@ -533,6 +546,7 @@
 
     return filtered;
   }
+
 
   function zazuClientName(r) {
     const e = r && typeof r.envio === 'object' ? r.envio : {};
@@ -3937,13 +3951,28 @@
       const { jsPDF } = window.jspdf || {};
       if (!jsPDF) { alert('Error: librería PDF no disponible. Verifique conexión a internet y recargue la página.'); return; }
 
-      // Datos actuales
-      const rows = S.zazuScope === 'provincia' ? (S.zazuProvRows || []) : zazuFilteredRows(S.zazuRowsAll || []);
-      if (!rows || rows.length === 0) { alert('No hay datos para exportar. Cargue primero los envíos en la sección Logística.'); return; }
+      // Datos actuales — el servidor ya filtra por fechas; aquí solo aplicamos estado (client-side)
+      let rows;
+      if (S.zazuScope === 'provincia') {
+        const provFiltro = S.zazuProvEstadoFiltro || 'todos';
+        let provAll = S.zazuProvRows || [];
+        if (provFiltro !== 'todos') {
+          provAll = provAll.filter((r) => zazuProvStateBucket(r) === provFiltro);
+        }
+        rows = provAll;
+      } else {
+        rows = zazuFilteredRows(S.zazuRowsAll || []);
+      }
+      if (!rows || rows.length === 0) { alert('No hay datos para exportar con los filtros actuales. Verifique el estado seleccionado y que los datos estén cargados.'); return; }
+
       const m = zazuComputeMetrics(rows);
       const money = (v) => `S/ ${fmt.n(Number(v) || 0, 2)}`;
       const scope = S.zazuScope === 'provincia' ? 'Provincia' : 'Lima';
-      const tabLabel = String(S.zazuTab || 'todos');
+      // Etiqueta de estado activo para el encabezado del PDF
+      const activeEstado = S.zazuScope === 'provincia'
+        ? (S.zazuProvEstadoFiltro || 'todos')
+        : (S.zazuEstadoFiltro || 'todos');
+      const tabLabel = activeEstado;
 
       const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
       const pageW = doc.internal.pageSize.getWidth();
@@ -3971,7 +4000,14 @@
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
       doc.setTextColor(180, 180, 190);
-      doc.text(`${scope} · ${tabLabel} · ${rows.length} registros · Generado: ${new Date().toLocaleString('es-PE')}`, pageW / 2, 52, { align: 'center' });
+      // Rango de fechas aplicado
+      const isPdfProv = S.zazuScope === 'provincia';
+      const pdfFrom = isPdfProv ? (S.zazuProvDateFrom || '') : (S.zazuDateFrom || '');
+      const pdfTo   = isPdfProv ? (S.zazuProvDateTo   || '') : (S.zazuDateTo   || '');
+      const dateRange = (pdfFrom || pdfTo)
+        ? ` · Período: ${pdfFrom || '…'} → ${pdfTo || '…'}`
+        : '';
+      doc.text(`${scope} · Estado: ${tabLabel}${dateRange} · ${rows.length} registros · ${new Date().toLocaleString('es-PE')}`, pageW / 2, 52, { align: 'center' });
 
       // ── Tabla de datos ──
       const isProv = S.zazuScope === 'provincia';
@@ -4220,14 +4256,17 @@
     });
 
     // Refresh
+    // Refresh
     d.getElementById('btn-refresh')?.addEventListener('click', () => {
       if (S.view === 'inventory' || S.view === 'risks') fetchInventoryRisks(false, { force: true });
       else if (S.view === 'zazu') fetchZazuEnvios(true);
+      else if (S.view === 'productos_dashboard') fetchProductsDashboard(true);
       else fetchData({ force: true });
     });
     ['date-from', 'date-to'].forEach((id) => {
       d.getElementById(id)?.addEventListener('change', () => {
         if (S.view === 'inventory' || S.view === 'risks') fetchInventoryRisks();
+        else if (S.view === 'productos_dashboard') fetchProductsDashboard(false);
         else if (S.view === 'dashboard') fetchData();
       });
     });
@@ -4629,6 +4668,266 @@
     d.getElementById('voucher-modal-print')?.addEventListener('click', () => {
       window.print();
     });
+
+    // Products Dashboard Logic
+    d.querySelectorAll('[data-panel="productos_dashboard"]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const label = d.getElementById('page-label');
+        if (label) label.textContent = 'Análisis';
+        const heading = d.getElementById('page-heading');
+        if (heading) heading.textContent = 'Dashboard de Productos';
+        setView('productos_dashboard');
+        
+        // Populate the company select: solo Overshark, Bravos y Box Prime
+        const sel = d.getElementById('prod-dashboard-company');
+        if (sel && sel.options.length <= 1) {
+          const allowedIds = new Set(
+            [S.defaultCompanyId, S.bravosCompanyId, S.boxPrimeCompanyId]
+              .filter((id) => id != null)
+          );
+          S.companies
+            .filter((c) => allowedIds.has(c.id))
+            .forEach((c) => {
+              const opt = d.createElement('option');
+              opt.value = c.id;
+              opt.textContent = c.name;
+              sel.appendChild(opt);
+            });
+
+          sel.addEventListener('change', () => {
+            fetchProductsDashboard(false);
+          });
+        }
+
+        
+        fetchProductsDashboard(false);
+      });
+    });
+
+    let currentProductsData = null;
+    let currentViewMode = 'neto';
+
+    d.getElementById('btn-view-neto')?.addEventListener('click', () => {
+      currentViewMode = 'neto';
+      d.getElementById('btn-view-neto').classList.replace('btn-ghost', 'btn-primary');
+      d.getElementById('btn-view-bruto').classList.replace('btn-primary', 'btn-ghost');
+      if (currentProductsData) renderProductsDashboard(currentProductsData);
+    });
+
+    d.getElementById('btn-view-bruto')?.addEventListener('click', () => {
+      currentViewMode = 'bruto';
+      d.getElementById('btn-view-bruto').classList.replace('btn-ghost', 'btn-primary');
+      d.getElementById('btn-view-neto').classList.replace('btn-primary', 'btn-ghost');
+      if (currentProductsData) renderProductsDashboard(currentProductsData);
+    });
+
+    async function fetchProductsDashboard(force = false) {
+      const panel = d.getElementById('panel-productos_dashboard');
+      if (!panel) return;
+      const tBody = d.getElementById('prod-dashboard-tbody');
+      
+      const cid = d.getElementById('prod-dashboard-company')?.value || '';
+      
+      const q = new URLSearchParams();
+      const from = d.getElementById('date-from')?.value || '';
+      const to = d.getElementById('date-to')?.value || '';
+      if (from) q.append('date_from', from);
+      if (to) q.append('date_to', to);
+      if (cid) q.append('company_id', cid);
+      if (force) q.append('force_refresh', '1');
+      
+      if (tBody) tBody.innerHTML = '<tr><td colspan="12" style="text-align:center;">Cargando métricas multiempresa...</td></tr>';
+      
+      try {
+        const res = await fetch(`/api/dashboard/productos?${q.toString()}`);
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          if (errData.traceback) console.error('Backend Traceback:\n', errData.traceback);
+          throw new Error(errData.error || `HTTP ${res.status}`);
+        }
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        
+        currentProductsData = data;
+        renderProductsDashboard(data);
+      } catch (e) {
+        console.error('Error fetching products dashboard:', e);
+        if (tBody) tBody.innerHTML = `<tr><td colspan="12" style="text-align:center;color:red;">Error: ${escHtml(e.message)}</td></tr>`;
+      }
+    }
+
+    let prodChartTop10 = null;
+    let prodChartPie = null;
+
+    function renderProductsDashboard(data) {
+      if (!data || !data.kpis) return;
+      const { kpis, table } = data;
+      
+      // Update KPIs
+      const el = (id, val) => { const e = d.getElementById(id); if (e) e.textContent = val; };
+      
+      // AGRUPAR POR MODELO (Familia)
+      const grouped = {};
+      table.forEach(r => {
+        let mod = (r.modelo || "Sin modelo").trim();
+        if (mod === "False" || mod === "") mod = "Sin modelo";
+        
+        if (!grouped[mod]) {
+          grouped[mod] = {
+            producto: mod,
+            costo_sum: 0,
+            precio_sum: 0,
+            count_costo_valid: 0,
+            count_precio_valid: 0,
+            ventas_registradas: 0,
+            unidades_vendidas: 0,
+            ingreso_total: 0,
+            costo_total: 0,
+            margen_total: 0
+          };
+        }
+        
+        if (r.costo_unitario > 0) {
+            grouped[mod].costo_sum += r.costo_unitario;
+            grouped[mod].count_costo_valid += 1;
+        }
+
+        let precio_promedio = currentViewMode === 'neto' ? (r.precio_promedio_neto || r.precio_promedio) : (r.precio_promedio_bruto || r.precio_promedio);
+        let ingreso_total = currentViewMode === 'neto' ? (r.ingreso_total_neto || r.ingreso_total) : (r.ingreso_total_bruto || r.ingreso_total);
+        let margen_total = currentViewMode === 'neto' ? (r.margen_total_neto || r.margen_total) : (r.margen_total_bruto || r.margen_total);
+
+        if (precio_promedio > 0) {
+            grouped[mod].precio_sum += precio_promedio;
+            grouped[mod].count_precio_valid += 1;
+        }
+        
+        grouped[mod].ventas_registradas += (r.ventas_registradas || 0);
+        grouped[mod].unidades_vendidas += (r.unidades_vendidas || 0);
+        grouped[mod].ingreso_total += (ingreso_total || 0);
+        grouped[mod].costo_total += (r.costo_total || 0);
+        grouped[mod].margen_total += (margen_total || 0);
+      });
+      
+      const groupedList = Object.values(grouped).map(g => {
+        g.costo_unitario = g.count_costo_valid > 0 ? (g.costo_sum / g.count_costo_valid) : 0;
+        g.precio_venta_unitario = g.count_precio_valid > 0 ? (g.precio_sum / g.count_precio_valid) : 0;
+        return g;
+      });
+      
+      groupedList.sort((a, b) => b.unidades_vendidas - a.unidades_vendidas);
+      const top_10 = groupedList.slice(0, 10);
+
+      let kpi_ingreso = currentViewMode === 'neto' ? (kpis.ingreso_total_neto || kpis.ingreso_total) : (kpis.ingreso_total_bruto || kpis.ingreso_total);
+      let kpi_margen = currentViewMode === 'neto' ? (kpis.margen_total_neto || kpis.margen_total) : (kpis.margen_total_bruto || kpis.margen_total);
+      let kpi_margen_pct = kpi_ingreso > 0 ? (kpi_margen / kpi_ingreso) * 100 : 0;
+
+      el('kpi-prod-total-productos', fmt.n(groupedList.length, 0)); // Ahora muestra modelos unicos
+      el('kpi-prod-total-unidades', fmt.n(kpis.total_unidades, 2));
+      el('kpi-prod-ingresos-brutos', fmt.money(kpis.ingreso_bruto));
+      el('kpi-prod-total-ventas', fmt.n(kpis.total_ventas, 0));
+      el('kpi-prod-costo-servicio', fmt.money(kpis.costo_servicio));
+      el('kpi-prod-ingresos', fmt.money(kpi_ingreso));
+      el('kpi-prod-costo', fmt.money(kpis.costo_total));
+      el('kpi-prod-margen', fmt.money(kpi_margen));
+      el('kpi-prod-margen-pct', fmt.n(kpi_margen_pct, 1) + '%');
+      el('kpi-prod-monto-cobrar', fmt.money(kpis.monto_cobrar));
+      
+      // Render Charts
+      if (top_10 && top_10.length > 0) {
+        const labels = top_10.map(item => item.producto);
+        const dataUnits = top_10.map(item => item.unidades_vendidas);
+        
+        // Horizontal Bar Chart for Top 10
+        const ctxBar = d.getElementById('chart-prod-top10');
+        if (ctxBar) {
+          if (prodChartTop10) prodChartTop10.destroy();
+          prodChartTop10 = new Chart(ctxBar, {
+            type: 'bar',
+            data: {
+              labels: labels,
+              datasets: [{
+                label: 'Unidades Vendidas',
+                data: dataUnits,
+                backgroundColor: 'rgba(16, 185, 129, 0.9)', // Solid green
+                borderColor: 'rgba(16, 185, 129, 1)',
+                borderWidth: 0,
+                borderRadius: 4
+              }]
+            },
+            options: {
+              indexAxis: 'y',
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: { legend: { display: false } },
+              scales: {
+                x: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: 'rgba(255, 255, 255, 0.5)' } },
+                y: { grid: { display: false }, ticks: { color: 'rgba(255, 255, 255, 0.8)', font: { weight: 'bold' } } }
+              }
+            }
+          });
+        }
+        
+        // Pie Chart
+        const ctxPie = d.getElementById('chart-prod-pie');
+        if (ctxPie) {
+          if (prodChartPie) prodChartPie.destroy();
+          const pieColors = [
+            '#10b981', '#059669', '#34d399', '#6ee7b7', '#3b82f6',
+            '#60a5fa', '#8b5cf6', '#a78bfa', '#f59e0b', '#ef4444'
+          ];
+          prodChartPie = new Chart(ctxPie, {
+            type: 'doughnut',
+            data: {
+              labels: labels,
+              datasets: [{
+                data: dataUnits,
+                backgroundColor: pieColors.slice(0, labels.length),
+                borderWidth: 2,
+                borderColor: 'var(--color-surface-2)' // Clean border gap
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              cutout: '60%',
+              plugins: {
+                legend: { position: 'left', labels: { color: 'rgba(255, 255, 255, 0.8)', padding: 12, font: { size: 11 } } }
+              }
+            }
+          });
+        }
+      }
+      
+      const tbody = d.getElementById('prod-dashboard-tbody');
+      if (!tbody) return;
+      
+      if (!groupedList || !groupedList.length) {
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;">No hay movimientos ni ventas para este filtro.</td></tr>';
+        return;
+      }
+      
+      let index = 1;
+      tbody.innerHTML = groupedList.map(r => {
+        let costoHtml = '';
+        if (r.costo_unitario > 0) {
+            costoHtml = `<span style="color: var(--color-text-muted);">${fmt.money(r.costo_unitario)}</span>`;
+        } else {
+            costoHtml = `<span style="color: #ef4444; font-size: 11px;">No definido</span>`;
+        }
+
+        return `<tr>
+          <td style="text-align: center; color: var(--color-text-muted); font-size: 12px;">${index++}</td>
+          <td style="font-weight: 600; text-transform: uppercase;">${escHtml(r.producto)}</td>
+          <td style="text-align: right;">${costoHtml}</td>
+          <td style="text-align: right; color: #8b5cf6; font-weight: 500;">${fmt.n(r.ventas_registradas, 0)}</td>
+          <td style="text-align: right; color: var(--color-text); font-weight: 500;">${fmt.n(r.unidades_vendidas, 0)}</td>
+          <td style="text-align: right; color: #3b82f6;">${fmt.money(r.precio_venta_unitario)}</td>
+          <td style="text-align: right; color: #10b981; font-weight: 600;">${fmt.money(r.ingreso_total)}</td>
+          <td style="text-align: right; color: #ef4444; font-weight: 500;">${fmt.money(r.costo_total)}</td>
+          <td style="text-align: right; color: #8b5cf6; font-weight: 600;">${fmt.money(r.margen_total)}</td>
+        </tr>`;
+      }).join('');
+    }
 
     // Load
     fetchCompanies().then(() => fetchData());

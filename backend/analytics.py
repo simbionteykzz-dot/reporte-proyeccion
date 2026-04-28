@@ -2806,3 +2806,339 @@ def generate_pos_geographic_payload(
         "top10_ciudad_provincia": by_ciudad_provincia[:10],
         "total_registros": total_ordenes,
     }
+
+
+def generate_product_dashboard_payload(
+    date_from: str | None,
+    date_to: str | None,
+    company_id_str: str | None = None
+) -> dict[str, Any]:
+    """Genera las métricas de productos con soporte estricto multiempresa, prorrateo de descuentos y doble vista."""
+    from odoo_connector import config_from_environ
+    import re
+    from collections import defaultdict
+    
+    cfg = config_from_environ()
+    if date_from:
+        cfg.date_from = date_from
+    if date_to:
+        cfg.date_to = date_to
+
+    extractor = OdooRealExtractor(company_id=company_id_str)
+    
+    # Restricción Estricta a 3 empresas principales
+    target_brands = ["OVERSHARK", "BRAVOS", "BOX PRIME", "BOXPRIME"]
+    allowed_companies = []
+    for c in extractor.fetch_accessible_companies():
+        c_name = str(c.get("name", "")).upper()
+        if any(b in c_name for b in target_brands):
+            allowed_companies.append(int(c["id"]))
+            
+    if company_id_str:
+        cid_int = int(company_id_str)
+        companies_to_query = [cid_int] if cid_int in allowed_companies else []
+    else:
+        companies_to_query = allowed_companies
+
+    # 1. Extraer pos.order.line para obtener precio real e ingresos del Punto de Venta
+    pos_domain: list = [('order_id.state', '!=', 'cancel')]
+    if date_from:
+        pos_domain.append(("order_id.date_order", ">=", date_from + " 00:00:00"))
+    if date_to:
+        pos_domain.append(("order_id.date_order", "<=", date_to + " 23:59:59"))
+    if companies_to_query:
+        pos_domain.append(('company_id', 'in', companies_to_query))
+
+    # Agregamos order_id para poder agrupar por ticket
+    pos_fields = ['product_id', 'company_id', 'qty', 'price_subtotal', 'price_unit', 'order_id']
+    pos_rows = extractor._sr("pos.order.line", pos_domain, pos_fields)
+
+    # 2. Extraer stock.move.line para obtener unidades despachadas
+    sml_domain: list = [
+        ('state', '=', 'done'),
+        ('picking_id.picking_type_id.code', '=', 'outgoing')
+    ]
+    if date_from:
+        sml_domain.append(("date", ">=", date_from + " 00:00:00"))
+    if date_to:
+        sml_domain.append(("date", "<=", date_to + " 23:59:59"))
+    if companies_to_query:
+        sml_domain.append(('company_id', 'in', companies_to_query))
+
+    sml_fields = ['product_id', 'company_id', 'qty_done']
+    sml_rows = extractor._sr("stock.move.line", sml_domain, sml_fields)
+
+    # Pre-identificar todos los productos para traer sus nombres y costos
+    unique_keys = set()
+    for r in pos_rows + sml_rows:
+        pid = r.get("product_id")
+        cid = r.get("company_id")
+        if not pid or not cid: continue
+        pid_id = int(pid[0]) if isinstance(pid, (list, tuple)) else int(pid)
+        cid_id = int(cid[0]) if isinstance(cid, (list, tuple)) else int(cid)
+        unique_keys.add((cid_id, pid_id))
+
+    # 3. Datos maestros: Nombre, Costo, Categoría por Empresa
+    product_data_cache: dict[tuple[int, int], dict[str, Any]] = {}
+    companies_in_agg = list({k[0] for k in unique_keys})
+    company_names = {}
+    
+    if companies_in_agg:
+        c_rows = extractor._sr("res.company", [("id", "in", companies_in_agg)], ["name"])
+        for c in c_rows:
+            company_names[int(c["id"])] = c.get("name", f"Empresa {c['id']}")
+
+    for c_id in companies_in_agg:
+        pids_for_c = [k[1] for k in unique_keys if k[0] == c_id]
+        if not pids_for_c: continue
+        
+        # standard_price debe leerse en el contexto de la compañía
+        p_rows = extractor.models.execute_kw(
+            extractor.db, extractor.uid, extractor.pw,
+            "product.product", "read",
+            [pids_for_c],
+            {"fields": ["display_name", "standard_price", "list_price", "categ_id", "product_tmpl_id"], "context": {"allowed_company_ids": [c_id]}}
+        )
+        for p in p_rows:
+            pid = int(p["id"])
+            categ = p.get("categ_id")
+            categ_name = categ[1] if isinstance(categ, (list, tuple)) else "Sin categoría"
+            tmpl = p.get("product_tmpl_id")
+            tmpl_name = tmpl[1] if isinstance(tmpl, (list, tuple)) else "Sin modelo"
+            
+            product_data_cache[(c_id, pid)] = {
+                "name": p.get("display_name", f"Producto {pid}"),
+                "standard_price": float(p.get("standard_price") or 0),
+                "list_price": float(p.get("list_price") or 0),
+                "category": categ_name,
+                "modelo": tmpl_name
+            }
+
+    # 4. Prorrateo de Descuentos y Construcción de Agregados
+    agg: dict[tuple[int, int], dict[str, Any]] = {}
+    for key in unique_keys:
+        agg[key] = {"ventas": 0.0, "ingreso_bruto": 0.0, "ingreso_neto": 0.0, "unidades": 0.0}
+
+    # Sumar unidades despachadas
+    for r in sml_rows:
+        pid = r.get("product_id")
+        cid = r.get("company_id")
+        if not pid or not cid: continue
+        pid_id = int(pid[0]) if isinstance(pid, (list, tuple)) else int(pid)
+        cid_id = int(cid[0]) if isinstance(cid, (list, tuple)) else int(cid)
+        agg[(cid_id, pid_id)]["unidades"] += float(r.get("qty_done") or 0)
+
+    # Agrupar pos_rows por ticket
+    orders_data = defaultdict(lambda: {"lines": [], "discount_total": 0.0, "positive_revenue": 0.0, "service_revenue": 0.0})
+    kpis = {
+        "descuentos_otorgados": 0.0,
+        "costo_servicio": 0.0
+    }
+
+    for r in pos_rows:
+        pid = r.get("product_id")
+        cid = r.get("company_id")
+        oid = r.get("order_id")
+        if not pid or not cid or not oid: continue
+        
+        pid_id = int(pid[0]) if isinstance(pid, (list, tuple)) else int(pid)
+        cid_id = int(cid[0]) if isinstance(cid, (list, tuple)) else int(cid)
+        oid_id = int(oid[0]) if isinstance(oid, (list, tuple)) else int(oid)
+        
+        qty = float(r.get("qty") or 0)
+        subt = float(r.get("price_subtotal") or 0)
+        
+        key = (cid_id, pid_id)
+        raw_name = product_data_cache.get(key, {}).get("name", "").upper()
+        
+        # Filtros de exclusión global
+        if ("COLLAR" in raw_name and "REGALO" in raw_name):
+            continue
+            
+        # Detectar Servicios (no se les prorratea el descuento de ropa)
+        if ("SERVICIO DE ENVIO" in raw_name) or ("DELIVERY" in raw_name) or ("COURIER" in raw_name):
+            orders_data[oid_id]["service_revenue"] += subt
+            kpis["costo_servicio"] += subt
+            continue
+            
+        # Detectar Descuentos explícitos (SOLO por nombre, no por precio negativo)
+        if ("[DSC" in raw_name) or ("[DISC" in raw_name) or ("DESCUENTO" in raw_name) or ("PROMOCIÓN" in raw_name) or ("PROMOCION" in raw_name):
+            orders_data[oid_id]["discount_total"] += subt
+            kpis["descuentos_otorgados"] += subt
+            continue
+
+        orders_data[oid_id]["lines"].append({
+            "key": key,
+            "qty": qty,
+            "subt": subt
+        })
+        orders_data[oid_id]["positive_revenue"] += subt
+
+    # Aplicar Prorrateo a cada prenda física del ticket
+    for oid, data in orders_data.items():
+        discount_total = data["discount_total"]
+        positive_revenue = data["positive_revenue"]
+        
+        for line in data["lines"]:
+            key = line["key"]
+            subt = line["subt"]
+            
+            agg[key]["ventas"] += line["qty"]
+            agg[key]["ingreso_bruto"] += subt
+            
+            if positive_revenue > 0:
+                peso = subt / positive_revenue
+                descuento_aplicado = discount_total * peso # discount_total ya es negativo
+                agg[key]["ingreso_neto"] += (subt + descuento_aplicado)
+            else:
+                agg[key]["ingreso_neto"] += subt
+
+    # 5. Consolidar tabla y KPIs Finales
+    table_rows = []
+    
+    kpis.update({
+        "total_productos": 0,
+        "total_unidades": 0.0,
+        "total_ventas": 0.0,
+        "ingreso_total_bruto": 0.0,
+        "ingreso_total_neto": 0.0,
+        "costo_total": 0.0,
+        "margen_total_bruto": 0.0,
+        "margen_total_neto": 0.0
+    })
+    
+    unique_pids = set()
+
+    for key, metrics in agg.items():
+        c_id, p_id = key
+        unidades = metrics["unidades"]
+        ventas_reg = metrics["ventas"]
+        ingreso_b = metrics["ingreso_bruto"]
+        ingreso_n = metrics["ingreso_neto"]
+        
+        # Filtramos si no hubo movimiento físico ni venta
+        if unidades <= 0 and ventas_reg <= 0:
+            continue
+            
+        raw_name = product_data_cache.get(key, {}).get("name", f"Producto {p_id}")
+        raw_upper = raw_name.upper()
+
+        # Excluir productos de referencia interna / regalo que no deben aparecer
+        _EXCLUDED_KEYWORDS = [("COLLAR", "REGALO"), ("ZZREF",)]
+        if any(all(kw in raw_upper for kw in group) for group in _EXCLUDED_KEYWORDS):
+            continue
+
+        clean_name = re.sub(r'^\[.*?\]\s*', '', raw_name)
+        
+        unique_pids.add(p_id)
+        
+        costo_unit = product_data_cache.get(key, {}).get("standard_price", 0.0)
+        costo_total = unidades * costo_unit
+        
+        # Precio Promedio Bruto y Neto
+        precio_promedio_bruto = (ingreso_b / ventas_reg) if ventas_reg > 0 else product_data_cache.get(key, {}).get("list_price", 0.0)
+        precio_promedio_neto = (ingreso_n / ventas_reg) if ventas_reg > 0 else precio_promedio_bruto
+            
+        ingreso_real_bruto = unidades * precio_promedio_bruto
+        ingreso_real_neto = unidades * precio_promedio_neto
+        
+        margen_bruto = ingreso_real_bruto - costo_total
+        margen_neto = ingreso_real_neto - costo_total
+        
+        margen_pct_bruto = (margen_bruto / ingreso_real_bruto * 100) if ingreso_real_bruto > 0 else 0.0
+        margen_pct_neto = (margen_neto / ingreso_real_neto * 100) if ingreso_real_neto > 0 else 0.0
+        
+        # Estados analíticos
+        estado = "Normal"
+        if costo_unit == 0:
+            estado = "Costo no definido"
+        elif unidades > 50:
+            estado = "Alta rotación"
+        elif unidades > 0 and unidades <= 5:
+            estado = "Baja rotación"
+        elif unidades == 0 and ventas_reg > 0:
+            estado = "Pendiente despacho"
+            
+        # Refinar con margen neto
+        if estado == "Normal":
+            if margen_pct_neto > 50:
+                estado = "Margen alto"
+            elif 0 < margen_pct_neto < 10:
+                estado = "Margen bajo"
+            elif margen_pct_neto < 0:
+                estado = "Pérdida"
+
+        table_rows.append({
+            "product_id": p_id,
+            "company_id": c_id,
+            "empresa": company_names.get(c_id, f"Empresa {c_id}"),
+            "producto": clean_name,
+            "categoria": product_data_cache.get(key, {}).get("category", ""),
+            "modelo": product_data_cache.get(key, {}).get("modelo", ""),
+            "costo_unitario": round(costo_unit, 2),
+            
+            "ventas_registradas": round(ventas_reg, 2),
+            "unidades_vendidas": round(unidades, 2),
+            "costo_total": round(costo_total, 2),
+            
+            # Vista Bruta
+            "precio_promedio_bruto": round(precio_promedio_bruto, 2),
+            "ingreso_total_bruto": round(ingreso_real_bruto, 2),
+            "margen_total_bruto": round(margen_bruto, 2),
+            "margen_pct_bruto": round(margen_pct_bruto, 2),
+            
+            # Vista Neta
+            "precio_promedio_neto": round(precio_promedio_neto, 2),
+            "ingreso_total_neto": round(ingreso_real_neto, 2),
+            "margen_total_neto": round(margen_neto, 2),
+            "margen_pct_neto": round(margen_pct_neto, 2),
+            
+            # Defaults para la interfaz actual (compatibilidad retroactiva)
+            "precio_promedio": round(precio_promedio_bruto, 2),
+            "ingreso_total": round(ingreso_real_bruto, 2),
+            "margen_total": round(margen_bruto, 2),
+            "margen_pct": round(margen_pct_bruto, 2),
+            
+            "estado": estado
+        })
+        
+        kpis["total_unidades"] += unidades
+        kpis["total_ventas"] += ventas_reg
+        kpis["ingreso_total_bruto"] += ingreso_real_bruto
+        kpis["ingreso_total_neto"] += ingreso_real_neto
+        kpis["costo_total"] += costo_total
+
+    kpis["margen_total_bruto"] = kpis["ingreso_total_bruto"] - kpis["costo_total"]
+    kpis["margen_total_neto"] = kpis["ingreso_total_neto"] - kpis["costo_total"]
+    
+    kpis["total_productos"] = len(unique_pids)
+    
+    # 6. Monto a cobrar (Zazu Express Contraentrega)
+    monto_cobrar = 0.0
+    zazu_domain: list = [('x_studio_estado_de_despacho', '=', 'done')]
+    if date_from:
+        zazu_domain.append(("date_order", ">=", date_from + " 00:00:00"))
+    if date_to:
+        zazu_domain.append(("date_order", "<=", date_to + " 23:59:59"))
+    if companies_to_query:
+        zazu_domain.append(("company_id", "in", companies_to_query))
+
+    try:
+        zazu_fields = ['x_monto_cuenta_cliente', 'x_studio_tipo_de_envio']
+        zazu_rows = extractor._sr("pos.order", zazu_domain, zazu_fields)
+        for r in zazu_rows:
+            tipo_envio = str(r.get("x_studio_tipo_de_envio") or "").upper()
+            if "DELIVERY" in tipo_envio:
+                monto_cobrar += float(r.get("x_monto_cuenta_cliente", 0.0))
+    except Exception:
+        pass
+    kpis["monto_cobrar"] = monto_cobrar
+    
+    table_rows.sort(key=lambda x: x["unidades_vendidas"], reverse=True)
+    top_10 = table_rows[:10]
+
+    return {
+        "kpis": kpis,
+        "table": table_rows,
+        "top_10": top_10
+    }

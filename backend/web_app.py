@@ -31,6 +31,7 @@ from analytics import (
     generate_inventory_risks_payload,
     get_companies_for_dashboard_user,
     generate_pos_geographic_payload,
+    generate_product_dashboard_payload,
 )
 from supabase.client import (
     fetch_zazu_envios,
@@ -474,6 +475,52 @@ def api_dashboard_consolidado_ingresos():
         return jsonify({"error": f"Red / conexion: {e}"}), 502
     except Exception as e:
         return jsonify({"error": f"Error interno: {e}"}), 500
+
+
+PRODUCT_DASHBOARD_CACHE: dict[str, dict] = {}
+
+@app.route("/api/dashboard/productos")
+def api_dashboard_productos():
+    """Dashboard multiempresa enfocado en productos."""
+    if not is_configured():
+        return jsonify({
+            "error": "Faltan variables ODOO en .env",
+            "missing_keys": missing_config_keys(),
+        }), 503
+    try:
+        date_from, date_to = _request_dates()
+        company_id_str = request.args.get("company_id", "").strip() or None
+        force_refresh = request.args.get("force_refresh", "0") == "1"
+
+        if company_id_str is not None:
+            ctx = get_companies_for_dashboard_user()
+            if not company_id_allowed(int(company_id_str), ctx["companies"]):
+                return jsonify({"error": "company_id no permitido para este usuario"}), 403
+
+        cache_key = f"{date_from}_{date_to}_{company_id_str}"
+        if not force_refresh and cache_key in PRODUCT_DASHBOARD_CACHE:
+            payload = PRODUCT_DASHBOARD_CACHE[cache_key]
+        else:
+            payload = generate_product_dashboard_payload(date_from, date_to, company_id_str)
+            PRODUCT_DASHBOARD_CACHE[cache_key] = payload
+
+        resp = jsonify(payload)
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except RuntimeError as e:
+        return jsonify({"error": str(e)}), 502
+    except xmlrpc.client.Fault as e:
+        return jsonify({"error": f"Odoo: {e.faultString}"}), 502
+    except OSError as e:
+        return jsonify({"error": f"Red / conexion: {e}"}), 502
+    except Exception as e:
+        import traceback
+        return jsonify({
+            "error": f"Error interno: {e}",
+            "traceback": traceback.format_exc()
+        }), 500
 
 
 @app.route("/api/dashboard")
