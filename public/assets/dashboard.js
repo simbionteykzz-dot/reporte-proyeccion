@@ -4858,15 +4858,18 @@
       // Update KPIs
       const el = (id, val) => { const e = d.getElementById(id); if (e) e.textContent = val; };
       
-      // AGRUPAR POR MODELO (Familia)
+      // AGRUPAR POR EMPRESA + MODELO para evitar mezcla entre empresas
       const grouped = {};
       table.forEach(r => {
         let mod = (r.modelo || "Sin modelo").trim();
         if (mod === "False" || mod === "") mod = "Sin modelo";
-        
-        if (!grouped[mod]) {
-          grouped[mod] = {
+        const emp = (r.empresa || "Sin empresa").trim();
+        const key = `${emp}|||${mod}`;
+
+        if (!grouped[key]) {
+          grouped[key] = {
             producto: mod,
+            empresa: emp,
             costo_sum: 0,
             precio_sum: 0,
             count_costo_valid: 0,
@@ -4878,10 +4881,10 @@
             margen_total: 0
           };
         }
-        
+
         if (r.costo_unitario > 0) {
-            grouped[mod].costo_sum += r.costo_unitario;
-            grouped[mod].count_costo_valid += 1;
+            grouped[key].costo_sum += r.costo_unitario;
+            grouped[key].count_costo_valid += 1;
         }
 
         let precio_promedio = currentViewMode === 'neto' ? (r.precio_promedio_neto || r.precio_promedio) : (r.precio_promedio_bruto || r.precio_promedio);
@@ -4889,15 +4892,15 @@
         let margen_total = currentViewMode === 'neto' ? (r.margen_total_neto || r.margen_total) : (r.margen_total_bruto || r.margen_total);
 
         if (precio_promedio > 0) {
-            grouped[mod].precio_sum += precio_promedio;
-            grouped[mod].count_precio_valid += 1;
+            grouped[key].precio_sum += precio_promedio;
+            grouped[key].count_precio_valid += 1;
         }
-        
-        grouped[mod].ventas_registradas += (r.ventas_registradas || 0);
-        grouped[mod].unidades_vendidas += (r.unidades_vendidas || 0);
-        grouped[mod].ingreso_total += (ingreso_total || 0);
-        grouped[mod].costo_total += (r.costo_total || 0);
-        grouped[mod].margen_total += (margen_total || 0);
+
+        grouped[key].ventas_registradas += (r.ventas_registradas || 0);
+        grouped[key].unidades_vendidas += (r.unidades_vendidas || 0);
+        grouped[key].ingreso_total += (ingreso_total || 0);
+        grouped[key].costo_total += (r.costo_total || 0);
+        grouped[key].margen_total += (margen_total || 0);
       });
       
       const groupedList = Object.values(grouped).map(g => {
@@ -4906,8 +4909,12 @@
         return g;
       });
       
-      groupedList.sort((a, b) => b.unidades_vendidas - a.unidades_vendidas);
-      const top_10 = groupedList.slice(0, 10);
+      groupedList.sort((a, b) => {
+        const empCmp = a.empresa.localeCompare(b.empresa, 'es', { sensitivity: 'base' });
+        if (empCmp !== 0) return empCmp;
+        return b.unidades_vendidas - a.unidades_vendidas;
+      });
+      const top_10 = [...groupedList].sort((a, b) => b.unidades_vendidas - a.unidades_vendidas).slice(0, 10);
 
       let kpi_ingreso = currentViewMode === 'neto' ? (kpis.ingreso_total_neto || kpis.ingreso_total) : (kpis.ingreso_total_bruto || kpis.ingreso_total);
       let kpi_margen = currentViewMode === 'neto' ? (kpis.margen_total_neto || kpis.margen_total) : (kpis.margen_total_bruto || kpis.margen_total);
@@ -5014,6 +5021,7 @@
         return `<tr>
           <td style="text-align: center; color: var(--color-text-muted); font-size: 12px;">${index++}</td>
           <td style="font-weight: 600; text-transform: uppercase;">${escHtml(r.producto)}</td>
+          <td><span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:4px;background:var(--color-surface-3);color:var(--color-text-secondary);">${escHtml(r.empresa)}</span></td>
           <td style="text-align: right;">${costoHtml}</td>
           <td style="text-align: right; color: #8b5cf6; font-weight: 500;">${fmt.n(r.ventas_registradas, 0)}</td>
           <td style="text-align: right; color: var(--color-text); font-weight: 500;">${fmt.n(r.unidades_vendidas, 0)}</td>
