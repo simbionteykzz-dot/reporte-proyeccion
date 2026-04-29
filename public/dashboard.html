@@ -794,8 +794,12 @@
                   </select>
                 </div>
                 <div class="filter-group">
-                  <label class="filter-label" for="zazu-lima-search">Buscar</label>
-                  <input type="text" id="zazu-lima-search" class="input-date" placeholder="Cliente, teléfono, etc.">
+                  <label class="filter-label" for="zazu-lima-search">Cliente</label>
+                  <input type="text" id="zazu-lima-search" class="input-date" placeholder="Nombre del cliente">
+                </div>
+                <div class="filter-group">
+                  <label class="filter-label" for="zazu-lima-pedido">Pedido</label>
+                  <input type="text" id="zazu-lima-pedido" class="input-date" placeholder="Nº orden, guía, código...">
                 </div>
                 <button type="button" class="btn btn-primary btn-sm" id="zazu-lima-apply">Aplicar</button>
                 <button type="button" class="btn btn-ghost btn-sm" id="zazu-lima-clear">Limpiar</button>
@@ -943,7 +947,17 @@
                   <input type="date" id="zazu-prov-date-to" class="input-date">
                 </div>
                 <div class="filter-group">
-                  <label class="filter-label" for="zazu-prov-guide-query">Guía / Código</label>
+                  <label class="filter-label" for="zazu-prov-empresa">Empresa</label>
+                  <select id="zazu-prov-empresa" class="soni-select">
+                    <option value="__ALL__">Todas</option>
+                  </select>
+                </div>
+                <div class="filter-group">
+                  <label class="filter-label" for="zazu-prov-cliente">Cliente</label>
+                  <input type="text" id="zazu-prov-cliente" class="input-date" placeholder="Nombre del cliente">
+                </div>
+                <div class="filter-group">
+                  <label class="filter-label" for="zazu-prov-guide-query">Pedido / Guía</label>
                   <input type="text" id="zazu-prov-guide-query" class="input-date" placeholder="Ej: 6580496 o KD3H">
                 </div>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;">

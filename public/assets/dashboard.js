@@ -43,6 +43,7 @@
     zazuLimaRankingFilter: '',
     zazuProvRankingFilter: '',
     zazuLimaSearch: '',
+    zazuLimaPedidoSearch: '',
     zazuSourceTable: 'tb_envios_diarios_lina',
     zazuDateFrom: '',
     zazuDateTo: '',
@@ -58,6 +59,8 @@
     zazuProvEstado: 'todos',
     zazuProvEstadoFiltro: 'todos',
     zazuProvGuideQuery: '',
+    zazuProvEmpresa: '__ALL__',
+    zazuProvClienteSearch: '',
     zazuProvRows: [],
     zazuProvMeta: null,
     zazuProvPage: 1,
@@ -93,6 +96,7 @@
     S.theme = t;
     renderCurrentTab();
     if (S.view === 'risks' && S.invRisks) renderRiskChartsPayload(S.invRisks);
+    if (S.view === 'productos_dashboard' && _prodChartRerenderFn) _prodChartRerenderFn();
     // Re-renderizar gráficos de Zazu con el nuevo tema
     if (S.view === 'zazu') {
       if (S.zazuScope === 'lima') {
@@ -500,7 +504,32 @@
     });
   }
 
-  function zazuFilteredRows(rows) {
+  function syncZazuProvCompanyOptions(rows) {
+    const sel = d.getElementById('zazu-prov-empresa');
+    if (!sel) return;
+    const uniques = Array.from(new Set(
+      (Array.isArray(rows) ? rows : [])
+        .map((r) => zazuRowEmpresa(r))
+        .filter((v) => String(v || '').trim() && v !== 'Sin empresa')
+    )).sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+    sel.innerHTML = '';
+    const allOpt = d.createElement('option');
+    allOpt.value = '__ALL__';
+    allOpt.textContent = 'Todas';
+    sel.appendChild(allOpt);
+    uniques.forEach((name) => {
+      const opt = d.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      sel.appendChild(opt);
+    });
+    if (S.zazuProvEmpresa !== '__ALL__' && !uniques.includes(S.zazuProvEmpresa)) {
+      S.zazuProvEmpresa = '__ALL__';
+    }
+    sel.value = S.zazuProvEmpresa || '__ALL__';
+  }
+
+  function zazuPreFilterRows(rows) {
     const all = Array.isArray(rows) ? rows : [];
     let filtered = all;
 
@@ -510,41 +539,48 @@
       filtered = filtered.filter((r) => zazuRowEmpresa(r) === selected);
     }
 
-    // Filtrar por búsqueda de texto (nombre, teléfono, dirección, etc.)
+    // Filtrar por cliente (nombre)
     const searchQuery = (S.zazuLimaSearch || '').trim().toLowerCase();
     if (searchQuery) {
       filtered = filtered.filter((r) => {
-        const e = r && typeof r.envio === 'object' ? r.envio : {};
         const clientName = String(zazuClientName(r) || '').toLowerCase();
-        const phone = String(r.telefono || e.telefono || r.celular || e.celular || '').toLowerCase();
-        const address = String(r.direccion || e.direccion || r.direccion_destino || e.direccion_destino || '').toLowerCase();
-        const district = String(r.distrito || e.distrito || '').toLowerCase();
-        const guia = String(r.guia || e.guia || '').toLowerCase();
-        const codigo = String(r.codigo || e.codigo || '').toLowerCase();
-
-        return clientName.includes(searchQuery) ||
-               phone.includes(searchQuery) ||
-               address.includes(searchQuery) ||
-               district.includes(searchQuery) ||
-               guia.includes(searchQuery) ||
-               codigo.includes(searchQuery);
+        return clientName.includes(searchQuery);
       });
     }
 
-    // Filtrar por estado (tab client-side)
-    const estadoFiltro = S.zazuEstadoFiltro || 'todos';
-    if (estadoFiltro !== 'todos') {
+    // Filtrar por pedido (orden, guía, código, referencia Odoo)
+    const pedidoQuery = (S.zazuLimaPedidoSearch || '').trim().toLowerCase();
+    if (pedidoQuery) {
       filtered = filtered.filter((r) => {
-        const bucket = zazuStateBucket(r);
-        if (estadoFiltro === 'entregado') return bucket === 'entregado';
-        if (estadoFiltro === 'no_entregado') return bucket === 'no_entregado';
-        if (estadoFiltro === 'anulado') return bucket === 'anulado';
-        if (estadoFiltro === 'reprogramado') return bucket === 'reprogramado';
-        return true;
+        const e = r && typeof r.envio === 'object' ? r.envio : {};
+        const od = r && typeof r.odoo === 'object' ? r.odoo : {};
+        const guia = String(r.guia || e.guia || '').toLowerCase();
+        const codigo = String(r.codigo || e.codigo || '').toLowerCase();
+        const notaRef = String(r.nota_ref || r.numero_nota || '').toLowerCase();
+        const soName = String(od.sale_order_name || od.pos_name || od.number_zazu || od.client_order_ref || '').toLowerCase();
+        return guia.includes(pedidoQuery) ||
+               codigo.includes(pedidoQuery) ||
+               notaRef.includes(pedidoQuery) ||
+               soName.includes(pedidoQuery);
       });
     }
 
     return filtered;
+  }
+
+  // Aplica todos los filtros incluyendo el tab de estado
+  function zazuFilteredRows(rows) {
+    const preFiltered = zazuPreFilterRows(rows);
+    const estadoFiltro = S.zazuEstadoFiltro || 'todos';
+    if (estadoFiltro === 'todos') return preFiltered;
+    return preFiltered.filter((r) => {
+      const bucket = zazuStateBucket(r);
+      if (estadoFiltro === 'entregado') return bucket === 'entregado';
+      if (estadoFiltro === 'no_entregado') return bucket === 'no_entregado';
+      if (estadoFiltro === 'anulado') return bucket === 'anulado';
+      if (estadoFiltro === 'reprogramado') return bucket === 'reprogramado';
+      return true;
+    });
   }
 
 
@@ -666,9 +702,13 @@
     const f = d.getElementById('zazu-prov-date-from');
     const to = d.getElementById('zazu-prov-date-to');
     const gq = d.getElementById('zazu-prov-guide-query');
+    const emp = d.getElementById('zazu-prov-empresa');
+    const cli = d.getElementById('zazu-prov-cliente');
     if (f) f.value = S.zazuProvDateFrom || '';
     if (to) to.value = S.zazuProvDateTo || '';
     if (gq) gq.value = S.zazuProvGuideQuery || '';
+    if (emp) emp.value = S.zazuProvEmpresa || '__ALL__';
+    if (cli) cli.value = S.zazuProvClienteSearch || '';
   }
 
   function zazuProvRenderRows(rows, _meta) {
@@ -677,13 +717,26 @@
     const odooBadge = d.getElementById('zazu-prov-odoo-indicator');
     if (!tbody) return;
     const allRowsRaw = Array.isArray(rows) ? rows : [];
-    // Counts sobre total sin filtrar para que todos los tabs muestren su número real
-    syncProvEstadoCounts(allRowsRaw);
-    // Client-side estado filter (same pattern as Lima tabs)
+
+    // Filtros pre-estado: empresa y cliente
+    const provEmpresa = S.zazuProvEmpresa || '__ALL__';
+    const afterEmpresa = provEmpresa === '__ALL__'
+      ? allRowsRaw
+      : allRowsRaw.filter((r) => zazuRowEmpresa(r) === provEmpresa);
+
+    const provCliente = (S.zazuProvClienteSearch || '').trim().toLowerCase();
+    const preFiltered = provCliente
+      ? afterEmpresa.filter((r) => String(zazuClientName(r) || '').toLowerCase().includes(provCliente))
+      : afterEmpresa;
+
+    // Counts sobre filas ya filtradas por empresa/cliente para que los badges coincidan
+    syncProvEstadoCounts(preFiltered);
+
+    // Filtro de estado (tab client-side)
     const provFiltro = S.zazuProvEstadoFiltro || 'todos';
     const allRows = provFiltro === 'todos'
-      ? allRowsRaw
-      : allRowsRaw.filter((r) => zazuProvStateBucket(r) === provFiltro);
+      ? preFiltered
+      : preFiltered.filter((r) => zazuProvStateBucket(r) === provFiltro);
     if (!allRows.length) {
       tbody.innerHTML = '<tr><td colspan="12">Sin datos para este filtro.</td></tr>';
       if (serviceBadge) serviceBadge.textContent = 'Costo servicio: S/ 0.00';
@@ -814,6 +867,7 @@
       S.zazuProvRows = Array.isArray(j.rows) ? j.rows : [];
       S.zazuProvMeta = (j && typeof j.meta === 'object') ? j.meta : null;
       S.zazuProvPage = 1;
+      syncZazuProvCompanyOptions(S.zazuProvRows);
       zazuProvRenderRows(S.zazuProvRows, S.zazuProvMeta);
       zazuProvRenderPager();
       zazuRenderKpis('zazu-kpi-strip', S.zazuProvRows);
@@ -1021,15 +1075,24 @@
 
   function zazuStateBucket(row) {
     const estado = zazuNormalize(zazuPickField(row, ['estado_pedido', 'estado', 'estado_despacho', 'estado_qr']) || '');
-    const reprogramado = zazuNormalize(zazuPickField(row, ['reprogramado', 'motivo_reprogramado']) || '');
-    if (reprogramado && reprogramado !== 'false' && reprogramado !== '0' && reprogramado !== 'no') return 'reprogramado';
+    const reprogramadoRaw = zazuPickField(row, ['reprogramado', 'motivo_reprogramado']);
+    const reprogramado = zazuNormalize(String(reprogramadoRaw || ''));
+
+    // Anulado siempre tiene prioridad máxima
     if (estado.includes('anulad') || estado.includes('cancel')) return 'anulado';
-    if (estado.includes('reprogram')) return 'reprogramado';
-    // "no entregado" / "no entregada" deben clasificarse ANTES que "entregado"
+
+    // Si el estado dice claramente "entregado", se confía en ese dato
+    // aunque haya una nota de reprogramación previa (fue reprogramado y luego entregado)
     if (/\bno\s+entreg/.test(estado) || estado === 'no entregado' || estado === 'no entregada') return 'no_entregado';
     if (estado.includes('entreg')) return 'entregado';
-    if (estado.includes('curso') || estado.includes('camino') || estado.includes('ruta') || estado.includes('pendiente') || estado.includes('despacho')) return 'en_curso';
-    return 'en_curso';
+
+    // Reprogramado: explícito en estado o campo reprogramado con valor real
+    if (estado.includes('reprogram')) return 'reprogramado';
+    if (reprogramado && reprogramado !== 'false' && reprogramado !== '0' && reprogramado !== 'no') return 'reprogramado';
+
+    if (estado.includes('curso') || estado.includes('camino') || estado.includes('ruta') || estado.includes('pendiente') || estado.includes('despacho')) return 'no_entregado';
+    // Cualquier estado desconocido se agrupa en no_entregado para que no quede invisible
+    return 'no_entregado';
   }
 
   function zazuProvStateBucket(row) {
@@ -2140,8 +2203,10 @@
     const tbody = d.getElementById('zazu-tbody');
     const badge = d.getElementById('zazu-meta-badge');
     if (!tbody) return;
-    // Counts siempre sobre el total sin filtrar por estado para mostrar todos los tabs
-    syncLimaEstadoCounts(Array.isArray(rows) ? rows : []);
+    // Contar por estado sobre filas ya filtradas por empresa/cliente/pedido
+    // (no sobre las brutas) para que los badges coincidan con lo que se ve al hacer clic
+    const preFiltered = zazuPreFilterRows(Array.isArray(rows) ? rows : []);
+    syncLimaEstadoCounts(preFiltered);
     const allRows = zazuFilteredRows(rows);
     const pageSize = Math.max(1, Number(S.zazuPageSize) || 400);
     const pages = Math.max(1, Math.ceil(allRows.length / pageSize));
@@ -4214,6 +4279,7 @@
   }
 
   let sidebarDetailsResizeTimer;
+  let _prodChartRerenderFn = null;
 
   function init() {
     applyTheme(S.theme);
@@ -4432,9 +4498,16 @@
       zazuRenderProvRankings(S.zazuProvRows || []);
     });
 
-    // Búsqueda en tiempo real para Lima
+    // Búsqueda en tiempo real para Lima — cliente
     d.getElementById('zazu-lima-search')?.addEventListener('input', () => {
       S.zazuLimaSearch = (d.getElementById('zazu-lima-search')?.value || '').trim();
+      S.zazuPage = 1;
+      renderZazuRows(S.zazuRowsAll || [], null);
+    });
+
+    // Búsqueda en tiempo real para Lima — pedido
+    d.getElementById('zazu-lima-pedido')?.addEventListener('input', () => {
+      S.zazuLimaPedidoSearch = (d.getElementById('zazu-lima-pedido')?.value || '').trim();
       S.zazuPage = 1;
       renderZazuRows(S.zazuRowsAll || [], null);
     });
@@ -4444,6 +4517,7 @@
       S.zazuDateTo = (d.getElementById('zazu-lima-date-to')?.value || '').trim();
       S.zazuEmpresa = (d.getElementById('zazu-lima-empresa')?.value || '__ALL__').trim() || '__ALL__';
       S.zazuLimaSearch = (d.getElementById('zazu-lima-search')?.value || '').trim();
+      S.zazuLimaPedidoSearch = (d.getElementById('zazu-lima-pedido')?.value || '').trim();
       S.zazuPage = 1;
       fetchZazuEnvios(true);
     });
@@ -4453,15 +4527,18 @@
       S.zazuDateTo = '';
       S.zazuEmpresa = '__ALL__';
       S.zazuLimaSearch = '';
+      S.zazuLimaPedidoSearch = '';
       S.zazuPage = 1;
       const fromInput = d.getElementById('zazu-lima-date-from');
       const toInput = d.getElementById('zazu-lima-date-to');
       const empresaSelect = d.getElementById('zazu-lima-empresa');
       const searchInput = d.getElementById('zazu-lima-search');
+      const pedidoInput = d.getElementById('zazu-lima-pedido');
       if (fromInput) fromInput.value = ZAZU_DEFAULT_DATE_FROM;
       if (toInput) toInput.value = '';
       if (empresaSelect) empresaSelect.value = '__ALL__';
       if (searchInput) searchInput.value = '';
+      if (pedidoInput) pedidoInput.value = '';
       fetchZazuEnvios(true);
     });
 
@@ -4486,6 +4563,8 @@
       S.zazuProvEstado = 'todos';
       S.zazuProvEstadoFiltro = 'todos';
       S.zazuProvGuideQuery = '';
+      S.zazuProvEmpresa = '__ALL__';
+      S.zazuProvClienteSearch = '';
       S.zazuProvRankingFilter = '';
       S.zazuProvPage = 1;
       d.querySelectorAll('[data-prov-estado]').forEach(b => b.classList.toggle('active', b.getAttribute('data-prov-estado') === 'todos'));
@@ -4496,8 +4575,19 @@
       S.zazuProvDateFrom = (d.getElementById('zazu-prov-date-from')?.value || '').trim();
       S.zazuProvDateTo = (d.getElementById('zazu-prov-date-to')?.value || '').trim();
       S.zazuProvGuideQuery = (d.getElementById('zazu-prov-guide-query')?.value || '').trim();
+      S.zazuProvEmpresa = (d.getElementById('zazu-prov-empresa')?.value || '__ALL__').trim() || '__ALL__';
+      S.zazuProvClienteSearch = (d.getElementById('zazu-prov-cliente')?.value || '').trim();
       S.zazuProvPage = 1;
-      fetchZazuProvinciaDetail(true);
+      zazuProvRenderRows(S.zazuProvRows || [], S.zazuProvMeta);
+      zazuProvRenderPager();
+    });
+
+    // Búsqueda en tiempo real para Provincia — cliente
+    d.getElementById('zazu-prov-cliente')?.addEventListener('input', () => {
+      S.zazuProvClienteSearch = (d.getElementById('zazu-prov-cliente')?.value || '').trim();
+      S.zazuProvPage = 1;
+      zazuProvRenderRows(S.zazuProvRows || [], S.zazuProvMeta);
+      zazuProvRenderPager();
     });
     d.getElementById('zazu-prov-prev')?.addEventListener('click', () => {
       if ((S.zazuProvPage || 1) <= 1) return;
@@ -4759,6 +4849,8 @@
     let prodChartTop10 = null;
     let prodChartPie = null;
 
+    _prodChartRerenderFn = () => { if (currentProductsData) renderProductsDashboard(currentProductsData); };
+
     function renderProductsDashboard(data) {
       if (!data || !data.kpis) return;
       const { kpis, table } = data;
@@ -4848,7 +4940,7 @@
               datasets: [{
                 label: 'Unidades Vendidas',
                 data: dataUnits,
-                backgroundColor: 'rgba(16, 185, 129, 0.9)', // Solid green
+                backgroundColor: 'rgba(16, 185, 129, 0.9)',
                 borderColor: 'rgba(16, 185, 129, 1)',
                 borderWidth: 0,
                 borderRadius: 4
@@ -4858,10 +4950,13 @@
               indexAxis: 'y',
               responsive: true,
               maintainAspectRatio: false,
-              plugins: { legend: { display: false } },
+              plugins: {
+                legend: { display: false },
+                tooltip: { backgroundColor: ttBg(), titleColor: isDark() ? '#fafafa' : '#18181b', bodyColor: txtC() }
+              },
               scales: {
-                x: { grid: { color: 'rgba(255, 255, 255, 0.05)' }, ticks: { color: 'rgba(255, 255, 255, 0.5)' } },
-                y: { grid: { display: false }, ticks: { color: 'rgba(255, 255, 255, 0.8)', font: { weight: 'bold' } } }
+                x: { grid: { color: gridC() }, ticks: { color: txtC() } },
+                y: { grid: { display: false }, ticks: { color: isDark() ? 'rgba(255,255,255,0.8)' : '#27272a', font: { weight: 'bold' } } }
               }
             }
           });
@@ -4883,7 +4978,7 @@
                 data: dataUnits,
                 backgroundColor: pieColors.slice(0, labels.length),
                 borderWidth: 2,
-                borderColor: 'var(--color-surface-2)' // Clean border gap
+                borderColor: isDark() ? '#1a1a1e' : '#ffffff'
               }]
             },
             options: {
@@ -4891,7 +4986,8 @@
               maintainAspectRatio: false,
               cutout: '60%',
               plugins: {
-                legend: { position: 'left', labels: { color: 'rgba(255, 255, 255, 0.8)', padding: 12, font: { size: 11 } } }
+                legend: { position: 'left', labels: { color: isDark() ? 'rgba(255,255,255,0.8)' : '#27272a', padding: 12, font: { size: 11 } } },
+                tooltip: { backgroundColor: ttBg(), titleColor: isDark() ? '#fafafa' : '#18181b', bodyColor: txtC() }
               }
             }
           });
