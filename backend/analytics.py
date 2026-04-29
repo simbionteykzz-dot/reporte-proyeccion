@@ -3023,9 +3023,12 @@ def generate_product_dashboard_payload(
         raw_name = product_data_cache.get(key, {}).get("name", f"Producto {p_id}")
         raw_upper = raw_name.upper()
 
-        # Excluir productos de referencia interna / regalo que no deben aparecer
+        # Excluir productos de referencia interna, regalo y descuentos que no deben aparecer
         _EXCLUDED_KEYWORDS = [("COLLAR", "REGALO"), ("ZZREF",)]
         if any(all(kw in raw_upper for kw in group) for group in _EXCLUDED_KEYWORDS):
+            continue
+        # Excluir líneas de descuento/promoción aunque tengan movimiento de stock
+        if raw_upper.startswith("[DISC") or raw_upper.startswith("[DSC") or "DESCUENTO" in raw_upper or "PROMOCION" in raw_upper or "PROMOCIÓN" in raw_upper or "POR PUNTO" in raw_upper:
             continue
 
         clean_name = re.sub(r'^\[.*?\]\s*', '', raw_name)
