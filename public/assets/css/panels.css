@@ -752,6 +752,153 @@ button.risk-overview__card:focus-visible {
   font-size: 0.875rem;
 }
 
+/* ── Inventory KPI strip ── */
+.inv-kpi-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.inv-kpi-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-4) var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.inv-kpi-card--danger { border-color: rgba(239, 68, 68, 0.3); background: rgba(239, 68, 68, 0.05); }
+.inv-kpi-card--warning { border-color: rgba(245, 158, 11, 0.3); background: rgba(245, 158, 11, 0.05); }
+.inv-kpi-card--accent  { border-color: rgba(59, 130, 246, 0.25); background: rgba(59, 130, 246, 0.05); }
+
+.inv-kpi-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted);
+}
+
+.inv-kpi-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--color-text);
+  line-height: 1.15;
+}
+
+.inv-kpi-value--danger  { color: #ef4444; }
+.inv-kpi-value--warning { color: #f59e0b; }
+.inv-kpi-value--accent  { color: #3b82f6; }
+
+.inv-kpi-sub {
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+}
+
+/* ── Filtros inventario mejorados ── */
+.inv-filters-grid {
+  display: grid;
+  grid-template-columns: 2fr repeat(3, 1fr) auto;
+  gap: var(--space-3) var(--space-4);
+  align-items: end;
+}
+
+.inv-filter-field--search .soni-input {
+  width: 100%;
+  height: 36px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+
+.inv-filter-field--search .soni-input:focus {
+  border-color: var(--color-accent);
+}
+
+/* ── Criticidad badges ── */
+.inv-crit-badge,
+.inv-dias-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.crit-agotado  { background: rgba(239, 68, 68, 0.15);  color: #ef4444;  border: 1px solid rgba(239,68,68,0.25); }
+.crit-critico  { background: rgba(239, 68, 68, 0.1);   color: #f87171;  border: 1px solid rgba(239,68,68,0.2); }
+.crit-atencion { background: rgba(245, 158, 11, 0.12); color: #f59e0b;  border: 1px solid rgba(245,158,11,0.25); }
+.crit-estable  { background: rgba(34, 197, 94, 0.1);   color: #22c55e;  border: 1px solid rgba(34,197,94,0.2); }
+.crit-sobre    { background: rgba(59, 130, 246, 0.1);  color: #60a5fa;  border: 1px solid rgba(59,130,246,0.2); }
+.crit-sin      { background: var(--color-surface-3);   color: var(--color-text-muted); border: 1px solid var(--color-border); }
+
+/* Pills de criticidad en acordeón */
+.inv-grupo-pill.crit-agotado  { background: rgba(239,68,68,0.12);  color: #f87171;  border-color: rgba(239,68,68,0.2); }
+.inv-grupo-pill.crit-critico  { background: rgba(239,68,68,0.1);   color: #f87171;  border-color: rgba(239,68,68,0.15); }
+.inv-grupo-pill.crit-atencion { background: rgba(245,158,11,0.1);  color: #fbbf24;  border-color: rgba(245,158,11,0.2); }
+.inv-grupo-pill.crit-estable  { background: rgba(34,197,94,0.08);  color: #4ade80;  border-color: rgba(34,197,94,0.15); }
+.inv-grupo-pill.crit-sobre    { background: rgba(59,130,246,0.08); color: #60a5fa;  border-color: rgba(59,130,246,0.15); }
+
+/* ── Row styles por criticidad ── */
+.inv-row--agotado  td:first-child { border-left: 3px solid #ef4444; }
+.inv-row--critico  td:first-child { border-left: 3px solid #f97316; }
+.inv-row--atencion td:first-child { border-left: 3px solid #f59e0b; }
+.inv-row--estable  td:first-child { border-left: 3px solid #22c55e; }
+.inv-row--sobrestock td:first-child { border-left: 3px solid #3b82f6; }
+
+/* ── Stock coloring ── */
+.inv-stock-zero { color: #ef4444 !important; }
+.inv-stock-low  { color: #f59e0b !important; }
+
+/* ── Misc ── */
+.inv-code-chip {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  background: var(--color-surface-3);
+  padding: 1px 6px;
+  border-radius: 4px;
+  color: var(--color-text-secondary);
+}
+
+.inv-color-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 5px;
+  vertical-align: middle;
+  border: 1px solid rgba(255,255,255,0.15);
+}
+
+.inv-td-muted { color: var(--color-text-secondary); }
+.inv-td-code  { white-space: nowrap; }
+.inv-td-variante { font-weight: 500; }
+.inv-td-plantilla { font-size: 0.8rem; }
+
+@media (max-width: 900px) {
+  .inv-filters-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+  .inv-kpi-strip {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .inv-filters-grid { grid-template-columns: 1fr; }
+  .inv-kpi-strip    { grid-template-columns: repeat(2, 1fr); }
+}
+
 /* --------------------------------------------------
    Reduced Motion
    -------------------------------------------------- */

@@ -29,6 +29,10 @@
     invFilterGrupo: '__ALL__',
     /** `__ALL__` o valor de columna color (Odoo / atributo) */
     invFilterColor: '__ALL__',
+    /** Texto libre de búsqueda en inventario (variante, código, plantilla) */
+    invSearch: '',
+    /** `__ALL__` o criticidad (critico|atencion|estable|sobrestock|sin_historial) */
+    invFilterCriticidad: '__ALL__',
     /** Línea del gráfico: ticket de regla (S/) o ticket ÷ cantidad promedio por orden */
     analysisLineMode: (() => {
       const v = localStorage.getItem('soni-analysis-line');
@@ -2379,6 +2383,21 @@
     return rows;
   }
 
+  /** Criticidad de una fila de inventario según dias_para_agotar y stock. */
+  function invCriticidad(r) {
+    const stock = Number(r.stock) || 0;
+    const dias = r.dias_para_agotar;
+    const salida = Number(r.salida_diaria_estimada) || 0;
+    if (stock <= 0) return { key: 'agotado', label: 'Agotado', cls: 'crit-agotado' };
+    if (salida <= 0) return { key: 'sin_historial', label: 'Sin historial', cls: 'crit-sin' };
+    if (dias == null) return { key: 'sin_historial', label: 'Sin historial', cls: 'crit-sin' };
+    const d = Number(dias);
+    if (d <= 7) return { key: 'critico', label: 'Crítico', cls: 'crit-critico' };
+    if (d <= 15) return { key: 'atencion', label: 'Atención', cls: 'crit-atencion' };
+    if (d <= 45) return { key: 'estable', label: 'Estable', cls: 'crit-estable' };
+    return { key: 'sobrestock', label: 'Sobrestock', cls: 'crit-sobre' };
+  }
+
   function invApplyInventoryFilters(inv) {
     let rows = [...(inv || [])];
     if (S.invFilterGrupo && S.invFilterGrupo !== '__ALL__') {
@@ -2386,6 +2405,17 @@
     }
     if (S.invFilterColor && S.invFilterColor !== '__ALL__') {
       rows = rows.filter(r => invColorValue(r) === S.invFilterColor);
+    }
+    if (S.invFilterCriticidad && S.invFilterCriticidad !== '__ALL__') {
+      rows = rows.filter(r => invCriticidad(r).key === S.invFilterCriticidad);
+    }
+    const q = (S.invSearch || '').trim().toLowerCase();
+    if (q) {
+      rows = rows.filter(r =>
+        String(r.nombre_variante || '').toLowerCase().includes(q) ||
+        String(r.default_code || '').toLowerCase().includes(q) ||
+        String(r.nombre_plantilla || '').toLowerCase().includes(q)
+      );
     }
     return rows;
   }
@@ -2455,20 +2485,44 @@
   }
 
   function rowInv(r) {
-    const dias = r.dias_para_agotar == null ? '—' : String(r.dias_para_agotar);
-    return `<tr>
-      <td>${escHtml(r.default_code || '—')}</td>
-      <td>${escHtml(r.nombre_variante || '')}</td>
-      <td>${escHtml(r.nombre_plantilla || '')}</td>
+    const crit = invCriticidad(r);
+    const stock = Number(r.stock) || 0;
+    const stockCls = stock <= 0 ? 'inv-stock-zero' : stock <= 5 ? 'inv-stock-low' : '';
+    const diasVal = r.dias_para_agotar == null ? null : Number(r.dias_para_agotar);
+    const diasHtml = diasVal == null
+      ? '<span class="inv-dias-badge crit-sin">—</span>'
+      : `<span class="inv-dias-badge ${crit.cls}">${diasVal}d</span>`;
+    const salida = Number(r.salida_diaria_estimada) || 0;
+    return `<tr class="inv-row inv-row--${crit.key}">
+      <td class="inv-td-code"><span class="inv-code-chip">${escHtml(r.default_code || '—')}</span></td>
+      <td class="inv-td-variante">${escHtml(invStripCodePrefix(r.nombre_variante || ''))}</td>
+      <td class="inv-td-plantilla inv-td-muted">${escHtml(invStripCodePrefix(r.nombre_plantilla || ''))}</td>
       <td>${escHtml(r.marca || '—')}</td>
-      <td>${escHtml(r.categoria || '—')}</td>
-      <td>${escHtml(invColorValue(r))}</td>
-      <td>${fmt.n(r.stock, 2)}</td>
-      <td>${fmt.n(r.compras_periodo, 2)}</td>
-      <td>${fmt.n(r.ventas_periodo, 2)}</td>
-      <td>${fmt.n(r.salida_diaria_estimada, 4)}</td>
-      <td>${escHtml(dias)}</td>
+      <td class="inv-td-muted">${escHtml(r.categoria || '—')}</td>
+      <td><span class="inv-color-dot" style="background:${invColorHex(invColorValue(r))}"></span>${escHtml(invColorValue(r))}</td>
+      <td class="th-num ${stockCls}" style="font-weight:600;">${fmt.n(stock, 0)}</td>
+      <td class="th-num inv-td-muted">${fmt.n(r.compras_periodo, 0)}</td>
+      <td class="th-num inv-td-muted">${fmt.n(r.ventas_periodo, 0)}</td>
+      <td class="th-num inv-td-muted">${fmt.n(salida, 2)}/d</td>
+      <td class="th-num">${diasHtml}</td>
+      <td><span class="inv-crit-badge ${crit.cls}">${escHtml(crit.label)}</span></td>
     </tr>`;
+  }
+
+  /** Devuelve un color hex aproximado para el nombre de color. */
+  function invColorHex(name) {
+    const n = (name || '').toLowerCase();
+    const map = {
+      negro: '#1a1a1a', blanco: '#f5f5f5', rojo: '#ef4444', azul: '#3b82f6',
+      verde: '#22c55e', amarillo: '#eab308', naranja: '#f97316', morado: '#8b5cf6',
+      rosado: '#ec4899', rosa: '#ec4899', gris: '#71717a', beige: '#d4b896',
+      menta: '#6ee7b7', celeste: '#7dd3fc', vino: '#9f1239', camel: '#c49a3c',
+      nude: '#d4a574', marfil: '#f5f0e8', chocolate: '#7c3f2f', coral: '#f87171',
+    };
+    for (const [k, v] of Object.entries(map)) {
+      if (n.includes(k)) return v;
+    }
+    return '#52525b';
   }
 
   function invSumStock(part) {
@@ -2499,30 +2553,94 @@
       <th>Variante</th>
       <th>Plantilla</th>
       <th>Empresa</th>
-      <th>Tipo / categoría</th>
+      <th>Categoría</th>
       <th>Color</th>
       <th class="th-num">Stock</th>
-      <th class="th-num">Compras (periodo)</th>
-      <th class="th-num">Ventas (periodo)</th>
-      <th class="th-num">Salida / día</th>
-      <th class="th-num">Días agotar</th>
+      <th class="th-num">Compras</th>
+      <th class="th-num">Ventas</th>
+      <th class="th-num">Salida/día</th>
+      <th class="th-num">Días</th>
+      <th>Estado</th>
     </tr></thead>`;
   }
 
-  /** Detalle agrupado por familia (acordeón) + matriz; respeta filtros familia y color. */
+  /** KPIs de inventario: renderiza strip con 5 métricas clave. */
+  function renderInvKpis(rows) {
+    const strip = d.getElementById('inv-kpi-strip');
+    if (!strip) return;
+    const all = Array.isArray(rows) ? rows : [];
+    const totalStock = all.reduce((s, r) => s + (Number(r.stock) || 0), 0);
+    const refs = all.length;
+    const agotados = all.filter(r => (Number(r.stock) || 0) <= 0).length;
+    const criticos = all.filter(r => {
+      const d = r.dias_para_agotar;
+      return (Number(r.stock) || 0) > 0 && d != null && Number(d) <= 7;
+    }).length;
+    const atencion = all.filter(r => {
+      const d = r.dias_para_agotar;
+      const di = Number(d);
+      return (Number(r.stock) || 0) > 0 && d != null && di > 7 && di <= 15;
+    }).length;
+    const withDias = all.filter(r => r.dias_para_agotar != null && (Number(r.stock) || 0) > 0);
+    const avgDias = withDias.length
+      ? Math.round(withDias.reduce((s, r) => s + Number(r.dias_para_agotar), 0) / withDias.length)
+      : null;
+
+    strip.innerHTML = `
+      <div class="inv-kpi-card">
+        <div class="inv-kpi-label">Total stock</div>
+        <div class="inv-kpi-value">${fmt.n(totalStock, 0)}</div>
+        <div class="inv-kpi-sub">unidades en almacén</div>
+      </div>
+      <div class="inv-kpi-card">
+        <div class="inv-kpi-label">Referencias activas</div>
+        <div class="inv-kpi-value">${fmt.n(refs, 0)}</div>
+        <div class="inv-kpi-sub">variantes con movimiento</div>
+      </div>
+      <div class="inv-kpi-card inv-kpi-card--danger">
+        <div class="inv-kpi-label">Agotados</div>
+        <div class="inv-kpi-value inv-kpi-value--danger">${fmt.n(agotados, 0)}</div>
+        <div class="inv-kpi-sub">stock ≤ 0</div>
+      </div>
+      <div class="inv-kpi-card inv-kpi-card--warning">
+        <div class="inv-kpi-label">Críticos</div>
+        <div class="inv-kpi-value inv-kpi-value--warning">${fmt.n(criticos, 0)}</div>
+        <div class="inv-kpi-sub">≤ 7 días para agotar</div>
+      </div>
+      <div class="inv-kpi-card inv-kpi-card--accent">
+        <div class="inv-kpi-label">En atención</div>
+        <div class="inv-kpi-value inv-kpi-value--accent">${fmt.n(atencion, 0)}</div>
+        <div class="inv-kpi-sub">8 – 15 días para agotar</div>
+      </div>
+      <div class="inv-kpi-card">
+        <div class="inv-kpi-label">Días promedio</div>
+        <div class="inv-kpi-value">${avgDias != null ? avgDias + 'd' : '—'}</div>
+        <div class="inv-kpi-sub">para agotar stock</div>
+      </div>`;
+  }
+
+  /** Detalle agrupado por familia (acordeón) + matriz; respeta filtros familia, color, criticidad y búsqueda. */
   function renderInvDetailAndMatrix(inv) {
     const full = inv || [];
     const root = d.getElementById('inv-detail-root');
     const act = d.getElementById('inv-detail-actions');
     populateInvGrupoSelect(full);
     populateInvColorSelect(full);
+
+    // KPIs sobre el total sin filtro de criticidad/búsqueda (para que no cambien al filtrar)
+    renderInvKpis(full);
+
     const rows = invApplyInventoryFilters(full);
     renderInvTallaMatrix(rows);
+
+    // Contador de resultados filtrados
+    const countEl = d.getElementById('inv-filter-count');
+    if (countEl) countEl.textContent = rows.length !== full.length ? `${rows.length} de ${full.length} refs` : `${full.length} refs`;
 
     if (!root) return;
 
     if (!rows.length) {
-      root.innerHTML = '<p class="inv-detail-empty">Sin filas para este filtro.</p>';
+      root.innerHTML = '<p class="inv-detail-empty">Sin resultados para este filtro.</p>';
       if (act) act.hidden = true;
       return;
     }
@@ -2534,20 +2652,34 @@
       byGrupo.get(g).push(r);
     });
     const grupos = [...byGrupo.keys()].sort((a, b) => a.localeCompare(b, 'es'));
-    const filteredOne = S.invFilterGrupo && S.invFilterGrupo !== '__ALL__';
+    const filteredOne = (S.invFilterGrupo && S.invFilterGrupo !== '__ALL__') || (S.invSearch && S.invSearch.trim());
 
     const html = grupos.map((g) => {
       const part = byGrupo.get(g);
       const sorted = [...part].sort((a, b) => (Number(b.stock) || 0) - (Number(a.stock) || 0));
       const n = part.length;
       const sum = invSumStock(part);
-      const topM = invTopMarcaByStock(part);
+      const critCounts = { agotado: 0, critico: 0, atencion: 0, estable: 0, sobrestock: 0, sin_historial: 0 };
+      part.forEach(r => { critCounts[invCriticidad(r).key] = (critCounts[invCriticidad(r).key] || 0) + 1; });
       const open = filteredOne || grupos.length === 1 ? ' open' : '';
       const tbody = sorted.map(rowInv).join('');
+
+      const critPills = [
+        critCounts.agotado   ? `<span class="inv-grupo-pill crit-agotado">${critCounts.agotado} agotado</span>` : '',
+        critCounts.critico   ? `<span class="inv-grupo-pill crit-critico">${critCounts.critico} crítico</span>` : '',
+        critCounts.atencion  ? `<span class="inv-grupo-pill crit-atencion">${critCounts.atencion} atención</span>` : '',
+        critCounts.estable   ? `<span class="inv-grupo-pill crit-estable">${critCounts.estable} estable</span>` : '',
+        critCounts.sobrestock? `<span class="inv-grupo-pill crit-sobre">${critCounts.sobrestock} sobre</span>` : '',
+      ].filter(Boolean).join('');
+
       return `<details class="inv-grupo-card"${open}>
         <summary class="inv-grupo-summary">
           <span class="inv-grupo-title">${escHtml(g)}</span>
-          <span class="inv-grupo-meta"><span class="inv-grupo-pill">${fmt.n(n, 0)} ref.</span><span class="inv-grupo-pill">Σ ${fmt.n(sum, 2)} u</span><span class="inv-grupo-pill inv-grupo-pill--muted">Marca prod. ↑ stock: ${escHtml(topM)}</span></span>
+          <span class="inv-grupo-meta">
+            <span class="inv-grupo-pill">${fmt.n(n, 0)} ref.</span>
+            <span class="inv-grupo-pill"><strong>${fmt.n(sum, 0)}</strong> u</span>
+            ${critPills}
+          </span>
         </summary>
         <div class="inv-grupo-table-wrap table-container">
           <table class="data-table inv-table">${invDetailThead()}<tbody>${tbody}</tbody></table>
@@ -2557,6 +2689,457 @@
 
     root.innerHTML = html;
     if (act) act.hidden = grupos.length <= 1;
+  }
+
+  async function generateInvPDF() {
+    const inv = S.invRisks && S.invRisks.inventory ? S.invRisks.inventory : [];
+    if (!inv.length) { alert('Sin datos de inventario para exportar.'); return; }
+
+    const rows = invApplyInventoryFilters(inv);
+    if (!rows.length) { alert('Sin resultados con los filtros actuales.'); return; }
+
+    // Marca / empresa
+    const meta = (S.invRisks && S.invRisks.meta) ? S.invRisks.meta : {};
+    const marcas = [...new Set(rows.map(r => (r.marca || '').trim()).filter(Boolean))].sort();
+    const marcaDisplay = (meta.company_name || '').trim() || marcas.join(' · ') || 'SONI';
+
+    // ── Logos en base64 (única forma fiable en ventana popup) ──
+    const _fetchB64 = async path => {
+      try {
+        const r = await fetch(path);
+        if (!r.ok) return null;
+        const blob = await r.blob();
+        return new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(blob); });
+      } catch { return null; }
+    };
+    const LOGO_PATHS = {
+      overshark:   '/assets/iconos-barra/over-icon.png',
+      bravos:      '/assets/iconos-barra/brav-icon.png',
+      'box prime': '/assets/iconos-barra/box.icon.png',
+    };
+    const getBrandKey = name => { const l = (name||'').toLowerCase(); return Object.keys(LOGO_PATHS).find(k => l.includes(k)) || null; };
+    const neededKeys = [...new Set(marcas.map(getBrandKey).filter(Boolean))];
+    const logoB64 = {};
+    await Promise.all(neededKeys.map(async k => { logoB64[k] = await _fetchB64(LOGO_PATHS[k]); }));
+    const mkIcon = key => logoB64[key]
+      ? `<img src="${logoB64[key]}" style="height:52px;width:auto;object-fit:contain;display:block" alt="${key}">`
+      : `<span style="color:#fff;font-size:22px;font-weight:900;text-transform:uppercase">${key}</span>`;
+
+    // ── Config por marca (colores + logo) ──
+    const BRAND_CFG = {
+      overshark: {
+        accent: 'linear-gradient(90deg,#0ea5e9 0%,#0369a1 50%,#164e63 100%)',
+        icon: mkIcon('overshark')
+      },
+      bravos: {
+        accent: 'linear-gradient(90deg,#ef4444 0%,#f97316 50%,#fbbf24 100%)',
+        icon: mkIcon('bravos')
+      },
+      'box prime': {
+        accent: 'linear-gradient(90deg,#6366f1 0%,#8b5cf6 50%,#a78bfa 100%)',
+        icon: mkIcon('box prime')
+      }
+    };
+    const getBrandCfg = name => {
+      const low = (name || '').toLowerCase();
+      for (const [k, v] of Object.entries(BRAND_CFG)) { if (low.includes(k)) return v; }
+      return null;
+    };
+
+    // Determinar acento e iconos según marcas presentes
+    let accentGrad = 'linear-gradient(90deg,#3b82f6,#6366f1,#8b5cf6)';
+    let coverIcons = '';
+    if (marcas.length === 1) {
+      const cfg = getBrandCfg(marcas[0]);
+      if (cfg) { accentGrad = cfg.accent; coverIcons = cfg.icon; }
+    } else {
+      coverIcons = marcas.map(m => { const c = getBrandCfg(m); return c ? c.icon : ''; }).join('');
+    }
+
+    // Agrupar por plantilla
+    const byPlantilla = new Map();
+    rows.forEach(r => {
+      const key = invLineaPrenda(r.nombre_plantilla);
+      if (!byPlantilla.has(key)) byPlantilla.set(key, []);
+      byPlantilla.get(key).push(r);
+    });
+    const plantillas = [...byPlantilla.keys()].sort((a, b) => a.localeCompare(b, 'es'));
+
+    // KPIs
+    const totalStock  = rows.reduce((s, r) => s + (Number(r.stock) || 0), 0);
+    const estables    = rows.filter(r => { const dv = Number(r.dias_para_agotar); return (Number(r.stock)||0)>0 && r.dias_para_agotar!=null && dv>15 && dv<=45; }).length;
+    const agotados    = rows.filter(r => (Number(r.stock) || 0) <= 0).length;
+    const criticos    = rows.filter(r => { const dv=r.dias_para_agotar; return (Number(r.stock)||0)>0 && dv!=null && Number(dv)<=7; }).length;
+    const atencion    = rows.filter(r => { const dv=r.dias_para_agotar,di=Number(dv); return (Number(r.stock)||0)>0 && dv!=null && di>7 && di<=15; }).length;
+    const sobrestock  = rows.filter(r => { const dv=r.dias_para_agotar; return (Number(r.stock)||0)>0 && dv!=null && Number(dv)>45; }).length;
+    const withDias    = rows.filter(r => r.dias_para_agotar!=null && (Number(r.stock)||0)>0);
+    const avgDias     = withDias.length ? Math.round(withDias.reduce((s,r)=>s+Number(r.dias_para_agotar),0)/withDias.length) : null;
+    const totalSalidaGlobal = rows.reduce((s,r)=>s+(Number(r.salida_diaria_estimada)||0),0);
+
+    // ── Análisis de Salida Diaria ──
+    const coverageGlobal = totalSalidaGlobal > 0 ? Math.round(totalStock / totalSalidaGlobal) : null;
+    const conSalida = rows.filter(r => (Number(r.salida_diaria_estimada)||0) > 0);
+    const topRotacion = [...conSalida].sort((a,b)=>(Number(b.salida_diaria_estimada)||0)-(Number(a.salida_diaria_estimada)||0)).slice(0,5);
+    const topRiesgo   = [...conSalida].filter(r=>r.dias_para_agotar!=null&&Number(r.dias_para_agotar)<=15&&(Number(r.stock)||0)>0)
+      .sort((a,b)=>(Number(b.salida_diaria_estimada)||0)-(Number(a.salida_diaria_estimada)||0)).slice(0,5);
+
+    // % stock en riesgo (unidades críticas + atención / total)
+    const stockCritico = rows.filter(r=>{ const dv=r.dias_para_agotar; return (Number(r.stock)||0)>0&&dv!=null&&Number(dv)<=7; }).reduce((s,r)=>s+(Number(r.stock)||0),0);
+    const stockAtencion= rows.filter(r=>{ const dv=r.dias_para_agotar,di=Number(dv); return (Number(r.stock)||0)>0&&dv!=null&&di>7&&di<=15; }).reduce((s,r)=>s+(Number(r.stock)||0),0);
+    const stockRiesgoU = stockCritico + stockAtencion;
+    const pctRiesgo    = totalStock > 0 ? Math.round(stockRiesgoU / totalStock * 100) : 0;
+    const pctRiesgoColor = pctRiesgo >= 40 ? '#dc2626' : pctRiesgo >= 20 ? '#f97316' : '#16a34a';
+
+    // Fecha estimada de quiebre (hoy + dias_para_agotar)
+    const _hoy = new Date();
+    const fechaQuiebre = dias => {
+      const d = new Date(_hoy); d.setDate(d.getDate() + dias);
+      return d.toLocaleDateString('es-PE', { day:'numeric', month:'short' });
+    };
+
+    const shortName = r => ((r.nombre_plantilla||'').replace(/\[.*?\]/g,'').trim().slice(0,26))||'—';
+    const shortVar  = r => ((r.nombre_variante||'').replace(/\[.*?\]/g,'').trim().replace(/^[^/]+\//,'').slice(0,14))||'—';
+
+    const rotacionRows = topRotacion.map(r => {
+      const sal  = Number(r.salida_diaria_estimada)||0;
+      const dias = r.dias_para_agotar!=null ? Math.round(Number(r.dias_para_agotar)) : null;
+      const dc   = dias==null?'#94a3b8':dias<=7?'#dc2626':dias<=15?'#f97316':dias<=45?'#16a34a':'#2563eb';
+      return `<tr><td class="tl" style="font-weight:600;color:#0f172a">${shortName(r)}</td>
+        <td style="color:#64748b;font-size:9px">${shortVar(r)}</td>
+        <td style="font-weight:700;color:#6366f1;text-align:center">${sal.toFixed(1)}</td>
+        <td style="text-align:center">${Number(r.stock)||0}</td>
+        <td style="font-weight:700;color:${dc};text-align:center">${dias!=null?dias+'d':'—'}</td></tr>`;
+    }).join('') || `<tr><td colspan="5" style="color:#94a3b8;text-align:center;padding:10px">Sin datos de rotación</td></tr>`;
+
+    const riesgoRows = topRiesgo.map(r => {
+      const sal  = Number(r.salida_diaria_estimada)||0;
+      const dias = Math.round(Number(r.dias_para_agotar));
+      const dc   = dias<=7?'#dc2626':'#f97316';
+      const fq   = fechaQuiebre(dias);
+      return `<tr><td class="tl" style="font-weight:600;color:#0f172a">${shortName(r)}</td>
+        <td style="color:#64748b;font-size:9px">${shortVar(r)}</td>
+        <td style="font-weight:700;color:#6366f1;text-align:center">${sal.toFixed(1)}</td>
+        <td style="text-align:center">${Number(r.stock)||0}</td>
+        <td style="font-weight:800;color:${dc};text-align:center">${dias}d</td>
+        <td style="font-weight:700;color:${dc};text-align:center;font-size:9px">${fq} ⚠</td></tr>`;
+    }).join('') || `<tr><td colspan="6" style="color:#94a3b8;text-align:center;padding:10px">Sin productos en riesgo con rotación activa</td></tr>`;
+
+    // Cobertura global semáforo
+    const covColor = coverageGlobal==null?'#94a3b8':coverageGlobal<=7?'#dc2626':coverageGlobal<=15?'#f97316':coverageGlobal<=45?'#16a34a':'#2563eb';
+
+    // Filtros activos
+    const fp = [];
+    if (S.invFilterGrupo !== '__ALL__')      fp.push(`Familia: <b>${S.invFilterGrupo}</b>`);
+    if (S.invFilterColor !== '__ALL__')      fp.push(`Color: <b>${S.invFilterColor}</b>`);
+    if (S.invFilterCriticidad !== '__ALL__') fp.push(`Estado: <b>${S.invFilterCriticidad}</b>`);
+    if (S.invSearch && S.invSearch.trim())   fp.push(`Búsqueda: <b>"${S.invSearch.trim()}"</b>`);
+    const filtersDesc = fp.length ? fp.join(' &nbsp;&middot;&nbsp; ') : 'Sin filtros — inventario completo';
+
+    const fecha = new Date().toLocaleDateString('es-PE', { year:'numeric', month:'long', day:'numeric' });
+    const hora  = new Date().toLocaleTimeString('es-PE', { hour:'2-digit', minute:'2-digit' });
+
+    // Color hex
+    const CHX = { negro:'#111827',blanco:'#d1d5db',rojo:'#ef4444',azul:'#3b82f6',verde:'#22c55e',amarillo:'#eab308',naranja:'#f97316',morado:'#8b5cf6',rosado:'#ec4899',rosa:'#ec4899',gris:'#6b7280',beige:'#c9a96e',menta:'#6ee7b7',celeste:'#7dd3fc',vino:'#9f1239',camel:'#b87333',nude:'#d4a574',marfil:'#e8dcc8',chocolate:'#7c3f2f',coral:'#f87171' };
+    const getHex = n => { const s=(n||'').toLowerCase(); for(const[k,v]of Object.entries(CHX)){if(s.includes(k))return v;} return '#9ca3af'; };
+
+    // Secciones por plantilla
+    const sections = plantillas.map(plantilla => {
+      const part = byPlantilla.get(plantilla);
+      const empPart = [...new Set(part.map(r=>(r.marca||'').trim()).filter(Boolean))].join(' / ') || '—';
+      const totalU  = part.reduce((s,r)=>s+(Number(r.stock)||0),0);
+      const totalVentas = part.reduce((s,r)=>s+(Number(r.ventas_periodo)||0),0);
+      const totalSal = part.reduce((s,r)=>s+(Number(r.salida_diaria_estimada)||0),0);
+
+      const cc = { agotado:0,critico:0,atencion:0,estable:0,sobrestock:0,sin_historial:0 };
+      part.forEach(r=>{ const ck=invCriticidad(r).key; cc[ck]=(cc[ck]||0)+1; });
+      const critOrder = ['agotado','critico','atencion','estable','sobrestock','sin_historial'];
+      const dominant = critOrder.find(k=>cc[k]>0) || 'sin_historial';
+      const accentColor = { agotado:'#dc2626',critico:'#ea580c',atencion:'#ca8a04',estable:'#16a34a',sobrestock:'#2563eb',sin_historial:'#94a3b8' }[dominant];
+
+      const critBadges = [
+        cc.agotado    ? `<span class="b b-ago">${cc.agotado} agotado</span>` : '',
+        cc.critico    ? `<span class="b b-cri">${cc.critico} crítico</span>` : '',
+        cc.atencion   ? `<span class="b b-ate">${cc.atencion} atención</span>` : '',
+        cc.estable    ? `<span class="b b-est">${cc.estable} estable</span>` : '',
+        cc.sobrestock ? `<span class="b b-sob">${cc.sobrestock} sobrestock</span>` : '',
+      ].filter(Boolean).join('');
+
+      const colors = [...new Set(part.map(r=>invColorValue(r)))].sort((a,b)=>a.localeCompare(b,'es'));
+      const tallaSet = new Set(part.map(r=>invParseTalla(r)));
+      const tallasK  = [...tallaSet].filter(t=>t!=='—');
+      tallasK.sort((a,b)=>{ const ia=INV_TALLA_ORDER.indexOf(a),ib=INV_TALLA_ORDER.indexOf(b); if(ia!==-1||ib!==-1)return(ia===-1?999:ia)-(ib===-1?999:ib); return a.localeCompare(b,'es'); });
+      const tallas = tallaSet.has('—') ? [...tallasK,'—'] : tallasK;
+
+      const matrix={}, salidaByColor={};
+      colors.forEach(c=>{ matrix[c]={}; salidaByColor[c]=0; tallas.forEach(t=>{matrix[c][t]=0;}); });
+      part.forEach(r=>{
+        const c=invColorValue(r),t=invParseTalla(r),st=Number(r.stock)||0;
+        if(!matrix[c])return;
+        if(matrix[c][t]===undefined)matrix[c][t]=0;
+        matrix[c][t]+=st;
+        salidaByColor[c]=(salidaByColor[c]||0)+(Number(r.salida_diaria_estimada)||0);
+      });
+      const tallaTotals={};
+      tallas.forEach(t=>{tallaTotals[t]=0;});
+      colors.forEach(c=>tallas.forEach(t=>{tallaTotals[t]+=(matrix[c][t]||0);}));
+
+      const thead=`<tr>
+        <th class="tl" style="min-width:90px">Color</th>
+        ${tallas.map(t=>`<th>${t}</th>`).join('')}
+        <th style="border-left:2px solid #cbd5e1">Total</th>
+        <th>Sal./día</th>
+      </tr>`;
+
+      const tbRows = colors.map((c,ci)=>{
+        const rowTotal=tallas.reduce((s,t)=>s+(matrix[c][t]||0),0);
+        const sal=salidaByColor[c]||0;
+        const rowBg = ci%2===0 ? '' : 'background:#fafafa';
+        const cells=tallas.map(t=>{
+          const v=matrix[c][t]||0;
+          const cls=v<=0?'z':v<=3?'lo':'';
+          return `<td class="${cls}">${v<=0?'<span style="color:#d1d5db">—</span>':v}</td>`;
+        }).join('');
+        return `<tr style="${rowBg}">
+          <td class="tl"><span class="dot" style="background:${getHex(c)};border:1px solid rgba(0,0,0,.2)"></span><span style="font-weight:500">${c}</span></td>
+          ${cells}
+          <td style="font-weight:800;border-left:2px solid #cbd5e1;background:#f8fafc">${rowTotal}</td>
+          <td style="color:#6366f1;font-size:9px">${sal>0?sal.toFixed(1)+'/d':'—'}</td>
+        </tr>`;
+      });
+
+      const grandTotal=tallas.reduce((s,t)=>s+(tallaTotals[t]||0),0);
+      const totalSalRow=colors.reduce((s,c)=>s+(salidaByColor[c]||0),0);
+      const totalRow=`<tr class="tr-total">
+        <td class="tl">TOTAL</td>
+        ${tallas.map(t=>`<td>${tallaTotals[t]||0}</td>`).join('')}
+        <td style="border-left:2px solid #94a3b8">${grandTotal}</td>
+        <td style="color:#6366f1;font-size:9px">${totalSalRow>0?totalSalRow.toFixed(1)+'/d':'—'}</td>
+      </tr>`;
+
+      return `<div class="ps" style="border-left:4px solid ${accentColor}">
+        <div class="ph">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span class="pn">${plantilla}</span>
+            <span class="pb">${critBadges}</span>
+          </div>
+          <div style="text-align:right;font-size:10px;color:#64748b;line-height:1.6">
+            <span style="font-weight:600;color:#374151">${empPart}</span><br>
+            ${part.length} var. &nbsp;·&nbsp; <b>${totalU}</b> u stock &nbsp;·&nbsp; ${totalVentas>0?totalVentas+' vendidas':'sin ventas'} &nbsp;·&nbsp; ${totalSal>0?totalSal.toFixed(1)+'/d':'sin rotación'}
+          </div>
+        </div>
+        <div class="pt">
+          <table><thead>${thead}</thead><tbody>${tbRows.join('')}${totalRow}</tbody></table>
+        </div>
+      </div>`;
+    }).join('');
+
+    // Barra de criticidad global
+    const total7 = agotados + criticos + atencion + estables + sobrestock;
+    const barSections = total7 > 0 ? [
+      { pct: Math.round(agotados/total7*100),    color:'#dc2626', label:'Agotado' },
+      { pct: Math.round(criticos/total7*100),    color:'#ea580c', label:'Crítico' },
+      { pct: Math.round(atencion/total7*100),    color:'#eab308', label:'Atención' },
+      { pct: Math.round(estables/total7*100),    color:'#22c55e', label:'Estable' },
+      { pct: Math.round(sobrestock/total7*100),  color:'#3b82f6', label:'Sobrestock' },
+    ].filter(x=>x.pct>0).map(x=>`<div style="flex:${x.pct};background:${x.color};height:8px" title="${x.label} ${x.pct}%"></div>`).join('') : '';
+
+    const html=`<!DOCTYPE html>
+<html lang="es"><head>
+<meta charset="UTF-8">
+<title>Inventario ${marcaDisplay} — SONI</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',Arial,Helvetica,sans-serif;font-size:11px;color:#1e293b;background:#fff}
+/* ── Cabecera ── */
+.cover{background:#0f172a;color:#fff;padding:22px 32px 18px;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:18px}
+.cover-icons{display:flex;align-items:center;gap:6px;padding-right:14px;border-right:1px solid rgba(255,255,255,0.12)}
+.cover-center{}
+.brand-name{font-size:28px;font-weight:900;letter-spacing:-1.5px;text-transform:uppercase;line-height:1;color:#fff}
+.brand-sub{font-size:9.5px;color:#64748b;margin-top:5px;text-transform:uppercase;letter-spacing:1.5px}
+.cover-right{text-align:right}
+.soni-badge{display:inline-block;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:6px;padding:3px 10px;font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1px;margin-bottom:8px}
+.cover-doc{font-size:11px;font-weight:600;color:#cbd5e1;margin-bottom:2px}
+.cover-date{font-size:9.5px;color:#475569}
+.accent-bar{height:5px;background:${accentGrad};-webkit-print-color-adjust:exact;print-color-adjust:exact}
+/* ── KPIs ── */
+.kpi-section{padding:16px 28px 14px;border-bottom:1px solid #e2e8f0}
+.sec-label{font-size:8.5px;text-transform:uppercase;letter-spacing:1.2px;color:#94a3b8;margin-bottom:10px;font-weight:700}
+.kpis{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}
+.kpi{border:1px solid #e2e8f0;border-radius:6px;padding:9px 6px;text-align:center;position:relative;overflow:hidden;background:#fafafa}
+.kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.kpi.n::before{background:#64748b}
+.kpi.d::before{background:#dc2626}.kpi.d .kv{color:#dc2626}
+.kpi.o::before{background:#ea580c}.kpi.o .kv{color:#ea580c}
+.kpi.w::before{background:#eab308}.kpi.w .kv{color:#ca8a04}
+.kpi.g::before{background:#22c55e}.kpi.g .kv{color:#16a34a}
+.kpi.b::before{background:#3b82f6}.kpi.b .kv{color:#2563eb}
+.kpi.p::before{background:#6366f1}.kpi.p .kv{color:#4f46e5}
+.kl{font-size:7.5px;text-transform:uppercase;color:#94a3b8;letter-spacing:.3px;white-space:nowrap}
+.kv{font-size:19px;font-weight:900;color:#0f172a;line-height:1.15;margin:3px 0}
+.ks{font-size:7.5px;color:#94a3b8}
+/* ── Barra criticidad ── */
+.crit-bar-wrap{padding:12px 28px;border-bottom:1px solid #e2e8f0}
+.crit-bar{display:flex;border-radius:4px;overflow:hidden;height:8px;gap:1px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.crit-legend{display:flex;gap:14px;margin-top:6px;flex-wrap:wrap}
+.cl{font-size:8px;color:#64748b;display:flex;align-items:center;gap:4px}
+.cl-dot{width:9px;height:9px;border-radius:2px;flex-shrink:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+/* ── Análisis Salida Diaria ── */
+.sal-section{padding:14px 28px;border-bottom:1px solid #e2e8f0;display:grid;grid-template-columns:140px 1fr 1fr;gap:14px;align-items:start}
+.sal-stats{display:flex;flex-direction:column;gap:8px}
+.sal-stat{background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px;text-align:center}
+.sal-stat-val{font-size:22px;font-weight:900;line-height:1.1}
+.sal-stat-lbl{font-size:8px;text-transform:uppercase;letter-spacing:.5px;color:#94a3b8;margin-top:3px}
+.sal-table-wrap{background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden}
+.sal-table-head{background:#0f172a;color:#94a3b8;font-size:8px;text-transform:uppercase;letter-spacing:.5px;font-weight:700;padding:6px 10px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.sal-table-head span{color:#fff}
+.sal-table-inner{padding:4px 0}
+.sal-table-inner table{font-size:9.5px}
+.sal-table-inner th{background:#f1f5f9;font-size:8px;padding:4px 6px;border:none;border-bottom:1px solid #e2e8f0}
+.sal-table-inner td{padding:4px 6px;border:none;border-bottom:1px solid #f1f5f9}
+.sal-table-inner tr:last-child td{border-bottom:none}
+/* ── Filtros ── */
+.fr{font-size:10px;color:#475569;padding:8px 28px;border-bottom:1px solid #e2e8f0;background:#f8fafc}
+/* ── Contenido ── */
+.content{padding:16px 28px}
+.ps{page-break-inside:avoid;margin-bottom:14px;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden}
+.ph{background:#f8fafc;padding:9px 14px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.pn{font-size:13px;font-weight:800;color:#0f172a;letter-spacing:-.3px}
+.pb{display:flex;flex-wrap:wrap;gap:3px;margin-top:4px}
+.pt{padding:8px 10px;overflow-x:auto}
+.b{display:inline-block;padding:2px 7px;border-radius:10px;font-size:8.5px;font-weight:700}
+.b-ago{background:#fef2f2;color:#dc2626;border:1px solid #fecaca}
+.b-cri{background:#fff7ed;color:#ea580c;border:1px solid #fed7aa}
+.b-ate{background:#fefce8;color:#ca8a04;border:1px solid #fef08a}
+.b-est{background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0}
+.b-sob{background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe}
+table{width:100%;border-collapse:collapse;font-size:10px}
+th{background:#f1f5f9;text-align:center;padding:5px 7px;font-weight:700;border:1px solid #e2e8f0;font-size:8.5px;text-transform:uppercase;color:#475569;letter-spacing:.3px}
+th.tl{text-align:left}
+td{padding:4px 7px;border:1px solid #f0f0f0;text-align:center;vertical-align:middle}
+td.tl{text-align:left}
+tr.tr-total td{font-weight:800;background:#f1f5f9;border-top:2px solid #cbd5e1;font-size:11px}
+.z{color:#d1d5db}
+.lo{color:#f97316;font-weight:700}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:middle;flex-shrink:0}
+/* ── Footer ── */
+.footer{margin-top:8px;border-top:1px solid #e2e8f0;padding:8px 28px;font-size:8.5px;color:#94a3b8;display:flex;justify-content:space-between}
+@media print{
+  body{padding:0}
+  .ps{page-break-inside:avoid}
+  .cover,.accent-bar,.kpi::before,.crit-bar,.cl-dot,.sal-table-head{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+}
+</style>
+</head><body>
+
+<!-- ENCABEZADO -->
+<div class="cover">
+  <div class="cover-icons">${coverIcons||''}</div>
+  <div class="cover-center">
+    <div class="brand-name">${marcaDisplay}</div>
+    <div class="brand-sub">Reporte de Inventario Actual</div>
+  </div>
+  <div class="cover-right">
+    <div class="soni-badge">SONI</div>
+    <div class="cover-doc">Proyección &amp; Análisis</div>
+    <div class="cover-date">${fecha} &nbsp;·&nbsp; ${hora} hrs</div>
+    <div class="cover-date" style="margin-top:2px">${rows.length} variantes &nbsp;·&nbsp; ${plantillas.length} familias</div>
+  </div>
+</div>
+<div class="accent-bar"></div>
+
+<!-- KPIs -->
+<div class="kpi-section">
+  <div class="sec-label">Indicadores de inventario</div>
+  <div class="kpis">
+    <div class="kpi n"><div class="kl">Stock total</div><div class="kv">${totalStock.toLocaleString('es-PE')}</div><div class="ks">unidades</div></div>
+    <div class="kpi p"><div class="kl">Sal. diaria</div><div class="kv">${totalSalidaGlobal>0?totalSalidaGlobal.toFixed(0):'—'}</div><div class="ks">u/día est.</div></div>
+    <div class="kpi d"><div class="kl">Agotados</div><div class="kv">${agotados}</div><div class="ks">stock ≤ 0</div></div>
+    <div class="kpi o"><div class="kl">Críticos</div><div class="kv">${criticos}</div><div class="ks">≤ 7 días</div></div>
+    <div class="kpi w"><div class="kl">Atención</div><div class="kv">${atencion}</div><div class="ks">8–15 días</div></div>
+    <div class="kpi g"><div class="kl">Estables</div><div class="kv">${estables}</div><div class="ks">16–45 días</div></div>
+    <div class="kpi b"><div class="kl">Días prom.</div><div class="kv">${avgDias!=null?avgDias+'d':'—'}</div><div class="ks">cobertura</div></div>
+  </div>
+</div>
+
+<!-- BARRA CRITICIDAD -->
+${barSections ? `<div class="crit-bar-wrap">
+  <div class="sec-label" style="margin-bottom:6px">Distribución de estado</div>
+  <div class="crit-bar">${barSections}</div>
+  <div class="crit-legend">
+    ${agotados>0   ?`<span class="cl"><span class="cl-dot" style="background:#dc2626"></span>Agotado (${agotados})</span>`:''}
+    ${criticos>0   ?`<span class="cl"><span class="cl-dot" style="background:#ea580c"></span>Crítico (${criticos})</span>`:''}
+    ${atencion>0   ?`<span class="cl"><span class="cl-dot" style="background:#eab308"></span>Atención (${atencion})</span>`:''}
+    ${estables>0   ?`<span class="cl"><span class="cl-dot" style="background:#22c55e"></span>Estable (${estables})</span>`:''}
+    ${sobrestock>0 ?`<span class="cl"><span class="cl-dot" style="background:#3b82f6"></span>Sobrestock (${sobrestock})</span>`:''}
+  </div>
+</div>` : ''}
+
+<!-- ANÁLISIS SALIDA DIARIA -->
+<div class="sal-section">
+  <div class="sal-stats">
+    <div style="font-size:8.5px;text-transform:uppercase;letter-spacing:1px;color:#94a3b8;font-weight:700;margin-bottom:4px">Salida diaria</div>
+    <div class="sal-stat">
+      <div class="sal-stat-val" style="color:#6366f1">${totalSalidaGlobal>0?totalSalidaGlobal.toFixed(1):'—'}</div>
+      <div class="sal-stat-lbl">unidades/día</div>
+    </div>
+    <div class="sal-stat">
+      <div class="sal-stat-val" style="color:${covColor}">${coverageGlobal!=null?coverageGlobal+'d':'—'}</div>
+      <div class="sal-stat-lbl">cobertura global</div>
+    </div>
+    <div class="sal-stat">
+      <div class="sal-stat-val" style="color:#0f172a">${conSalida.length}</div>
+      <div class="sal-stat-lbl">productos con rotación</div>
+    </div>
+    <div class="sal-stat">
+      <div class="sal-stat-val" style="color:${pctRiesgoColor}">${pctRiesgo}%</div>
+      <div class="sal-stat-lbl">stock en riesgo</div>
+    </div>
+  </div>
+  <div class="sal-table-wrap">
+    <div class="sal-table-head">Mayor rotación &nbsp;<span>Top 5 por salida/día</span></div>
+    <div class="sal-table-inner">
+      <table>
+        <thead><tr>
+          <th class="tl">Producto</th><th class="tl">Variante</th>
+          <th>Sal/día</th><th>Stock</th><th>Cobertura</th>
+        </tr></thead>
+        <tbody>${rotacionRows}</tbody>
+      </table>
+    </div>
+  </div>
+  <div class="sal-table-wrap">
+    <div class="sal-table-head" style="background:#7c1d1d">En riesgo con rotación &nbsp;<span style="color:#fca5a5">≤ 15 días</span></div>
+    <div class="sal-table-inner">
+      <table>
+        <thead><tr>
+          <th class="tl">Producto</th><th class="tl">Variante</th>
+          <th>Sal/día</th><th>Stock</th><th>Cob.</th><th>Quiebre est.</th>
+        </tr></thead>
+        <tbody>${riesgoRows}</tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="fr"><b>Filtros aplicados:</b> &nbsp;${filtersDesc}</div>
+
+<div class="content">
+${sections}
+</div>
+
+<div class="footer">
+  <span>SONI — Sistema de Proyección Inventario &nbsp;·&nbsp; ${marcaDisplay}</span>
+  <span>Generado el ${fecha} &nbsp;·&nbsp; ${hora} hrs</span>
+</div>
+
+</body></html>`;
+
+    const win = window.open('', '_blank', 'width=1100,height=800,scrollbars=yes,resizable=yes');
+    if (!win) { alert('Permite ventanas emergentes en tu navegador para generar el PDF.'); return; }
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => { win.print(); }, 700);
   }
 
   function renderInventoryRisksPayload(payload, opts) {
@@ -4686,7 +5269,29 @@
       if (!t) return;
       if (t.id === 'inv-filter-grupo') S.invFilterGrupo = t.value;
       else if (t.id === 'inv-filter-color') S.invFilterColor = t.value;
+      else if (t.id === 'inv-filter-criticidad') S.invFilterCriticidad = t.value;
       else return;
+      if (S.invRisks && S.invRisks.inventory) renderInvDetailAndMatrix(S.invRisks.inventory);
+    });
+
+    d.getElementById('inv-search')?.addEventListener('input', (ev) => {
+      S.invSearch = ev.target.value || '';
+      if (S.invRisks && S.invRisks.inventory) renderInvDetailAndMatrix(S.invRisks.inventory);
+    });
+
+    d.getElementById('inv-filter-clear')?.addEventListener('click', () => {
+      S.invFilterGrupo = '__ALL__';
+      S.invFilterColor = '__ALL__';
+      S.invFilterCriticidad = '__ALL__';
+      S.invSearch = '';
+      const sg = d.getElementById('inv-filter-grupo');
+      const sc = d.getElementById('inv-filter-color');
+      const sk = d.getElementById('inv-filter-criticidad');
+      const ss = d.getElementById('inv-search');
+      if (sg) sg.value = '__ALL__';
+      if (sc) sc.value = '__ALL__';
+      if (sk) sk.value = '__ALL__';
+      if (ss) ss.value = '';
       if (S.invRisks && S.invRisks.inventory) renderInvDetailAndMatrix(S.invRisks.inventory);
     });
 
@@ -4696,6 +5301,8 @@
     d.getElementById('inv-collapse-all')?.addEventListener('click', () => {
       d.querySelectorAll('#inv-detail-root details.inv-grupo-card').forEach((el) => { el.open = false; });
     });
+
+    d.getElementById('inv-pdf-btn')?.addEventListener('click', () => { generateInvPDF(); });
 
     // Controladores del Modal de Recibo
     const closeReceipt = () => {
@@ -4922,7 +5529,7 @@
 
       el('kpi-prod-total-productos', fmt.n(groupedList.length, 0)); // Ahora muestra modelos unicos
       el('kpi-prod-total-unidades', fmt.n(kpis.total_unidades, 2));
-      el('kpi-prod-ingresos-brutos', fmt.money(kpis.ingreso_bruto));
+      el('kpi-prod-ingresos-brutos', fmt.money(kpis.ingreso_total_bruto));
       el('kpi-prod-total-ventas', fmt.n(kpis.total_ventas, 0));
       el('kpi-prod-costo-servicio', fmt.money(kpis.costo_servicio));
       el('kpi-prod-ingresos', fmt.money(kpi_ingreso));

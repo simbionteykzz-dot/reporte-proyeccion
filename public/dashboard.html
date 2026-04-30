@@ -429,50 +429,87 @@
             <div class="app-panel-head">
               <div>
                 <h2 class="app-panel-title">Inventario en tiempo real</h2>
-                <p class="app-panel-desc">Stock por variante, plantilla y marca. Se actualiza al cambiar fechas o cada 5
-                  minutos.</p>
+                <p class="app-panel-desc">Stock por variante, plantilla y marca. Criticidad calculada por días de cobertura.</p>
               </div>
               <div class="app-panel-head-badges">
+                <button type="button" id="inv-pdf-btn" class="btn btn-ghost" style="height:32px;font-size:12px;gap:5px;display:inline-flex;align-items:center;">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                  Exportar PDF
+                </button>
                 <span class="badge badge-accent" id="inv-meta-badge">—</span>
-                <span class="badge badge-cache" id="inv-badge-cache" hidden
-                  title="Datos desde caché local; Actualizar fuerza Odoo">Instantáneo</span>
+                <span class="badge badge-cache" id="inv-badge-cache" hidden title="Datos desde caché local; Actualizar fuerza Odoo">Instantáneo</span>
               </div>
             </div>
+
             <div id="inv-loading" class="app-panel-loading" hidden>
               <div class="spinner-inline"></div>
               <span>Cargando inventario desde Odoo…</span>
             </div>
             <div id="inv-error" class="app-panel-error" hidden></div>
-            <div class="inv-filters" id="inv-filters-block">
+
+            <!-- KPI strip -->
+            <div id="inv-kpi-strip" class="inv-kpi-strip"></div>
+
+            <!-- Filtros mejorados -->
+            <div class="inv-filters panel-section" id="inv-filters-block">
               <div class="inv-filters-grid">
+                <div class="inv-filter-field inv-filter-field--search">
+                  <label class="inv-filter-label" for="inv-search">Buscar prenda</label>
+                  <input type="search" id="inv-search" class="soni-input" placeholder="Variante, código o plantilla…" autocomplete="off">
+                </div>
                 <div class="inv-filter-field">
-                  <label class="inv-filter-label" for="inv-filter-grupo">Familia / tipo de prenda</label>
-                  <select id="inv-filter-grupo" class="soni-select"
-                    title="Primera palabra del nombre de plantilla (ej. CLASICO)">
-                    <option value="__ALL__">Todas las familias</option>
+                  <label class="inv-filter-label" for="inv-filter-grupo">Familia</label>
+                  <select id="inv-filter-grupo" class="soni-select" title="Primera palabra del nombre de plantilla">
+                    <option value="__ALL__">Todas</option>
                   </select>
                 </div>
                 <div class="inv-filter-field">
                   <label class="inv-filter-label" for="inv-filter-color">Color</label>
-                  <select id="inv-filter-color" class="soni-select"
-                    title="Colores disponibles según la familia elegida">
-                    <option value="__ALL__">Todos los colores</option>
+                  <select id="inv-filter-color" class="soni-select">
+                    <option value="__ALL__">Todos</option>
                   </select>
+                </div>
+                <div class="inv-filter-field">
+                  <label class="inv-filter-label" for="inv-filter-criticidad">Estado</label>
+                  <select id="inv-filter-criticidad" class="soni-select">
+                    <option value="__ALL__">Todos</option>
+                    <option value="agotado">Agotado</option>
+                    <option value="critico">Crítico (&le;7d)</option>
+                    <option value="atencion">Atención (8–15d)</option>
+                    <option value="estable">Estable (16–45d)</option>
+                    <option value="sobrestock">Sobrestock (&gt;45d)</option>
+                    <option value="sin_historial">Sin historial</option>
+                  </select>
+                </div>
+                <div class="inv-filter-field inv-filter-field--action">
+                  <label class="inv-filter-label">&nbsp;</label>
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <button type="button" id="inv-filter-clear" class="btn btn-ghost" style="height:36px;font-size:12px;">Limpiar</button>
+                    <span id="inv-filter-count" class="badge" style="font-size:11px;white-space:nowrap;"></span>
+                  </div>
                 </div>
               </div>
             </div>
+
+            <!-- Matriz tallas -->
             <div class="inv-matrix-block panel-section">
-              <h3 class="inv-subtitle panel-section__title">Stock por talla (matriz)</h3>
+              <h3 class="inv-subtitle panel-section__title">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                Matriz de stock por talla
+              </h3>
               <div class="table-container inv-matrix-scroll" id="inv-matrix-wrap"></div>
             </div>
+
+            <!-- Detalle acordeón -->
             <div class="inv-detail-section panel-section">
               <div class="inv-detail-head">
-                <h3 class="inv-subtitle inv-detail-head__title panel-section__title">Detalle por variante</h3>
+                <h3 class="inv-subtitle inv-detail-head__title panel-section__title">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                  Detalle por variante
+                </h3>
                 <div class="inv-detail-actions" id="inv-detail-actions" hidden>
-                  <button type="button" class="btn btn-ghost inv-detail-action" id="inv-expand-all">Expandir
-                    todo</button>
-                  <button type="button" class="btn btn-ghost inv-detail-action" id="inv-collapse-all">Contraer
-                    todo</button>
+                  <button type="button" class="btn btn-ghost inv-detail-action" id="inv-expand-all">Expandir todo</button>
+                  <button type="button" class="btn btn-ghost inv-detail-action" id="inv-collapse-all">Contraer todo</button>
                 </div>
               </div>
               <div class="inv-detail-root" id="inv-detail-root"></div>
@@ -1155,6 +1192,7 @@
                   <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-muted);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
                     Productos únicos
+                    <span class="kpi-info-icon" data-tooltip="Modelos de producto distintos con al menos una venta o despacho en el período. Se agrupa por plantilla (no por variante individual)."><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span>
                   </div>
                   <div id="kpi-prod-total-productos" style="font-size:26px;font-weight:700;color:var(--color-text);font-family:var(--font-mono,monospace);">--</div>
                   <div style="font-size:11px;color:var(--color-text-muted);margin-top:4px;">referencias activas</div>
@@ -1164,6 +1202,7 @@
                   <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-muted);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2.5"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
                     Unidades vendidas
+                    <span class="kpi-info-icon" data-tooltip="Total de unidades físicamente despachadas, tomado de los movimientos de stock de salida confirmados (stock.move.line). No incluye ventas sin despacho."><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span>
                   </div>
                   <div id="kpi-prod-total-unidades" style="font-size:26px;font-weight:700;color:var(--color-text);font-family:var(--font-mono,monospace);">--</div>
                   <div style="font-size:11px;color:var(--color-text-muted);margin-top:4px;">despachos confirmados</div>
@@ -1173,15 +1212,17 @@
                   <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-muted);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2.5"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
                     Tickets POS
+                    <span class="kpi-info-icon" data-tooltip="Cantidad de órdenes POS únicas (pos.order) completadas en el período, filtradas por empresa. Equivale al número de tickets/recibos emitidos en caja."><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span>
                   </div>
                   <div id="kpi-prod-total-ventas" style="font-size:26px;font-weight:700;color:var(--color-text);font-family:var(--font-mono,monospace);">--</div>
-                  <div style="font-size:11px;color:var(--color-text-muted);margin-top:4px;">ventas registradas</div>
+                  <div style="font-size:11px;color:var(--color-text-muted);margin-top:4px;">órdenes completadas</div>
                 </div>
 
                 <div style="background:var(--color-surface-2); border:1px solid var(--color-border); border-radius:10px; padding:16px 18px;">
                   <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-muted);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
                     Costo de envío
+                    <span class="kpi-info-icon" data-tooltip="Suma del subtotal de productos tipo servicio (delivery/envío) identificados en las líneas POS. Se excluye del cálculo de ingresos de producto."><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span>
                   </div>
                   <div id="kpi-prod-costo-servicio" style="font-size:26px;font-weight:700;color:#f59e0b;font-family:var(--font-mono,monospace);">--</div>
                   <div style="font-size:11px;color:var(--color-text-muted);margin-top:4px;">servicios de delivery</div>
@@ -1196,6 +1237,7 @@
                   <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#10b981;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
                     Ingresos
+                    <span class="kpi-info-icon" data-tooltip="Vista Bruta: unidades despachadas × precio promedio POS (sin descontar promociones). Vista Neta: se restan los descuentos y productos de promoción del total bruto."><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span>
                   </div>
                   <div id="kpi-prod-ingresos" style="font-size:24px;font-weight:700;color:#10b981;font-family:var(--font-mono,monospace);">--</div>
                   <div id="kpi-prod-ingresos-brutos" style="display:none;"></div>
@@ -1206,6 +1248,7 @@
                   <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#ef4444;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
                     Costo total
+                    <span class="kpi-info-icon" data-tooltip="Suma de (unidades despachadas × costo unitario de compra) para todos los productos del período. El costo unitario proviene del catálogo de productos en Odoo."><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span>
                   </div>
                   <div id="kpi-prod-costo" style="font-size:24px;font-weight:700;color:#ef4444;font-family:var(--font-mono,monospace);">--</div>
                   <div style="font-size:11px;color:var(--color-text-muted);margin-top:4px;">costo de productos</div>
@@ -1215,6 +1258,7 @@
                   <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#10b981;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
                     Margen
+                    <span class="kpi-info-icon" data-tooltip="Ingresos − Costo total. El porcentaje al lado es Margen ÷ Ingresos × 100. Cambia entre Bruto y Neto según la vista activa del toggle."><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span>
                   </div>
                   <div style="display:flex;align-items:baseline;gap:8px;">
                     <div id="kpi-prod-margen" style="font-size:24px;font-weight:700;color:#10b981;font-family:var(--font-mono,monospace);">--</div>
@@ -1227,6 +1271,7 @@
                   <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#ef4444;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                     Monto a cobrar
+                    <span class="kpi-info-icon" data-tooltip="Suma de los montos de tickets POS cuyo pago está marcado como pendiente o crédito (cuentas por cobrar). Representa ventas realizadas aún no cobradas."><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span>
                   </div>
                   <div id="kpi-prod-monto-cobrar" style="font-size:24px;font-weight:700;color:#ef4444;font-family:var(--font-mono,monospace);">--</div>
                   <div style="font-size:11px;color:var(--color-text-muted);margin-top:4px;">pendiente de cobro</div>

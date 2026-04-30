@@ -1,4 +1,59 @@
 /* Dashboard — KPI, Tabs, Charts, Table, Insights, Alerts, Animations */
+
+/* --------------------------------------------------
+   KPI Info Tooltips
+   -------------------------------------------------- */
+.kpi-info-icon {
+  position: relative;
+  cursor: help;
+  color: var(--color-text-muted);
+  opacity: 0.45;
+  margin-left: auto;
+  flex-shrink: 0;
+  line-height: 1;
+  transition: opacity 0.15s;
+}
+.kpi-info-icon:hover { opacity: 1; }
+.kpi-info-icon::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #0f172a;
+  color: #cbd5e1;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 7px;
+  padding: 8px 11px;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: normal;
+  width: 230px;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 200;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  transition: opacity 0.18s;
+}
+.kpi-info-icon::before {
+  content: '';
+  position: absolute;
+  bottom: calc(100% + 2px);
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: rgba(255,255,255,0.1);
+  pointer-events: none;
+  opacity: 0;
+  z-index: 201;
+  transition: opacity 0.18s;
+}
+.kpi-info-icon:hover::after,
+.kpi-info-icon:hover::before { opacity: 1; }
 /* --------------------------------------------------
    KPI Section - Asymmetric Layout
    -------------------------------------------------- */

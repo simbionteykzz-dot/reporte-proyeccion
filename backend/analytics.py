@@ -2826,22 +2826,18 @@ def generate_product_dashboard_payload(
 
     extractor = OdooRealExtractor(company_id=company_id_str)
     
-    # Restricción Estricta a 3 empresas principales
-    target_brands = ["OVERSHARK", "BRAVOS", "BOX PRIME", "BOXPRIME"]
-    allowed_companies = []
-    for c in extractor.fetch_accessible_companies():
-        c_name = str(c.get("name", "")).upper()
-        if any(b in c_name for b in target_brands):
-            allowed_companies.append(int(c["id"]))
-            
+    # IDs fijos de las 3 empresas reales: BOX PRIME=5, OVERSHARK=8, BRAVOS=11
+    # No usar matching por nombre — "BRAVOS PRUEBA" (id=4) también contiene "BRAVOS"
+    allowed_companies = [5, 8, 11]
+
     if company_id_str:
         cid_int = int(company_id_str)
         companies_to_query = [cid_int] if cid_int in allowed_companies else []
     else:
         companies_to_query = allowed_companies
 
-    # 1. Extraer pos.order.line para obtener precio real e ingresos del Punto de Venta
-    pos_domain: list = [('order_id.state', '!=', 'cancel')]
+    # 1. Extraer pos.order.line — solo órdenes completadas (paid/done/invoiced), nunca draft ni cancel
+    pos_domain: list = [('order_id.state', 'in', ['paid', 'done', 'invoiced'])]
     if date_from:
         pos_domain.append(("order_id.date_order", ">=", date_from + " 00:00:00"))
     if date_to:
@@ -2852,6 +2848,29 @@ def generate_product_dashboard_payload(
     # Agregamos order_id para poder agrupar por ticket
     pos_fields = ['product_id', 'company_id', 'qty', 'price_subtotal', 'price_unit', 'order_id']
     pos_rows = extractor._sr("pos.order.line", pos_domain, pos_fields)
+
+    # Contar órdenes directamente desde pos.order (más exacto que derivar desde líneas)
+    order_count_domain: list = [('state', 'in', ['paid', 'done', 'invoiced'])]
+    if date_from:
+        order_count_domain.append(("date_order", ">=", date_from + " 00:00:00"))
+    if date_to:
+        order_count_domain.append(("date_order", "<=", date_to + " 23:59:59"))
+    if companies_to_query:
+        order_count_domain.append(('company_id', 'in', companies_to_query))
+
+    try:
+        total_orders = extractor.models.execute_kw(
+            extractor.db, extractor.uid, extractor.pw,
+            'pos.order', 'search_count', [order_count_domain]
+        )
+    except Exception:
+        # fallback: derivar desde líneas
+        unique_order_ids: set[int] = set()
+        for _r in pos_rows:
+            _oid = _r.get("order_id")
+            if _oid:
+                unique_order_ids.add(int(_oid[0]) if isinstance(_oid, (list, tuple)) else int(_oid))
+        total_orders = len(unique_order_ids)
 
     # 2. Extraer stock.move.line para obtener unidades despachadas
     sml_domain: list = [
@@ -2929,7 +2948,7 @@ def generate_product_dashboard_payload(
         agg[(cid_id, pid_id)]["unidades"] += float(r.get("qty_done") or 0)
 
     # Agrupar pos_rows por ticket
-    orders_data = defaultdict(lambda: {"lines": [], "discount_total": 0.0, "positive_revenue": 0.0, "service_revenue": 0.0})
+    orders_data = defaultdict(lambda: {"lines": [], "discount_lines": [], "positive_revenue": 0.0, "service_revenue": 0.0})
     kpis = {
         "descuentos_otorgados": 0.0,
         "costo_servicio": 0.0
@@ -2940,58 +2959,73 @@ def generate_product_dashboard_payload(
         cid = r.get("company_id")
         oid = r.get("order_id")
         if not pid or not cid or not oid: continue
-        
+
         pid_id = int(pid[0]) if isinstance(pid, (list, tuple)) else int(pid)
         cid_id = int(cid[0]) if isinstance(cid, (list, tuple)) else int(cid)
         oid_id = int(oid[0]) if isinstance(oid, (list, tuple)) else int(oid)
-        
+
         qty = float(r.get("qty") or 0)
         subt = float(r.get("price_subtotal") or 0)
-        
+
         key = (cid_id, pid_id)
         raw_name = product_data_cache.get(key, {}).get("name", "").upper()
-        
+
         # Filtros de exclusión global
         if ("COLLAR" in raw_name and "REGALO" in raw_name):
             continue
-            
+
         # Detectar Servicios (no se les prorratea el descuento de ropa)
         if ("SERVICIO DE ENVIO" in raw_name) or ("DELIVERY" in raw_name) or ("COURIER" in raw_name):
             orders_data[oid_id]["service_revenue"] += subt
             kpis["costo_servicio"] += subt
             continue
-            
-        # Detectar Descuentos explícitos (SOLO por nombre, no por precio negativo)
+
+        # Detectar Descuentos explícitos — guardar individualmente con nombre para match por cantidad
         if ("[DSC" in raw_name) or ("[DISC" in raw_name) or ("DESCUENTO" in raw_name) or ("PROMOCIÓN" in raw_name) or ("PROMOCION" in raw_name):
-            orders_data[oid_id]["discount_total"] += subt
+            orders_data[oid_id]["discount_lines"].append({"name": raw_name, "amount": subt})
             kpis["descuentos_otorgados"] += subt
             continue
 
         orders_data[oid_id]["lines"].append({
             "key": key,
             "qty": qty,
-            "subt": subt
+            "subt": subt,
+            "discount_assigned": 0.0
         })
         orders_data[oid_id]["positive_revenue"] += subt
 
-    # Aplicar Prorrateo a cada prenda física del ticket
+    def _qty_from_discount_name(name: str):
+        """Extrae la cantidad objetivo de descripciones como '5 x s/99', '9 x 99'."""
+        m = re.search(r'\b(\d+)\s*[xX×]\s*(?:s/?)?[\d.,]+', name, re.IGNORECASE)
+        return int(m.group(1)) if m else None
+
+    # Aplicar descuentos: match directo por cantidad cuando es posible, prorrateo como fallback
     for oid, data in orders_data.items():
-        discount_total = data["discount_total"]
+        lines = data["lines"]
         positive_revenue = data["positive_revenue"]
-        
-        for line in data["lines"]:
-            key = line["key"]
-            subt = line["subt"]
-            
-            agg[key]["ventas"] += line["qty"]
-            agg[key]["ingreso_bruto"] += subt
-            
-            if positive_revenue > 0:
-                peso = subt / positive_revenue
-                descuento_aplicado = discount_total * peso # discount_total ya es negativo
-                agg[key]["ingreso_neto"] += (subt + descuento_aplicado)
+
+        for disc in data["discount_lines"]:
+            disc_amount = disc["amount"]
+            target_qty = _qty_from_discount_name(disc["name"])
+
+            matched = None
+            if target_qty is not None:
+                candidates = [l for l in lines if abs(l["qty"] - target_qty) < 0.01]
+                if len(candidates) == 1:
+                    matched = candidates[0]
+
+            if matched is not None:
+                matched["discount_assigned"] += disc_amount
             else:
-                agg[key]["ingreso_neto"] += subt
+                for line in lines:
+                    if positive_revenue > 0:
+                        line["discount_assigned"] += disc_amount * (line["subt"] / positive_revenue)
+
+        for line in lines:
+            key = line["key"]
+            agg[key]["ventas"] += line["qty"]
+            agg[key]["ingreso_bruto"] += line["subt"]
+            agg[key]["ingreso_neto"] += line["subt"] + line["discount_assigned"]
 
     # 5. Consolidar tabla y KPIs Finales
     table_rows = []
@@ -3106,7 +3140,6 @@ def generate_product_dashboard_payload(
         })
         
         kpis["total_unidades"] += unidades
-        kpis["total_ventas"] += ventas_reg
         kpis["ingreso_total_bruto"] += ingreso_real_bruto
         kpis["ingreso_total_neto"] += ingreso_real_neto
         kpis["costo_total"] += costo_total
@@ -3115,6 +3148,7 @@ def generate_product_dashboard_payload(
     kpis["margen_total_neto"] = kpis["ingreso_total_neto"] - kpis["costo_total"]
     
     kpis["total_productos"] = len(unique_pids)
+    kpis["total_ventas"] = total_orders
     
     # 6. Monto a cobrar (Zazu Express Contraentrega)
     monto_cobrar = 0.0
@@ -3143,5 +3177,13 @@ def generate_product_dashboard_payload(
     return {
         "kpis": kpis,
         "table": table_rows,
-        "top_10": top_10
+        "top_10": top_10,
+        "_audit": {
+            "pos_lines_fetched": len(pos_rows),
+            "sml_lines_fetched": len(sml_rows),
+            "companies_queried": companies_to_query,
+            "estados_incluidos": ["paid", "done", "invoiced"],
+            "date_from": date_from,
+            "date_to": date_to,
+        }
     }
