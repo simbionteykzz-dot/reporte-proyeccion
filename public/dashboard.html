@@ -4,12 +4,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>Proyección Inventario</title>
+  <title>KRONEX — Panel de Control</title>
   <link rel="icon" type="image/png" href="/assets/odooreport-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link
-    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600&family=Syne:wght@400;700;800&family=Outfit:wght@300;400;500&display=swap"
     rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -33,11 +33,25 @@
     <!-- Sidebar -->
     <aside class="sidebar">
       <div class="sidebar-header">
-        <div class="brand" aria-label="Proyección Inventario">
-          <div class="brand-logo-wrap">
-            <div class="brand-logo">
-              <img src="/assets/odooreport-icon.png" alt="Proyección Inventario" width="128" height="128">
-            </div>
+        <div class="brand" aria-label="KRONEX">
+          <div class="brand-hex-wrap">
+            <svg class="brand-hex-svg" viewBox="0 0 52 60" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <polygon points="26,2 50,16 50,44 26,58 2,44 2,16" stroke="rgba(245,158,11,0.65)" stroke-width="1.4"
+                fill="none" stroke-linejoin="round" />
+              <polygon points="26,9 44,19.5 44,40.5 26,51 8,40.5 8,19.5" stroke="rgba(245,158,11,0.18)"
+                stroke-width="0.6" fill="none" stroke-linejoin="round" />
+              <circle cx="26" cy="2" r="1.1" fill="rgba(245,158,11,0.85)" />
+              <circle cx="50" cy="16" r="1.1" fill="rgba(245,158,11,0.85)" />
+              <circle cx="50" cy="44" r="1.1" fill="rgba(245,158,11,0.85)" />
+              <circle cx="26" cy="58" r="1.1" fill="rgba(245,158,11,0.85)" />
+              <circle cx="2" cy="44" r="1.1" fill="rgba(245,158,11,0.85)" />
+              <circle cx="2" cy="16" r="1.1" fill="rgba(245,158,11,0.85)" />
+            </svg>
+            <img src="/assets/odooreport-icon.png" alt="KRONEX">
+          </div>
+          <div class="brand-info">
+            <span class="brand-name-text">KRO<strong>NEX</strong></span>
+            <span class="brand-name-sub">Panel de Control</span>
           </div>
         </div>
       </div>
@@ -104,7 +118,8 @@
           <summary class="nav-section-label">Análisis</summary>
           <div class="nav-section__body">
             <button class="nav-item" type="button" data-panel="productos_dashboard">
-              <img src="/assets/iconos-barra/logistic-icon.png" alt="Análisis" class="nav-icon" style="width:20px;height:20px;object-fit:contain;">
+              <img src="/assets/iconos-barra/logistic-icon.png" alt="Análisis" class="nav-icon"
+                style="width:20px;height:20px;object-fit:contain;">
 
               <span class="nav-text">Dashboard Productos</span>
             </button>
@@ -307,12 +322,79 @@
 
               <!-- Tabs -->
               <section class="tabs-container">
-                <div class="tabs-header">
-                  <button class="tab-button active" data-tab="income">Distribucion Ingresos</button>
-                  <button class="tab-button" data-tab="analysis">Ticket vs Ventas</button>
-                  <button class="tab-button" data-tab="table">Tabla Detallada</button>
-                  <button class="tab-button" data-tab="depletion">Agotamiento</button>
-                  <button class="tab-button" data-tab="insights">Insights &amp; Alertas</button>
+                <div class="section-nav">
+                  <!-- Distribución de Ingresos: donut limpio con wedge -->
+                  <button class="tab-button active" data-tab="income">
+                    <div class="section-nav-icon">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21.21 15.89A10 10 0 1 1 8 2.83"/>
+                        <path d="M22 12A10 10 0 0 0 12 2v10z"/>
+                      </svg>
+                    </div>
+                    <div class="section-nav-body">
+                      <span class="section-nav-title">Distribución</span>
+                      <span class="section-nav-sub">Ingresos por familia</span>
+                    </div>
+                  </button>
+                  <!-- Ticket vs Ventas: recibo con flecha de precio -->
+                  <button class="tab-button" data-tab="analysis">
+                    <div class="section-nav-icon">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                        <line x1="9" y1="13" x2="15" y2="13"/>
+                        <polyline points="12 10 15 13 12 16"/>
+                      </svg>
+                    </div>
+                    <div class="section-nav-body">
+                      <span class="section-nav-title">Ticket vs Ventas</span>
+                      <span class="section-nav-sub">Precio y volumen</span>
+                    </div>
+                  </button>
+                  <!-- Tabla: tabla con filas de datos -->
+                  <button class="tab-button" data-tab="table">
+                    <div class="section-nav-icon">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2v-4M9 21H5a2 2 0 0 1-2-2v-4m0 0h18"/>
+                      </svg>
+                    </div>
+                    <div class="section-nav-body">
+                      <span class="section-nav-title">Tabla Detallada</span>
+                      <span class="section-nav-sub">Datos exportables</span>
+                    </div>
+                  </button>
+                  <!-- Agotamiento: paquete con reloj / cuenta regresiva -->
+                  <button class="tab-button" data-tab="depletion">
+                    <div class="section-nav-icon">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                        <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                        <line x1="12" y1="22.08" x2="12" y2="12"/>
+                      </svg>
+                    </div>
+                    <div class="section-nav-body">
+                      <span class="section-nav-title">Agotamiento</span>
+                      <span class="section-nav-sub">Días de stock restante</span>
+                    </div>
+                  </button>
+                  <!-- Insights: campana de alertas -->
+                  <button class="tab-button" data-tab="insights">
+                    <div class="section-nav-icon">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                        <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                      </svg>
+                    </div>
+                    <div class="section-nav-body">
+                      <span class="section-nav-title">Insights &amp; Alertas</span>
+                      <span class="section-nav-sub">Análisis automático</span>
+                    </div>
+                  </button>
                 </div>
                 <div class="tab-content active" id="tab-income">
                   <div class="income-distribution-panel">
@@ -327,11 +409,22 @@
                       <div class="chart-legend chart-legend-income" id="income-legend"></div>
                     </div>
                   </div>
-                  <div id="income-hint"
-                    style="margin-top:12px;padding:12px;background:var(--color-surface-2);border-radius:var(--radius-lg);font-size:0.8125rem;color:var(--color-text-secondary)">
-                    <strong style="color:var(--color-text)">Lectura:</strong> Dona de ingresos proyectados por familía
-                    en esta vista. Para el total del KPI, marca filas en <strong>Tabla detallada</strong> (columna
-                    Incl.).
+                  <div id="income-hint" class="panel-hint">
+                    <div class="panel-hint__icon">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="8" x2="12" y2="12" />
+                        <line x1="12" y1="16" x2="12.01" y2="16" />
+                      </svg>
+                    </div>
+                    <div class="panel-hint__content">
+                      <div class="panel-hint__title">Cómo leer este gráfico</div>
+                      <div class="panel-hint__text">La dona muestra el <strong>reparto de ingresos proyectados</strong>
+                        entre familias activas. El valor central es el total del API. Para incluir o excluir una familia
+                        del KPI, activa o desactiva su fila en la columna <strong>Incl.</strong> de Tabla Detallada.
+                      </div>
+                    </div>
                   </div>
                 </div>
                 <div class="tab-content" id="tab-analysis">
@@ -350,10 +443,22 @@
                     Así se comparan volumen y precio por familia sin mezclar ambos en un solo color.</p>
                   <div class="chart-container chart-container-fixed" id="chart-analysis-wrap"><canvas
                       id="chart-analysis"></canvas></div>
-                  <div id="analysis-hint"
-                    style="margin-top:12px;padding:12px;background:var(--color-surface-2);border-radius:var(--radius-lg);font-size:0.8125rem;color:var(--color-text-secondary)">
-                    <strong style="color:var(--color-text)">Lectura:</strong> <span id="analysis-hint-body">Dos ejes:
-                      izquierda unidades, derecha soles del ticket de regla. Misma fila = misma familía.</span>
+                  <div id="analysis-hint" class="panel-hint">
+                    <div class="panel-hint__icon">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="8" x2="12" y2="12" />
+                        <line x1="12" y1="16" x2="12.01" y2="16" />
+                      </svg>
+                    </div>
+                    <div class="panel-hint__content">
+                      <div class="panel-hint__title">Cómo leer este gráfico</div>
+                      <div class="panel-hint__text"><span id="analysis-hint-body">Dos ejes: <strong>izquierda</strong> =
+                          unidades proyectadas a vender (barras); <strong>derecha</strong> = ticket de la regla en soles
+                          (línea ámbar). Cada grupo corresponde a la misma familia — permite comparar volumen y precio
+                          sin mezclarlos.</span></div>
+                    </div>
                   </div>
                 </div>
                 <div class="tab-content" id="tab-table">
@@ -373,6 +478,23 @@
                         fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M6 2h9l5 5v15a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2z" />
                       </svg> PDF</button>
+                  </div>
+                  <div class="panel-hint" style="margin-bottom: var(--space-5)">
+                    <div class="panel-hint__icon">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="8" x2="12" y2="12" />
+                        <line x1="12" y1="16" x2="12.01" y2="16" />
+                      </svg>
+                    </div>
+                    <div class="panel-hint__content">
+                      <div class="panel-hint__title">Cómo usar esta tabla</div>
+                      <div class="panel-hint__text">Cada fila es una familia de productos. La columna
+                        <strong>Incl.</strong> controla si esa familia suma al KPI de valoración proyectada. Ordena por
+                        cualquier columna haciendo clic en su cabecera. Exporta los datos completos con los botones
+                        <strong>CSV</strong>, <strong>Excel</strong> o <strong>PDF</strong>.</div>
+                    </div>
                   </div>
                   <div class="table-container">
                     <table class="data-table">
@@ -401,13 +523,41 @@
                   <p class="chart-explainer">Días hasta agotar stock con la <strong>salida diaria estimada</strong> del
                     periodo; prioriza reposición donde la barra es más corta.</p>
                   <div class="chart-container" style="height:420px"><canvas id="chart-depletion"></canvas></div>
-                  <div
-                    style="margin-top:12px;padding:12px;background:var(--color-surface-2);border-radius:var(--radius-lg);font-size:0.8125rem;color:var(--color-text-secondary)">
-                    <strong style="color:var(--color-text)">Lectura:</strong> Estima los dias para agotar stock segun
-                    salida historica. Menos dias = mayor prioridad de reposicion.
+                  <div class="panel-hint">
+                    <div class="panel-hint__icon">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="8" x2="12" y2="12" />
+                        <line x1="12" y1="16" x2="12.01" y2="16" />
+                      </svg>
+                    </div>
+                    <div class="panel-hint__content">
+                      <div class="panel-hint__title">Cómo leer este gráfico</div>
+                      <div class="panel-hint__text">Estima los <strong>días restantes</strong> para agotar cada familia
+                        según su salida diaria histórica del periodo. <strong>Barras más cortas = mayor urgencia de
+                          reposición.</strong> Usa este gráfico para priorizar compras.</div>
+                    </div>
                   </div>
                 </div>
                 <div class="tab-content" id="tab-insights">
+                  <div class="panel-hint" style="margin-bottom: var(--space-6)">
+                    <div class="panel-hint__icon">
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                        stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="8" x2="12" y2="12" />
+                        <line x1="12" y1="16" x2="12.01" y2="16" />
+                      </svg>
+                    </div>
+                    <div class="panel-hint__content">
+                      <div class="panel-hint__title">Análisis automático del sistema</div>
+                      <div class="panel-hint__text">Los <strong>Insights</strong> son generados automáticamente al
+                        procesar los datos de ventas, stock y proyección. Las <strong>Alertas</strong> señalan familias
+                        con stock crítico, riesgo de agotamiento próximo o desequilibrios entre precio y volumen
+                        proyectado.</div>
+                    </div>
+                  </div>
                   <!-- Insights -->
                   <section class="insights-section">
                     <h2 class="insights-section__title">Insights Automaticos</h2>
@@ -429,15 +579,25 @@
             <div class="app-panel-head">
               <div>
                 <h2 class="app-panel-title">Inventario en tiempo real</h2>
-                <p class="app-panel-desc">Stock por variante, plantilla y marca. Criticidad calculada por días de cobertura.</p>
+                <p class="app-panel-desc">Stock por variante, plantilla y marca. Criticidad calculada por días de
+                  cobertura.</p>
               </div>
               <div class="app-panel-head-badges">
-                <button type="button" id="inv-pdf-btn" class="btn btn-ghost" style="height:32px;font-size:12px;gap:5px;display:inline-flex;align-items:center;">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                <button type="button" id="inv-pdf-btn" class="btn btn-ghost"
+                  style="height:32px;font-size:12px;gap:5px;display:inline-flex;align-items:center;">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                    <line x1="16" y1="13" x2="8" y2="13" />
+                    <line x1="16" y1="17" x2="8" y2="17" />
+                    <polyline points="10 9 9 9 8 9" />
+                  </svg>
                   Exportar PDF
                 </button>
                 <span class="badge badge-accent" id="inv-meta-badge">—</span>
-                <span class="badge badge-cache" id="inv-badge-cache" hidden title="Datos desde caché local; Actualizar fuerza Odoo">Instantáneo</span>
+                <span class="badge badge-cache" id="inv-badge-cache" hidden
+                  title="Datos desde caché local; Actualizar fuerza Odoo">Instantáneo</span>
               </div>
             </div>
 
@@ -455,7 +615,8 @@
               <div class="inv-filters-grid">
                 <div class="inv-filter-field inv-filter-field--search">
                   <label class="inv-filter-label" for="inv-search">Buscar prenda</label>
-                  <input type="search" id="inv-search" class="soni-input" placeholder="Variante, código o plantilla…" autocomplete="off">
+                  <input type="search" id="inv-search" class="soni-input" placeholder="Variante, código o plantilla…"
+                    autocomplete="off">
                 </div>
                 <div class="inv-filter-field">
                   <label class="inv-filter-label" for="inv-filter-grupo">Familia</label>
@@ -484,7 +645,8 @@
                 <div class="inv-filter-field inv-filter-field--action">
                   <label class="inv-filter-label">&nbsp;</label>
                   <div style="display:flex;align-items:center;gap:8px;">
-                    <button type="button" id="inv-filter-clear" class="btn btn-ghost" style="height:36px;font-size:12px;">Limpiar</button>
+                    <button type="button" id="inv-filter-clear" class="btn btn-ghost"
+                      style="height:36px;font-size:12px;">Limpiar</button>
                     <span id="inv-filter-count" class="badge" style="font-size:11px;white-space:nowrap;"></span>
                   </div>
                 </div>
@@ -494,7 +656,12 @@
             <!-- Matriz tallas -->
             <div class="inv-matrix-block panel-section">
               <h3 class="inv-subtitle panel-section__title">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="3" width="7" height="7" />
+                  <rect x="14" y="3" width="7" height="7" />
+                  <rect x="3" y="14" width="7" height="7" />
+                  <rect x="14" y="14" width="7" height="7" />
+                </svg>
                 Matriz de stock por talla
               </h3>
               <div class="table-container inv-matrix-scroll" id="inv-matrix-wrap"></div>
@@ -504,12 +671,21 @@
             <div class="inv-detail-section panel-section">
               <div class="inv-detail-head">
                 <h3 class="inv-subtitle inv-detail-head__title panel-section__title">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="8" y1="6" x2="21" y2="6" />
+                    <line x1="8" y1="12" x2="21" y2="12" />
+                    <line x1="8" y1="18" x2="21" y2="18" />
+                    <line x1="3" y1="6" x2="3.01" y2="6" />
+                    <line x1="3" y1="12" x2="3.01" y2="12" />
+                    <line x1="3" y1="18" x2="3.01" y2="18" />
+                  </svg>
                   Detalle por variante
                 </h3>
                 <div class="inv-detail-actions" id="inv-detail-actions" hidden>
-                  <button type="button" class="btn btn-ghost inv-detail-action" id="inv-expand-all">Expandir todo</button>
-                  <button type="button" class="btn btn-ghost inv-detail-action" id="inv-collapse-all">Contraer todo</button>
+                  <button type="button" class="btn btn-ghost inv-detail-action" id="inv-expand-all">Expandir
+                    todo</button>
+                  <button type="button" class="btn btn-ghost inv-detail-action" id="inv-collapse-all">Contraer
+                    todo</button>
                 </div>
               </div>
               <div class="inv-detail-root" id="inv-detail-root"></div>
@@ -807,7 +983,8 @@
             <!-- ══ SECCIÓN LIMA ══ -->
             <div id="zazu-lima-section">
               <!-- Tabs de estado (filtro client-side) -->
-              <div class="risk-type-tabs zazu-tabs" id="zazu-lima-estado-tabs" role="tablist" aria-label="Filtrar por estado">
+              <div class="risk-type-tabs zazu-tabs" id="zazu-lima-estado-tabs" role="tablist"
+                aria-label="Filtrar por estado">
                 <button type="button" class="risk-type-tab active" data-lima-estado="todos">Todos</button>
                 <button type="button" class="risk-type-tab" data-lima-estado="entregado">Entregados</button>
                 <button type="button" class="risk-type-tab" data-lima-estado="no_entregado">No entregados</button>
@@ -913,7 +1090,8 @@
                 </div>
                 <div class="zazu-kpi-strip" id="zazu-lima-ranking-kpi" style="margin-bottom:24px;"></div>
                 <div class="risk-type-tabs zazu-tabs" role="tablist" aria-label="Tipo de vista Lima">
-                  <button type="button" class="risk-type-tab active" data-zazu-lima-section="graficos">Mapa visual</button>
+                  <button type="button" class="risk-type-tab active" data-zazu-lima-section="graficos">Mapa
+                    visual</button>
                   <button type="button" class="risk-type-tab" data-zazu-lima-section="tops">Ranking</button>
                 </div>
                 <div class="zazu-section-content" id="zazu-lima-section-graficos">
@@ -955,7 +1133,8 @@
                     <span class="zazu-cierre-item"><span class="zazu-cierre-label">∑ Costo servicio</span><span
                         class="zazu-cierre-val" id="zazu-cierre-costo-lima">—</span></span>
                     <span class="zazu-cierre-op">=</span>
-                    <span class="zazu-cierre-item zazu-cierre-item--total"><span class="zazu-cierre-label">Total a abonar a la
+                    <span class="zazu-cierre-item zazu-cierre-item--total"><span class="zazu-cierre-label">Total a
+                        abonar a la
                         marca</span><span class="zazu-cierre-val zazu-cierre-val--total"
                         id="zazu-cierre-total-lima">—</span></span>
                   </div>
@@ -1003,7 +1182,8 @@
                 </div>
               </div>
               <!-- Tabs de estado Provincia -->
-              <div class="risk-type-tabs zazu-tabs" id="zazu-prov-estado-tabs" role="tablist" aria-label="Filtrar por estado provincia">
+              <div class="risk-type-tabs zazu-tabs" id="zazu-prov-estado-tabs" role="tablist"
+                aria-label="Filtrar por estado provincia">
                 <button type="button" class="risk-type-tab active" data-prov-estado="todos">Todos</button>
                 <button type="button" class="risk-type-tab" data-prov-estado="entregado">Entregados</button>
                 <button type="button" class="risk-type-tab" data-prov-estado="pendiente">Pendiente</button>
@@ -1082,7 +1262,8 @@
                 </div>
                 <div class="zazu-kpi-strip" id="zazu-prov-ranking-kpi" style="margin-bottom:24px;"></div>
                 <div class="risk-type-tabs zazu-tabs" role="tablist" aria-label="Tipo de vista Provincia">
-                  <button type="button" class="risk-type-tab active" data-zazu-prov-section="graficos">Mapa visual</button>
+                  <button type="button" class="risk-type-tab active" data-zazu-prov-section="graficos">Mapa
+                    visual</button>
                   <button type="button" class="risk-type-tab" data-zazu-prov-section="tops">Ranking</button>
                 </div>
                 <div class="zazu-section-content" id="zazu-prov-section-graficos">
@@ -1124,7 +1305,8 @@
                     <span class="zazu-cierre-item"><span class="zazu-cierre-label">∑ Costo servicio</span><span
                         class="zazu-cierre-val" id="zazu-cierre-costo-prov">—</span></span>
                     <span class="zazu-cierre-op">=</span>
-                    <span class="zazu-cierre-item zazu-cierre-item--total"><span class="zazu-cierre-label">Total a abonar a la
+                    <span class="zazu-cierre-item zazu-cierre-item--total"><span class="zazu-cierre-label">Total a
+                        abonar a la
                         marca</span><span class="zazu-cierre-val zazu-cierre-val--total"
                         id="zazu-cierre-total-prov">—</span></span>
                   </div>
@@ -1136,13 +1318,17 @@
 
           <!-- Panel Dashboard de Productos -->
           <div id="panel-productos_dashboard" style="display:none;">
-            <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+            <div class="panel-header"
+              style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
               <div>
-                <h2 style="font-size: 24px; font-weight: 700; color: var(--color-text); margin-bottom: 8px;">Dashboard Multiempresa</h2>
-                <p style="color: var(--color-text-muted); font-size: 14px;">Análisis de productos vendidos, costos, e ingresos consolidados.</p>
+                <h2 style="font-size: 24px; font-weight: 700; color: var(--color-text); margin-bottom: 8px;">Dashboard
+                  Multiempresa</h2>
+                <p style="color: var(--color-text-muted); font-size: 14px;">Análisis de productos vendidos, costos, e
+                  ingresos consolidados.</p>
               </div>
               <div>
-                <select id="prod-dashboard-company" class="input-date" style="padding: 8px 16px; border-radius: 8px; font-weight: 500;">
+                <select id="prod-dashboard-company" class="input-date"
+                  style="padding: 8px 16px; border-radius: 8px; font-weight: 500;">
                   <option value="">Todas las Empresas</option>
                   <!-- Las opciones se inyectarán dinámicamente -->
                 </select>
@@ -1150,15 +1336,27 @@
             </div>
 
             <!-- View Mode Toggle -->
-            <div class="view-mode-toggle" style="display:flex; justify-content:center; margin-bottom: 24px; padding: 12px; background: var(--color-surface-2); border-radius: var(--radius-lg); border: 1px solid var(--color-border); align-items: center;">
-              <span style="margin-right: 15px; font-weight: 500; color: var(--color-text); font-size: 0.95rem;">Tipo de Cálculo Financiero:</span>
+            <div class="view-mode-toggle"
+              style="display:flex; justify-content:center; margin-bottom: 24px; padding: 12px; background: var(--color-surface-2); border-radius: var(--radius-lg); border: 1px solid var(--color-border); align-items: center;">
+              <span style="margin-right: 15px; font-weight: 500; color: var(--color-text); font-size: 0.95rem;">Tipo de
+                Cálculo Financiero:</span>
               <div class="toggle-group" style="display:flex; gap: 8px;">
-                <button class="btn btn-primary" id="btn-view-neto" title="Muestra ingresos y márgenes reales restando el peso de las promociones" style="transition: all 0.2s;">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                <button class="btn btn-primary" id="btn-view-neto"
+                  title="Muestra ingresos y márgenes reales restando el peso de las promociones"
+                  style="transition: all 0.2s;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                  </svg>
                   Ingreso Neto (Prorrateado)
                 </button>
-                <button class="btn btn-ghost" id="btn-view-bruto" title="Muestra ingresos ignorando los descuentos registrados (Vista original)" style="transition: all 0.2s;">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                <button class="btn btn-ghost" id="btn-view-bruto"
+                  title="Muestra ingresos ignorando los descuentos registrados (Vista original)"
+                  style="transition: all 0.2s;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="2" y1="12" x2="22" y2="12" />
+                    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                  </svg>
                   Ingreso Bruto (Vista Ciega)
                 </button>
               </div>
@@ -1166,65 +1364,139 @@
 
             <!-- Explainer strip -->
             <div style="display:flex;gap:12px;margin-bottom:18px;width:100%;box-sizing:border-box;">
-              <div style="flex:1;display:flex;align-items:flex-start;gap:10px;background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.25);border-left:3px solid #10b981;border-radius:10px;padding:12px 16px;">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2" style="flex-shrink:0;margin-top:1px"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              <div
+                style="flex:1;display:flex;align-items:flex-start;gap:10px;background:rgba(16,185,129,0.07);border:1px solid rgba(16,185,129,0.25);border-left:3px solid #10b981;border-radius:10px;padding:12px 16px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"
+                  style="flex-shrink:0;margin-top:1px">
+                  <line x1="12" y1="1" x2="12" y2="23" />
+                  <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                </svg>
                 <div>
-                  <div style="font-size:12px;font-weight:700;color:#10b981;margin-bottom:3px;">Ingreso Neto (Prorrateado)</div>
-                  <div style="font-size:11px;color:var(--color-text-muted);line-height:1.5;">Distribuye el descuento de cada boleta entre sus productos según el peso económico de cada uno. Refleja la <strong style="color:var(--color-text);">ganancia real</strong> después de aplicar promociones. <span style="font-family:monospace;color:#10b981;">Neto = Bruto + (Descuento × Peso%)</span></div>
+                  <div style="font-size:12px;font-weight:700;color:#10b981;margin-bottom:3px;">Ingreso Neto
+                    (Prorrateado)</div>
+                  <div style="font-size:11px;color:var(--color-text-muted);line-height:1.5;">Distribuye el descuento de
+                    cada boleta entre sus productos según el peso económico de cada uno. Refleja la <strong
+                      style="color:var(--color-text);">ganancia real</strong> después de aplicar promociones. <span
+                      style="font-family:monospace;color:#10b981;">Neto = Bruto + (Descuento × Peso%)</span></div>
                 </div>
               </div>
-              <div style="flex:1;display:flex;align-items:flex-start;gap:10px;background:rgba(139,92,246,0.07);border:1px solid rgba(139,92,246,0.25);border-left:3px solid #8b5cf6;border-radius:10px;padding:12px 16px;">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+              <div
+                style="flex:1;display:flex;align-items:flex-start;gap:10px;background:rgba(139,92,246,0.07);border:1px solid rgba(139,92,246,0.25);border-left:3px solid #8b5cf6;border-radius:10px;padding:12px 16px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2"
+                  style="flex-shrink:0;margin-top:1px">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="2" y1="12" x2="22" y2="12" />
+                  <path
+                    d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                </svg>
                 <div>
-                  <div style="font-size:12px;font-weight:700;color:#8b5cf6;margin-bottom:3px;">Ingreso Bruto (Vista Ciega)</div>
-                  <div style="font-size:11px;color:var(--color-text-muted);line-height:1.5;">Ignora las líneas de promoción. Muestra el <strong style="color:var(--color-text);">precio de lista original</strong> sin restar ningún descuento. Útil para medir el techo de potencial de ventas sin ofertas.</div>
+                  <div style="font-size:12px;font-weight:700;color:#8b5cf6;margin-bottom:3px;">Ingreso Bruto (Vista
+                    Ciega)</div>
+                  <div style="font-size:11px;color:var(--color-text-muted);line-height:1.5;">Ignora las líneas de
+                    promoción. Muestra el <strong style="color:var(--color-text);">precio de lista original</strong> sin
+                    restar ningún descuento. Útil para medir el techo de potencial de ventas sin ofertas.</div>
                 </div>
               </div>
             </div>
 
 
-            <section class="kpi-section animate-fade-in" style="display:block;margin-bottom:24px;width:100%;box-sizing:border-box;">
+            <section class="kpi-section animate-fade-in"
+              style="display:block;margin-bottom:24px;width:100%;box-sizing:border-box;">
               <!-- Fila 1: Volumétricos -->
 
-              <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:14px; width:100%; margin-bottom:14px;">
+              <div
+                style="display:grid; grid-template-columns: repeat(4, 1fr); gap:14px; width:100%; margin-bottom:14px;">
 
-                <div style="background:var(--color-surface-2); border:1px solid var(--color-border); border-radius:10px; padding:16px 18px;">
-                  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-muted);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+                <div
+                  style="background:var(--color-surface-2); border:1px solid var(--color-border); border-radius:10px; padding:16px 18px;">
+                  <div
+                    style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-muted);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5">
+                      <path
+                        d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                    </svg>
                     Productos únicos
-                    <span class="kpi-info-icon" data-tooltip="Modelos de producto distintos con al menos una venta o despacho en el período. Se agrupa por plantilla (no por variante individual)."><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span>
+                    <span class="kpi-info-icon"
+                      data-tooltip="Modelos de producto distintos con al menos una venta o despacho en el período. Se agrupa por plantilla (no por variante individual)."><svg
+                        width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="16" x2="12" y2="12" />
+                        <line x1="12" y1="8" x2="12.01" y2="8" />
+                      </svg></span>
                   </div>
-                  <div id="kpi-prod-total-productos" style="font-size:26px;font-weight:700;color:var(--color-text);font-family:var(--font-mono,monospace);">--</div>
+                  <div id="kpi-prod-total-productos"
+                    style="font-size:26px;font-weight:700;color:var(--color-text);font-family:var(--font-mono,monospace);">
+                    --</div>
                   <div style="font-size:11px;color:var(--color-text-muted);margin-top:4px;">referencias activas</div>
                 </div>
 
-                <div style="background:var(--color-surface-2); border:1px solid var(--color-border); border-radius:10px; padding:16px 18px;">
-                  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-muted);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2.5"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+                <div
+                  style="background:var(--color-surface-2); border:1px solid var(--color-border); border-radius:10px; padding:16px 18px;">
+                  <div
+                    style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-muted);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2.5">
+                      <rect x="2" y="7" width="20" height="14" rx="2" ry="2" />
+                      <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+                    </svg>
                     Unidades vendidas
-                    <span class="kpi-info-icon" data-tooltip="Total de unidades físicamente despachadas, tomado de los movimientos de stock de salida confirmados (stock.move.line). No incluye ventas sin despacho."><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span>
+                    <span class="kpi-info-icon"
+                      data-tooltip="Total de unidades físicamente despachadas, tomado de los movimientos de stock de salida confirmados (stock.move.line). No incluye ventas sin despacho."><svg
+                        width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="16" x2="12" y2="12" />
+                        <line x1="12" y1="8" x2="12.01" y2="8" />
+                      </svg></span>
                   </div>
-                  <div id="kpi-prod-total-unidades" style="font-size:26px;font-weight:700;color:var(--color-text);font-family:var(--font-mono,monospace);">--</div>
+                  <div id="kpi-prod-total-unidades"
+                    style="font-size:26px;font-weight:700;color:var(--color-text);font-family:var(--font-mono,monospace);">
+                    --</div>
                   <div style="font-size:11px;color:var(--color-text-muted);margin-top:4px;">despachos confirmados</div>
                 </div>
 
-                <div style="background:var(--color-surface-2); border:1px solid var(--color-border); border-radius:10px; padding:16px 18px;">
-                  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-muted);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2.5"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+                <div
+                  style="background:var(--color-surface-2); border:1px solid var(--color-border); border-radius:10px; padding:16px 18px;">
+                  <div
+                    style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-muted);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2.5">
+                      <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
+                      <line x1="3" y1="6" x2="21" y2="6" />
+                      <path d="M16 10a4 4 0 0 1-8 0" />
+                    </svg>
                     Tickets POS
-                    <span class="kpi-info-icon" data-tooltip="Cantidad de órdenes POS únicas (pos.order) completadas en el período, filtradas por empresa. Equivale al número de tickets/recibos emitidos en caja."><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span>
+                    <span class="kpi-info-icon"
+                      data-tooltip="Cantidad de órdenes POS únicas (pos.order) completadas en el período, filtradas por empresa. Equivale al número de tickets/recibos emitidos en caja."><svg
+                        width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="16" x2="12" y2="12" />
+                        <line x1="12" y1="8" x2="12.01" y2="8" />
+                      </svg></span>
                   </div>
-                  <div id="kpi-prod-total-ventas" style="font-size:26px;font-weight:700;color:var(--color-text);font-family:var(--font-mono,monospace);">--</div>
+                  <div id="kpi-prod-total-ventas"
+                    style="font-size:26px;font-weight:700;color:var(--color-text);font-family:var(--font-mono,monospace);">
+                    --</div>
                   <div style="font-size:11px;color:var(--color-text-muted);margin-top:4px;">órdenes completadas</div>
                 </div>
 
-                <div style="background:var(--color-surface-2); border:1px solid var(--color-border); border-radius:10px; padding:16px 18px;">
-                  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-muted);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                <div
+                  style="background:var(--color-surface-2); border:1px solid var(--color-border); border-radius:10px; padding:16px 18px;">
+                  <div
+                    style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--color-text-muted);margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2.5">
+                      <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                      <circle cx="12" cy="10" r="3" />
+                    </svg>
                     Costo de envío
-                    <span class="kpi-info-icon" data-tooltip="Suma del subtotal de productos tipo servicio (delivery/envío) identificados en las líneas POS. Se excluye del cálculo de ingresos de producto."><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span>
+                    <span class="kpi-info-icon"
+                      data-tooltip="Suma del subtotal de productos tipo servicio (delivery/envío) identificados en las líneas POS. Se excluye del cálculo de ingresos de producto."><svg
+                        width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="16" x2="12" y2="12" />
+                        <line x1="12" y1="8" x2="12.01" y2="8" />
+                      </svg></span>
                   </div>
-                  <div id="kpi-prod-costo-servicio" style="font-size:26px;font-weight:700;color:#f59e0b;font-family:var(--font-mono,monospace);">--</div>
+                  <div id="kpi-prod-costo-servicio"
+                    style="font-size:26px;font-weight:700;color:#f59e0b;font-family:var(--font-mono,monospace);">--
+                  </div>
                   <div style="font-size:11px;color:var(--color-text-muted);margin-top:4px;">servicios de delivery</div>
                 </div>
 
@@ -1233,47 +1505,101 @@
               <!-- Fila 2: Financieros (cambian con toggle) -->
               <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:14px; width:100%;">
 
-                <div style="background:linear-gradient(135deg, rgba(16,185,129,0.08) 0%,rgba(16,185,129,0.02) 100%); border:1px solid rgba(16,185,129,0.3); border-radius:10px; padding:16px 18px;">
-                  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#10b981;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                <div
+                  style="background:linear-gradient(135deg, rgba(16,185,129,0.08) 0%,rgba(16,185,129,0.02) 100%); border:1px solid rgba(16,185,129,0.3); border-radius:10px; padding:16px 18px;">
+                  <div
+                    style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#10b981;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5">
+                      <line x1="12" y1="1" x2="12" y2="23" />
+                      <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                    </svg>
                     Ingresos
-                    <span class="kpi-info-icon" data-tooltip="Vista Bruta: unidades despachadas × precio promedio POS (sin descontar promociones). Vista Neta: se restan los descuentos y productos de promoción del total bruto."><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span>
+                    <span class="kpi-info-icon"
+                      data-tooltip="Vista Bruta: unidades despachadas × precio promedio POS (sin descontar promociones). Vista Neta: se restan los descuentos y productos de promoción del total bruto."><svg
+                        width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="16" x2="12" y2="12" />
+                        <line x1="12" y1="8" x2="12.01" y2="8" />
+                      </svg></span>
                   </div>
-                  <div id="kpi-prod-ingresos" style="font-size:24px;font-weight:700;color:#10b981;font-family:var(--font-mono,monospace);">--</div>
+                  <div id="kpi-prod-ingresos"
+                    style="font-size:24px;font-weight:700;color:#10b981;font-family:var(--font-mono,monospace);">--
+                  </div>
                   <div id="kpi-prod-ingresos-brutos" style="display:none;"></div>
                   <div style="font-size:11px;color:var(--color-text-muted);margin-top:4px;">según vista activa</div>
                 </div>
 
-                <div style="background:linear-gradient(135deg, rgba(239,68,68,0.08) 0%,rgba(239,68,68,0.02) 100%); border:1px solid rgba(239,68,68,0.25); border-radius:10px; padding:16px 18px;">
-                  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#ef4444;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+                <div
+                  style="background:linear-gradient(135deg, rgba(239,68,68,0.08) 0%,rgba(239,68,68,0.02) 100%); border:1px solid rgba(239,68,68,0.25); border-radius:10px; padding:16px 18px;">
+                  <div
+                    style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#ef4444;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5">
+                      <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
+                      <polyline points="17 6 23 6 23 12" />
+                    </svg>
                     Costo total
-                    <span class="kpi-info-icon" data-tooltip="Suma de (unidades despachadas × costo unitario de compra) para todos los productos del período. El costo unitario proviene del catálogo de productos en Odoo."><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span>
+                    <span class="kpi-info-icon"
+                      data-tooltip="Suma de (unidades despachadas × costo unitario de compra) para todos los productos del período. El costo unitario proviene del catálogo de productos en Odoo."><svg
+                        width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="16" x2="12" y2="12" />
+                        <line x1="12" y1="8" x2="12.01" y2="8" />
+                      </svg></span>
                   </div>
-                  <div id="kpi-prod-costo" style="font-size:24px;font-weight:700;color:#ef4444;font-family:var(--font-mono,monospace);">--</div>
+                  <div id="kpi-prod-costo"
+                    style="font-size:24px;font-weight:700;color:#ef4444;font-family:var(--font-mono,monospace);">--
+                  </div>
                   <div style="font-size:11px;color:var(--color-text-muted);margin-top:4px;">costo de productos</div>
                 </div>
 
-                <div style="background:linear-gradient(135deg, rgba(16,185,129,0.1) 0%,rgba(59,130,246,0.05) 100%); border:1px solid rgba(16,185,129,0.35); border-radius:10px; padding:16px 18px;">
-                  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#10b981;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+                <div
+                  style="background:linear-gradient(135deg, rgba(16,185,129,0.1) 0%,rgba(59,130,246,0.05) 100%); border:1px solid rgba(16,185,129,0.35); border-radius:10px; padding:16px 18px;">
+                  <div
+                    style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#10b981;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5">
+                      <polyline points="22 7 13.5 15.5 8.5 10.5 2 17" />
+                      <polyline points="16 7 22 7 22 13" />
+                    </svg>
                     Margen
-                    <span class="kpi-info-icon" data-tooltip="Ingresos − Costo total. El porcentaje al lado es Margen ÷ Ingresos × 100. Cambia entre Bruto y Neto según la vista activa del toggle."><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span>
+                    <span class="kpi-info-icon"
+                      data-tooltip="Ingresos − Costo total. El porcentaje al lado es Margen ÷ Ingresos × 100. Cambia entre Bruto y Neto según la vista activa del toggle."><svg
+                        width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="16" x2="12" y2="12" />
+                        <line x1="12" y1="8" x2="12.01" y2="8" />
+                      </svg></span>
                   </div>
                   <div style="display:flex;align-items:baseline;gap:8px;">
-                    <div id="kpi-prod-margen" style="font-size:24px;font-weight:700;color:#10b981;font-family:var(--font-mono,monospace);">--</div>
-                    <div id="kpi-prod-margen-pct" style="font-size:13px;font-weight:600;color:#10b981;opacity:.75;">--%</div>
+                    <div id="kpi-prod-margen"
+                      style="font-size:24px;font-weight:700;color:#10b981;font-family:var(--font-mono,monospace);">--
+                    </div>
+                    <div id="kpi-prod-margen-pct" style="font-size:13px;font-weight:600;color:#10b981;opacity:.75;">--%
+                    </div>
                   </div>
                   <div style="font-size:11px;color:var(--color-text-muted);margin-top:4px;">ganancia real</div>
                 </div>
 
-                <div style="background:linear-gradient(135deg, rgba(239,68,68,0.1) 0%,rgba(239,68,68,0.03) 100%); border:1px solid rgba(239,68,68,0.3); border-radius:10px; padding:16px 18px;">
-                  <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#ef4444;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <div
+                  style="background:linear-gradient(135deg, rgba(239,68,68,0.1) 0%,rgba(239,68,68,0.03) 100%); border:1px solid rgba(239,68,68,0.3); border-radius:10px; padding:16px 18px;">
+                  <div
+                    style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#ef4444;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5">
+                      <circle cx="12" cy="12" r="10" />
+                      <line x1="12" y1="8" x2="12" y2="12" />
+                      <line x1="12" y1="16" x2="12.01" y2="16" />
+                    </svg>
                     Monto a cobrar
-                    <span class="kpi-info-icon" data-tooltip="Suma de los montos de tickets POS cuyo pago está marcado como pendiente o crédito (cuentas por cobrar). Representa ventas realizadas aún no cobradas."><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span>
+                    <span class="kpi-info-icon"
+                      data-tooltip="Suma de los montos de tickets POS cuyo pago está marcado como pendiente o crédito (cuentas por cobrar). Representa ventas realizadas aún no cobradas."><svg
+                        width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <circle cx="12" cy="12" r="10" />
+                        <line x1="12" y1="16" x2="12" y2="12" />
+                        <line x1="12" y1="8" x2="12.01" y2="8" />
+                      </svg></span>
                   </div>
-                  <div id="kpi-prod-monto-cobrar" style="font-size:24px;font-weight:700;color:#ef4444;font-family:var(--font-mono,monospace);">--</div>
+                  <div id="kpi-prod-monto-cobrar"
+                    style="font-size:24px;font-weight:700;color:#ef4444;font-family:var(--font-mono,monospace);">--
+                  </div>
                   <div style="font-size:11px;color:var(--color-text-muted);margin-top:4px;">pendiente de cobro</div>
                 </div>
 
@@ -1281,15 +1607,20 @@
             </section>
 
 
-            <section class="charts-section animate-fade-in" style="margin-bottom: 24px; display: grid; grid-template-columns: 2fr 1fr; gap: 24px;">
-              <div class="kpi-hero" style="background: var(--color-surface-2); border-color: var(--color-border); padding: 24px;">
-                <h4 style="margin: 0 0 16px 0; font-size: 14px; font-weight: 500; color: var(--color-text-secondary);"><i class="ph ph-chart-bar" style="margin-right: 8px;"></i>Top 10 Productos Más Vendidos</h4>
+            <section class="charts-section animate-fade-in"
+              style="margin-bottom: 24px; display: grid; grid-template-columns: 2fr 1fr; gap: 24px;">
+              <div class="kpi-hero"
+                style="background: var(--color-surface-2); border-color: var(--color-border); padding: 24px;">
+                <h4 style="margin: 0 0 16px 0; font-size: 14px; font-weight: 500; color: var(--color-text-secondary);">
+                  <i class="ph ph-chart-bar" style="margin-right: 8px;"></i>Top 10 Productos Más Vendidos</h4>
                 <div style="position: relative; height: 300px; width: 100%;">
                   <canvas id="chart-prod-top10"></canvas>
                 </div>
               </div>
-              <div class="kpi-hero" style="background: var(--color-surface-2); border-color: var(--color-border); padding: 24px;">
-                <h4 style="margin: 0 0 16px 0; font-size: 14px; font-weight: 500; color: var(--color-text-secondary);"><i class="ph ph-pie-chart" style="margin-right: 8px;"></i>Distribución (Top 10)</h4>
+              <div class="kpi-hero"
+                style="background: var(--color-surface-2); border-color: var(--color-border); padding: 24px;">
+                <h4 style="margin: 0 0 16px 0; font-size: 14px; font-weight: 500; color: var(--color-text-secondary);">
+                  <i class="ph ph-pie-chart" style="margin-right: 8px;"></i>Distribución (Top 10)</h4>
                 <div style="position: relative; height: 300px; width: 100%;">
                   <canvas id="chart-prod-pie"></canvas>
                 </div>

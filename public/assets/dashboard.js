@@ -2703,41 +2703,22 @@
     const marcas = [...new Set(rows.map(r => (r.marca || '').trim()).filter(Boolean))].sort();
     const marcaDisplay = (meta.company_name || '').trim() || marcas.join(' · ') || 'SONI';
 
-    // ── Logos en base64 (única forma fiable en ventana popup) ──
-    const _fetchB64 = async path => {
-      try {
-        const r = await fetch(path);
-        if (!r.ok) return null;
-        const blob = await r.blob();
-        return new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(blob); });
-      } catch { return null; }
-    };
-    const LOGO_PATHS = {
-      overshark:   '/assets/iconos-barra/over-icon.png',
-      bravos:      '/assets/iconos-barra/brav-icon.png',
-      'box prime': '/assets/iconos-barra/box.icon.png',
-    };
-    const getBrandKey = name => { const l = (name||'').toLowerCase(); return Object.keys(LOGO_PATHS).find(k => l.includes(k)) || null; };
-    const neededKeys = [...new Set(marcas.map(getBrandKey).filter(Boolean))];
-    const logoB64 = {};
-    await Promise.all(neededKeys.map(async k => { logoB64[k] = await _fetchB64(LOGO_PATHS[k]); }));
-    const mkIcon = key => logoB64[key]
-      ? `<img src="${logoB64[key]}" style="height:52px;width:auto;object-fit:contain;display:block" alt="${key}">`
-      : `<span style="color:#fff;font-size:22px;font-weight:900;text-transform:uppercase">${key}</span>`;
-
-    // ── Config por marca (colores + logo) ──
+    // ── Config por marca (paleta ejecutiva, sin logos) ──
     const BRAND_CFG = {
       overshark: {
-        accent: 'linear-gradient(90deg,#0ea5e9 0%,#0369a1 50%,#164e63 100%)',
-        icon: mkIcon('overshark')
+        accent: 'linear-gradient(90deg,#0f4c81 0%,#1d5f98 100%)',
+        primary: '#0f4c81',
+        soft: '#f2f7fb',
       },
       bravos: {
-        accent: 'linear-gradient(90deg,#ef4444 0%,#f97316 50%,#fbbf24 100%)',
-        icon: mkIcon('bravos')
+        accent: 'linear-gradient(90deg,#7f1d1d 0%,#991b1b 100%)',
+        primary: '#7f1d1d',
+        soft: '#fdf4f4',
       },
       'box prime': {
-        accent: 'linear-gradient(90deg,#6366f1 0%,#8b5cf6 50%,#a78bfa 100%)',
-        icon: mkIcon('box prime')
+        accent: 'linear-gradient(90deg,#312e81 0%,#3730a3 100%)',
+        primary: '#312e81',
+        soft: '#eef2ff',
       }
     };
     const getBrandCfg = name => {
@@ -2746,15 +2727,25 @@
       return null;
     };
 
-    // Determinar acento e iconos según marcas presentes
-    let accentGrad = 'linear-gradient(90deg,#3b82f6,#6366f1,#8b5cf6)';
-    let coverIcons = '';
+    // Determinar paleta según marca activa
+    let activeBrandCfg = {
+      accent: 'linear-gradient(90deg,#334155 0%,#475569 100%)',
+      primary: '#334155',
+      soft: '#f1f5f9',
+    };
     if (marcas.length === 1) {
       const cfg = getBrandCfg(marcas[0]);
-      if (cfg) { accentGrad = cfg.accent; coverIcons = cfg.icon; }
+      if (cfg) activeBrandCfg = cfg;
+    } else if (S.nav === 'bravos') {
+      activeBrandCfg = BRAND_CFG.bravos;
+    } else if (S.nav === 'boxprime') {
+      activeBrandCfg = BRAND_CFG['box prime'];
     } else {
-      coverIcons = marcas.map(m => { const c = getBrandCfg(m); return c ? c.icon : ''; }).join('');
+      activeBrandCfg = BRAND_CFG.overshark;
     }
+    const accentGrad = activeBrandCfg.accent;
+    const primaryColor = activeBrandCfg.primary;
+    const softColor = activeBrandCfg.soft;
 
     // Agrupar por plantilla
     const byPlantilla = new Map();
@@ -2837,6 +2828,9 @@
 
     const fecha = new Date().toLocaleDateString('es-PE', { year:'numeric', month:'long', day:'numeric' });
     const hora  = new Date().toLocaleTimeString('es-PE', { hour:'2-digit', minute:'2-digit' });
+    const periodoLabel = (meta.date_from || meta.date_to)
+      ? `${meta.date_from || '…'} → ${meta.date_to || '…'}`
+      : 'Sin rango específico';
 
     // Color hex
     const CHX = { negro:'#111827',blanco:'#d1d5db',rojo:'#ef4444',azul:'#3b82f6',verde:'#22c55e',amarillo:'#eab308',naranja:'#f97316',morado:'#8b5cf6',rosado:'#ec4899',rosa:'#ec4899',gris:'#6b7280',beige:'#c9a96e',menta:'#6ee7b7',celeste:'#7dd3fc',vino:'#9f1239',camel:'#b87333',nude:'#d4a574',marfil:'#e8dcc8',chocolate:'#7c3f2f',coral:'#f87171' };
@@ -2951,59 +2945,59 @@
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',Arial,Helvetica,sans-serif;font-size:11px;color:#1e293b;background:#fff}
 /* ── Cabecera ── */
-.cover{background:#0f172a;color:#fff;padding:22px 32px 18px;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:18px}
-.cover-icons{display:flex;align-items:center;gap:6px;padding-right:14px;border-right:1px solid rgba(255,255,255,0.12)}
-.cover-center{}
-.brand-name{font-size:28px;font-weight:900;letter-spacing:-1.5px;text-transform:uppercase;line-height:1;color:#fff}
-.brand-sub{font-size:9.5px;color:#64748b;margin-top:5px;text-transform:uppercase;letter-spacing:1.5px}
-.cover-right{text-align:right}
-.soni-badge{display:inline-block;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:6px;padding:3px 10px;font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:1px;margin-bottom:8px}
-.cover-doc{font-size:11px;font-weight:600;color:#cbd5e1;margin-bottom:2px}
-.cover-date{font-size:9.5px;color:#475569}
+.cover{background:#ffffff;color:#0f172a;padding:22px 30px 16px;display:grid;grid-template-columns:1.1fr 1fr;align-items:end;gap:14px;border-bottom:1px solid #dbe3ec;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.cover-main{display:flex;flex-direction:column;gap:8px}
+.brand-name{font-size:28px;font-weight:800;letter-spacing:-.6px;text-transform:uppercase;line-height:1.06;color:${primaryColor}}
+.brand-sub{font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.9px;font-weight:600}
+.cover-right{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.meta-chip{border:1px solid #d8e0ea;background:${softColor};border-radius:8px;padding:8px 10px;min-height:46px}
+.meta-chip span{display:block;font-size:8px;text-transform:uppercase;letter-spacing:.7px;color:#64748b;font-weight:700;margin-bottom:4px}
+.meta-chip strong{display:block;font-size:10px;color:#0f172a;line-height:1.35;font-weight:700}
+.soni-badge{display:inline-block;background:#1e293b;color:#e2e8f0;border-radius:999px;padding:3px 10px;font-size:8.5px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;align-self:flex-start}
 .accent-bar{height:5px;background:${accentGrad};-webkit-print-color-adjust:exact;print-color-adjust:exact}
 /* ── KPIs ── */
 .kpi-section{padding:16px 28px 14px;border-bottom:1px solid #e2e8f0}
-.sec-label{font-size:8.5px;text-transform:uppercase;letter-spacing:1.2px;color:#94a3b8;margin-bottom:10px;font-weight:700}
-.kpis{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}
-.kpi{border:1px solid #e2e8f0;border-radius:6px;padding:9px 6px;text-align:center;position:relative;overflow:hidden;background:#fafafa}
+.sec-label{font-size:8.5px;text-transform:uppercase;letter-spacing:1.1px;color:#7b8794;margin-bottom:10px;font-weight:700}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.kpi{border:1px solid #dce4ee;border-radius:6px;padding:9px 7px;text-align:center;position:relative;overflow:hidden;background:#ffffff}
 .kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.kpi.n::before{background:#64748b}
+.kpi.n::before{background:#475569}
 .kpi.d::before{background:#dc2626}.kpi.d .kv{color:#dc2626}
 .kpi.o::before{background:#ea580c}.kpi.o .kv{color:#ea580c}
 .kpi.w::before{background:#eab308}.kpi.w .kv{color:#ca8a04}
 .kpi.g::before{background:#22c55e}.kpi.g .kv{color:#16a34a}
 .kpi.b::before{background:#3b82f6}.kpi.b .kv{color:#2563eb}
-.kpi.p::before{background:#6366f1}.kpi.p .kv{color:#4f46e5}
-.kl{font-size:7.5px;text-transform:uppercase;color:#94a3b8;letter-spacing:.3px;white-space:nowrap}
-.kv{font-size:19px;font-weight:900;color:#0f172a;line-height:1.15;margin:3px 0}
-.ks{font-size:7.5px;color:#94a3b8}
+.kpi.p::before{background:#334155}.kpi.p .kv{color:#334155}
+.kl{font-size:7.3px;text-transform:uppercase;color:#7b8794;letter-spacing:.28px;white-space:nowrap}
+.kv{font-size:17px;font-weight:800;color:#0f172a;line-height:1.2;margin:3px 0}
+.ks{font-size:7.3px;color:#94a3b8}
 /* ── Barra criticidad ── */
-.crit-bar-wrap{padding:12px 28px;border-bottom:1px solid #e2e8f0}
-.crit-bar{display:flex;border-radius:4px;overflow:hidden;height:8px;gap:1px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.crit-bar-wrap{padding:12px 28px;border-bottom:1px solid #e2e8f0;background:#fcfdff}
+.crit-bar{display:flex;border-radius:4px;overflow:hidden;height:8px;gap:1px;border:1px solid #dbe3ec;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .crit-legend{display:flex;gap:14px;margin-top:6px;flex-wrap:wrap}
-.cl{font-size:8px;color:#64748b;display:flex;align-items:center;gap:4px}
+.cl{font-size:8px;color:#5b6571;display:flex;align-items:center;gap:4px}
 .cl-dot{width:9px;height:9px;border-radius:2px;flex-shrink:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 /* ── Análisis Salida Diaria ── */
-.sal-section{padding:14px 28px;border-bottom:1px solid #e2e8f0;display:grid;grid-template-columns:140px 1fr 1fr;gap:14px;align-items:start}
+.sal-section{padding:14px 28px;border-bottom:1px solid #e2e8f0;display:grid;grid-template-columns:140px 1fr 1fr;gap:14px;align-items:start;background:#ffffff}
 .sal-stats{display:flex;flex-direction:column;gap:8px}
-.sal-stat{background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:10px 12px;text-align:center}
-.sal-stat-val{font-size:22px;font-weight:900;line-height:1.1}
-.sal-stat-lbl{font-size:8px;text-transform:uppercase;letter-spacing:.5px;color:#94a3b8;margin-top:3px}
-.sal-table-wrap{background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden}
-.sal-table-head{background:#0f172a;color:#94a3b8;font-size:8px;text-transform:uppercase;letter-spacing:.5px;font-weight:700;padding:6px 10px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.sal-stat{background:#f8fafc;border:1px solid #dce4ee;border-radius:6px;padding:10px 12px;text-align:center}
+.sal-stat-val{font-size:21px;font-weight:800;line-height:1.1}
+.sal-stat-lbl{font-size:8px;text-transform:uppercase;letter-spacing:.5px;color:#8593a3;margin-top:3px}
+.sal-table-wrap{background:#ffffff;border:1px solid #dce4ee;border-radius:6px;overflow:hidden}
+.sal-table-head{background:#1e293b;color:#9fb1c5;font-size:8px;text-transform:uppercase;letter-spacing:.5px;font-weight:700;padding:6px 10px;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .sal-table-head span{color:#fff}
 .sal-table-inner{padding:4px 0}
 .sal-table-inner table{font-size:9.5px}
-.sal-table-inner th{background:#f1f5f9;font-size:8px;padding:4px 6px;border:none;border-bottom:1px solid #e2e8f0}
-.sal-table-inner td{padding:4px 6px;border:none;border-bottom:1px solid #f1f5f9}
+.sal-table-inner th{background:#f5f8fb;font-size:8px;padding:4px 6px;border:none;border-bottom:1px solid #e2e8f0}
+.sal-table-inner td{padding:4px 6px;border:none;border-bottom:1px solid #edf2f7}
 .sal-table-inner tr:last-child td{border-bottom:none}
 /* ── Filtros ── */
-.fr{font-size:10px;color:#475569;padding:8px 28px;border-bottom:1px solid #e2e8f0;background:#f8fafc}
+.fr{font-size:10px;color:#334155;padding:8px 28px;border-bottom:1px solid #e2e8f0;background:#f8fafc}
 /* ── Contenido ── */
 .content{padding:16px 28px}
-.ps{page-break-inside:avoid;margin-bottom:14px;border:1px solid #e2e8f0;border-radius:6px;overflow:hidden}
-.ph{background:#f8fafc;padding:9px 14px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
-.pn{font-size:13px;font-weight:800;color:#0f172a;letter-spacing:-.3px}
+.ps{page-break-inside:avoid;margin-bottom:14px;border:1px solid #dce4ee;border-radius:6px;overflow:hidden}
+.ph{background:#f8fafc;padding:9px 14px;border-bottom:1px solid #dce4ee;display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.pn{font-size:13px;font-weight:700;color:#0f172a;letter-spacing:-.2px}
 .pb{display:flex;flex-wrap:wrap;gap:3px;margin-top:4px}
 .pt{padding:8px 10px;overflow-x:auto}
 .b{display:inline-block;padding:2px 7px;border-radius:10px;font-size:8.5px;font-weight:700}
@@ -3013,16 +3007,16 @@ body{font-family:'Segoe UI',Arial,Helvetica,sans-serif;font-size:11px;color:#1e2
 .b-est{background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0}
 .b-sob{background:#eff6ff;color:#2563eb;border:1px solid #bfdbfe}
 table{width:100%;border-collapse:collapse;font-size:10px}
-th{background:#f1f5f9;text-align:center;padding:5px 7px;font-weight:700;border:1px solid #e2e8f0;font-size:8.5px;text-transform:uppercase;color:#475569;letter-spacing:.3px}
+th{background:#f5f8fb;text-align:center;padding:5px 7px;font-weight:700;border:1px solid #dce4ee;font-size:8.4px;text-transform:uppercase;color:#475569;letter-spacing:.3px}
 th.tl{text-align:left}
-td{padding:4px 7px;border:1px solid #f0f0f0;text-align:center;vertical-align:middle}
+td{padding:4px 7px;border:1px solid #edf2f7;text-align:center;vertical-align:middle}
 td.tl{text-align:left}
-tr.tr-total td{font-weight:800;background:#f1f5f9;border-top:2px solid #cbd5e1;font-size:11px}
+tr.tr-total td{font-weight:800;background:#f5f8fb;border-top:2px solid #c7d3e0;font-size:11px}
 .z{color:#d1d5db}
 .lo{color:#f97316;font-weight:700}
 .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:middle;flex-shrink:0}
 /* ── Footer ── */
-.footer{margin-top:8px;border-top:1px solid #e2e8f0;padding:8px 28px;font-size:8.5px;color:#94a3b8;display:flex;justify-content:space-between}
+.footer{margin-top:8px;border-top:1px solid #e2e8f0;padding:8px 28px;font-size:8.3px;color:#8191a1;display:flex;justify-content:space-between}
 @media print{
   body{padding:0}
   .ps{page-break-inside:avoid}
@@ -3033,16 +3027,16 @@ tr.tr-total td{font-weight:800;background:#f1f5f9;border-top:2px solid #cbd5e1;f
 
 <!-- ENCABEZADO -->
 <div class="cover">
-  <div class="cover-icons">${coverIcons||''}</div>
-  <div class="cover-center">
+  <div class="cover-main">
+    <div class="soni-badge">SONI · Reporte Ejecutivo</div>
     <div class="brand-name">${marcaDisplay}</div>
-    <div class="brand-sub">Reporte de Inventario Actual</div>
+    <div class="brand-sub">Inventario por marca · análisis de criticidad y cobertura</div>
   </div>
   <div class="cover-right">
-    <div class="soni-badge">SONI</div>
-    <div class="cover-doc">Proyección &amp; Análisis</div>
-    <div class="cover-date">${fecha} &nbsp;·&nbsp; ${hora} hrs</div>
-    <div class="cover-date" style="margin-top:2px">${rows.length} variantes &nbsp;·&nbsp; ${plantillas.length} familias</div>
+    <div class="meta-chip"><span>Período</span><strong>${periodoLabel}</strong></div>
+    <div class="meta-chip"><span>Generado</span><strong>${fecha} · ${hora}</strong></div>
+    <div class="meta-chip"><span>Cobertura</span><strong>${rows.length} variantes · ${plantillas.length} familias</strong></div>
+    <div class="meta-chip"><span>Filtros</span><strong>${fp.length ? `${fp.length} activos` : 'Sin filtros'}</strong></div>
   </div>
 </div>
 <div class="accent-bar"></div>
@@ -3108,7 +3102,7 @@ ${barSections ? `<div class="crit-bar-wrap">
     </div>
   </div>
   <div class="sal-table-wrap">
-    <div class="sal-table-head" style="background:#7c1d1d">En riesgo con rotación &nbsp;<span style="color:#fca5a5">≤ 15 días</span></div>
+    <div class="sal-table-head" style="background:#7c2d12">En riesgo con rotación &nbsp;<span style="color:#fdba74">≤ 15 días</span></div>
     <div class="sal-table-inner">
       <table>
         <thead><tr>
@@ -4458,24 +4452,30 @@ ${sections}
     return 'Overshark';
   }
 
+  function pdfBrandAccent() {
+    if (S.nav === 'bravos')   return [220, 38, 38];    // rojo Bravos
+    if (S.nav === 'boxprime') return [99, 102, 241];   // índigo Box Prime
+    return [14, 165, 233];                              // azul cielo OverShark
+  }
+  function pdfBrandDark() {
+    if (S.nav === 'bravos')   return [127, 29, 29];
+    if (S.nav === 'boxprime') return [55, 48, 163];
+    return [7, 89, 133];
+  }
+
   async function exportProjectionPdf() {
     if (!window.jspdf?.jsPDF) { alert('Error: librería PDF no disponible. Verifique su conexión a internet y recargue la página.'); return; }
     if (!S.data) { alert('Cargue primero los datos del dashboard antes de exportar el PDF.'); return; }
     const btnPdf = d.getElementById('btn-pdf');
     if (btnPdf) { btnPdf.disabled = true; btnPdf.textContent = 'Generando...'; }
     try {
-      const [appImg, brandImg] = await Promise.all([
-        fetchPdfImageDataUrl('/assets/odooreport-icon.png'),
-        fetchPdfImageDataUrl(pdfBrandLogoPath()),
-      ]);
-
       const doc = new window.jspdf.jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
       if (typeof doc.autoTable !== 'function') {
         alert('Error: plugin de tablas PDF no disponible. Recargue la página e intente de nuevo.');
         return;
       }
       const lineCol = isBravosAggregation() ? 'Producto' : (isBoxPrimeAggregation() ? 'Producto' : 'Familia');
-      const headers = [[lineCol, 'Stock', 'Cantidad', 'Ticket', 'Ventas', 'Ingresos', 'Porcentaje', 'Dias']];
+      const headers = [[lineCol, 'Stock', 'Cantidad', 'Ticket', 'Ventas', 'Ingresos', 'Porcentaje']];
       const body = getProjectionRows().map(r => [
         r[0],
         r[1] === '' ? '' : fmt.n(r[1], 0),
@@ -4484,7 +4484,6 @@ ${sections}
         r[4] === '' ? '' : fmt.n(r[4], 0),
         r[5] === '' ? '' : `S/ ${fmt.n(r[5], 2)}`,
         r[6] === '' ? '' : `${fmt.n(r[6], 2)}%`,
-        r[7] === '' ? '' : String(r[7]),
       ]);
       const meta = S.data.meta || {};
       const company = (meta.company_name || '').trim();
@@ -4493,41 +4492,48 @@ ${sections}
       const periodo = from && to ? `${from} → ${to}` : (from || to || 'Periodo segun filtros');
       const pageW = doc.internal.pageSize.getWidth();
       const pageH = doc.internal.pageSize.getHeight();
-      const m = { left: 28, right: 28, top: 72, bottom: 40 };
+      const m = { left: 28, right: 28, top: 128, bottom: 40 };
       const brandName = pdfBrandDisplayName();
 
-      doc.setFillColor(245, 158, 11);
-      doc.rect(0, 0, pageW, 4, 'F');
-      doc.setFillColor(24, 24, 27);
-      doc.rect(0, 4, pageW, 52, 'F');
+      const accent = pdfBrandAccent();
+      const nowStamp = new Date().toLocaleString('es-PE');
 
-      const logoSz = 34;
-      const logoY = 12;
-      if (appImg) {
-        try {
-          doc.addImage(appImg, 'PNG', m.left, logoY, logoSz, logoSz);
-        } catch (_) { /* formato no soportado */ }
-      }
-      if (brandImg) {
-        try {
-          doc.addImage(brandImg, 'PNG', pageW - m.right - logoSz, logoY, logoSz, logoSz);
-        } catch (_) { /* idem */ }
-      }
+      // Franja superior de acento
+      doc.setFillColor(...accent);
+      doc.rect(0, 0, pageW, 5, 'F');
 
-      doc.setTextColor(255, 255, 255);
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(17);
-      doc.text('Proyeccion de inventario', pageW / 2, 30, { align: 'center' });
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(9);
-      doc.setTextColor(212, 212, 216);
-      doc.text(`${APP_NAME} · ${brandName}${company ? ` · ${company}` : ''}`, pageW / 2, 44, { align: 'center' });
-      doc.text(`Periodo: ${periodo}`, pageW / 2, 54, { align: 'center' });
+      // Encabezado centrado, tipografía más sobria
+      doc.setFont('times', 'bold');
+      doc.setFontSize(22);
+      doc.setTextColor(15, 23, 42);
+      doc.text('Proyección de inventario', pageW / 2, 44, { align: 'center' });
+
+      doc.setFont('times', 'normal');
+      doc.setFontSize(11);
+      doc.setTextColor(51, 65, 85);
+      doc.text(
+        `${brandName}${company ? ` · ${company}` : ''}`,
+        pageW / 2,
+        64,
+        { align: 'center' }
+      );
+
+      doc.setFontSize(10);
+      doc.setTextColor(71, 85, 105);
+      doc.text(`Período: ${periodo}`, pageW / 2, 82, { align: 'center' });
+
       const genAt = meta.generated_at ? String(meta.generated_at).replace('T', ' ').slice(0, 19) : '';
 
-      doc.setDrawColor(63, 63, 70);
-      doc.setLineWidth(0.5);
-      doc.line(m.left, 58, pageW - m.right, 58);
+      // Línea divisoria e info secundaria
+      doc.setDrawColor(203, 213, 225);
+      doc.setLineWidth(0.7);
+      doc.line(m.left, 94, pageW - m.right, 94);
+
+      doc.setFont('times', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`Sistema: ${APP_NAME}`, m.left, 110);
+      doc.text(`Generado: ${genAt || nowStamp}`, pageW - m.right, 110, { align: 'right' });
 
       doc.autoTable({
         head: headers,
@@ -4535,45 +4541,46 @@ ${sections}
         startY: m.top,
         margin: { left: m.left, right: m.right, bottom: m.bottom },
         styles: {
-          fontSize: 9,
+          font: 'times',
+          fontSize: 9.5,
           cellPadding: { top: 6, bottom: 6, left: 7, right: 7 },
-          lineColor: [212, 212, 216],
-          lineWidth: 0.35,
+          lineColor: [226, 232, 240],
+          lineWidth: 0.3,
           valign: 'middle',
           textColor: [39, 39, 42],
         },
         headStyles: {
-          fillColor: [180, 83, 9],
+          fillColor: [15, 23, 42],
           textColor: [255, 255, 255],
           fontStyle: 'bold',
-          fontSize: 9.5,
+          fontSize: 10,
         },
-        alternateRowStyles: { fillColor: [250, 250, 250] },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
         columnStyles: {
-          0: { cellWidth: 'auto', minCellWidth: 100, halign: 'left' },
+          0: { cellWidth: 'auto', minCellWidth: 130, halign: 'left' },
           1: { halign: 'right' },
           2: { halign: 'right' },
           3: { halign: 'right' },
           4: { halign: 'right' },
           5: { halign: 'right' },
           6: { halign: 'right' },
-          7: { halign: 'right' },
         },
         didParseCell: (data) => {
           if (data.section === 'body' && data.row.index === body.length - 1) {
             data.cell.styles.fontStyle = 'bold';
-            data.cell.styles.fillColor = [254, 243, 199];
-            data.cell.styles.textColor = [66, 32, 6];
+            data.cell.styles.fillColor = [241, 245, 249];
+            data.cell.styles.textColor = [15, 23, 42];
           }
         },
         didDrawPage: (data) => {
           const n = doc.internal.getNumberOfPages();
           const yFoot = pageH - 18;
           doc.setFontSize(8);
-          doc.setTextColor(113, 113, 122);
-          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(100, 116, 139);
+          doc.setFont('times', 'normal');
+          doc.text(`Página ${data.pageNumber} de ${n}`, pageW / 2, yFoot, { align: 'center' });
           doc.text(
-            `Pagina ${data.pageNumber} / ${n} · ${APP_NAME} · ${brandName}`,
+            `${APP_NAME} · ${brandName}`,
             m.left,
             yFoot,
           );
@@ -4582,7 +4589,7 @@ ${sections}
           }
         },
       });
-      doc.save(`proyecciones_${new Date().toISOString().slice(0, 10)}.pdf`);
+      doc.save(`${brandName.toLowerCase().replace(/\s+/g,'_')}_proyeccion_${new Date().toISOString().slice(0, 10)}.pdf`);
     } finally {
       if (btnPdf) {
         btnPdf.disabled = false;
@@ -4625,29 +4632,44 @@ ${sections}
       const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
       const pageW = doc.internal.pageSize.getWidth();
       const pageH = doc.internal.pageSize.getHeight();
-      const mg = { top: 72, bottom: 40, left: 28, right: 28 };
+      const mg = { top: 84, bottom: 40, left: 28, right: 28 };
 
       // ── Header background ──
+      // Franja teal de Zazu
+      doc.setFillColor(20, 184, 166);   // teal-500
+      doc.rect(0, 0, pageW, 8, 'F');
+
+      // Fondo oscuro de cabecera
       doc.setFillColor(9, 9, 11);
-      doc.rect(0, 0, pageW, 62, 'F');
+      doc.rect(0, 8, pageW, 64, 'F');
 
-      // Logo Zazu
-      try {
-        const zazuResp = await fetch('/assets/iconos-barra/zazu_icon.png');
-        const zazuBlob = await zazuResp.blob();
-        const zazuDataUrl = await new Promise((res) => {
-          const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(zazuBlob);
-        });
-        doc.addImage(zazuDataUrl, 'PNG', mg.left, 8, 46, 46);
-      } catch (_) { /* sin logo */ }
+      // Logo Zazu (izquierda, 44×44)
+      const zazuImg = await fetchPdfImageDataUrl('/assets/iconos-barra/zazu_icon.png');
+      if (zazuImg) {
+        try { doc.addImage(zazuImg, 'PNG', mg.left, 16, 44, 44); } catch (_) {}
+      }
+      // Etiqueta "ZAZU" debajo del logo
+      doc.setFontSize(6.5);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(20, 184, 166);
+      doc.text('ZAZU', mg.left + 22, 64, { align: 'center' });
 
+      // Logo SONI (derecha, 30×30)
+      const soniImg2 = await fetchPdfImageDataUrl('/assets/odooreport-icon.png');
+      if (soniImg2) {
+        try { doc.addImage(soniImg2, 'PNG', pageW - mg.right - 30, 21, 30, 30); } catch (_) {}
+      }
+      doc.setFontSize(6.5);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(156, 163, 175);
+      doc.text('SONI', pageW - mg.right - 15, 56, { align: 'center' });
+
+      // Título centrado
       doc.setTextColor(255, 255, 255);
       doc.setFont('helvetica', 'bold');
-      doc.setFontSize(18);
-      doc.text('Zazu Express — Reporte de Envíos', pageW / 2, 34, { align: 'center' });
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(9);
-      doc.setTextColor(180, 180, 190);
+      doc.setFontSize(17);
+      doc.text('ZAZU EXPRESS — REPORTE DE ENVÍOS', pageW / 2, 35, { align: 'center' });
+
       // Rango de fechas aplicado
       const isPdfProv = S.zazuScope === 'provincia';
       const pdfFrom = isPdfProv ? (S.zazuProvDateFrom || '') : (S.zazuDateFrom || '');
@@ -4655,7 +4677,17 @@ ${sections}
       const dateRange = (pdfFrom || pdfTo)
         ? ` · Período: ${pdfFrom || '…'} → ${pdfTo || '…'}`
         : '';
-      doc.text(`${scope} · Estado: ${tabLabel}${dateRange} · ${rows.length} registros · ${new Date().toLocaleString('es-PE')}`, pageW / 2, 52, { align: 'center' });
+
+      // Subtítulo con scope y período
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor(148, 163, 184);
+      doc.text(`${scope}  ·  Estado: ${tabLabel}${dateRange}  ·  ${rows.length} registros  ·  ${new Date().toLocaleString('es-PE')}`, pageW / 2, 52, { align: 'center' });
+
+      // Línea separadora teal
+      doc.setDrawColor(20, 184, 166);
+      doc.setLineWidth(0.6);
+      doc.line(mg.left, 74, pageW - mg.right, 74);
 
       // ── Tabla de datos ──
       const isProv = S.zazuScope === 'provincia';
@@ -4738,7 +4770,7 @@ ${sections}
           overflow: 'ellipsize',
         },
         headStyles: {
-          fillColor: [15, 23, 42],
+          fillColor: [13, 148, 136],
           textColor: [255, 255, 255],
           fontStyle: 'bold',
           fontSize: 8,
@@ -4832,7 +4864,7 @@ ${sections}
         doc.text(val, cx, kpiStartY + 22, { align: 'center' });
       });
 
-      doc.save(`zazu_${scope.toLowerCase()}_${tabLabel}_${new Date().toISOString().slice(0, 10)}.pdf`);
+      doc.save(`zazu_express_${scope.toLowerCase()}_${tabLabel}_${new Date().toISOString().slice(0, 10)}.pdf`);
     } finally {
       if (btnPdf) btnPdf.disabled = false;
     }

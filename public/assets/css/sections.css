@@ -6,8 +6,8 @@
 .app-panel {
   display: flex;
   flex-direction: column;
-  gap: var(--space-5, 20px);
-  padding: var(--space-5, 20px) 0 var(--space-8, 32px);
+  gap: var(--space-6, 24px);
+  padding: var(--space-6, 24px) 0 var(--space-10, 40px);
   margin-top: 0;
 }
 
@@ -22,10 +22,10 @@
   background: var(--color-surface, #121214);
   border: 1px solid var(--color-border, rgba(255,255,255,0.08));
   border-radius: var(--radius-xl, 16px);
-  padding: var(--space-5, 20px);
+  padding: var(--space-6, 24px);
   display: flex;
   flex-direction: column;
-  gap: var(--space-4, 16px);
+  gap: var(--space-5, 20px);
 }
 
 .panel-section--accent {
@@ -182,11 +182,12 @@
 [data-theme="light"] .insights-section,
 [data-theme="light"] .alerts-section {
   background: #ffffff;
-  border-color: rgba(0,0,0,0.08);
+  border-color: rgba(15, 23, 42, 0.12);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
 }
 
 [data-theme="light"] .zazu-tab-bar,
 [data-theme="light"] .zazu-filter-bar {
-  background: #f4f4f5;
-  border-color: rgba(0,0,0,0.08);
+  background: #f8fafc;
+  border-color: rgba(15, 23, 42, 0.12);
 }

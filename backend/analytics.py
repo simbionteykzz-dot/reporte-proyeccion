@@ -56,6 +56,7 @@ def _label_box_prime_product(detail: dict[str, Any], pid: int) -> str:
 BUSINESS_QTY_BY_FAMILY = {
     "BABY TY": 7,
     "BABY TY MANGA": 7,
+    # TOP RIB y TOP RIB MANGA van por OVERSHARK_FORCE_TEMPLATE_IDS, no por familia de categoría
     "CAMISA WAFFLE": 4,
     "CAMISERO JERSEY": 4,
     "CAMISERO PIKE": 4,
@@ -72,6 +73,7 @@ BUSINESS_QTY_BY_FAMILY = {
 }
 
 # Mapeo categoria Odoo -> familia de negocio
+# TOP RIB / TOP RIB MANGA no están aquí: se inyectan por OVERSHARK_FORCE_TEMPLATE_IDS
 CAT_TO_FAMILY = {
     "BABY TY": "BABY TY",
     "CAMISA WAFFLE": "CAMISA WAFFLE",
@@ -106,13 +108,15 @@ BRAVOS_TEMPLATE_QTY_OVERRIDE: dict[int, float] = {
 
 # product.template IDs de Overshark/Producción a forzar como una sola fila por template.
 # El stock se agrega sobre todas las variantes; se inyectan tras compute_all().
-OVERSHARK_FORCE_TEMPLATE_IDS: frozenset[int] = frozenset({197, 198})
+OVERSHARK_FORCE_TEMPLATE_IDS: frozenset[int] = frozenset({197, 198, 200, 201})
 
 # Cantidad fija de unidades/pedido por product.template (Overshark).
 # Aplicado al calcular ventas_proyectadas del template completo.
 OVERSHARK_TEMPLATE_QTY_OVERRIDE: dict[int, float] = {
     197: 7.0,  # BABY TY ESCOTADO MANGA
     198: 7.0,  # BABY TY ESCOTE
+    200: 7.0,  # TOP RIB
+    201: 7.0,  # TOP RIB MANGA
 }
 
 
@@ -1796,6 +1800,15 @@ def generate_dashboard_payload(
         quant_domain_base: list[Any] = [("location_id", "in", loc_ids)]
         if extractor.company_id:
             quant_domain_base.append(("company_id", "=", extractor.company_id))
+        _sale_states = _sale_order_states_from_env()
+        _sol_domain_base: list[Any] = [("state", "in", _sale_states)]
+        if date_from:
+            _sol_domain_base.append(("order_id.date_order", ">=", date_from + " 00:00:00"))
+        if date_to:
+            _sol_domain_base.append(("order_id.date_order", "<=", date_to + " 23:59:59"))
+        if extractor.company_id:
+            _sol_domain_base.append(("order_id.company_id", "=", extractor.company_id))
+
         for tmpl_id in sorted(OVERSHARK_FORCE_TEMPLATE_IDS):
             qty_per_order = OVERSHARK_TEMPLATE_QTY_OVERRIDE.get(tmpl_id, 7.0)
             # Nombre desde product.template
@@ -1812,18 +1825,62 @@ def generate_dashboard_payload(
             quant_domain = quant_domain_base + [("product_id.product_tmpl_id", "=", tmpl_id)]
             quants = extractor._sr("stock.quant", quant_domain, ["quantity"])
             tmpl_stock = sum(float(q.get("quantity") or 0) for q in quants)
+
+            # Ventas reales desde sale.order.line para calcular ticket_real
+            sol_domain = _sol_domain_base + [("product_id.product_tmpl_id", "=", tmpl_id)]
+            try:
+                sol_rows = extractor._sr(
+                    "sale.order.line", sol_domain,
+                    ["order_id", "product_uom_qty", "price_subtotal"],
+                )
+            except Exception:
+                sol_rows = []
+            tmpl_qty_sold = sum(float(r.get("product_uom_qty") or 0) for r in sol_rows)
+            tmpl_subtotal = sum(float(r.get("price_subtotal") or 0) for r in sol_rows)
+            tmpl_order_ids: set[int] = set()
+            for r in sol_rows:
+                oid_t = r.get("order_id")
+                oid = oid_t[0] if isinstance(oid_t, (list, tuple)) else int(oid_t or 0)
+                if oid:
+                    tmpl_order_ids.add(oid)
+            tmpl_num_orders = len(tmpl_order_ids)
+            ticket_real = round(tmpl_subtotal / tmpl_qty_sold, 2) if tmpl_qty_sold > 0 else 0.0
+
             ventas_proy = round(tmpl_stock / qty_per_order) if qty_per_order else 0.0
             ingresos = round(ventas_proy * TICKET_COMERCIAL_DEFAULT, 2)
+
+            # Criticidad básica basada en rotación
+            _days_ip = max((datetime.strptime(date_to, "%Y-%m-%d").date() - datetime.strptime(date_from, "%Y-%m-%d").date()).days, 1) if date_from and date_to else 30
+            daily_exit_f = tmpl_qty_sold / _days_ip if _days_ip > 0 else 0.0
+            if daily_exit_f <= 0 or tmpl_qty_sold == 0:
+                criticidad_f = "sin_historial"
+            else:
+                dias_ag_f = tmpl_stock / daily_exit_f if daily_exit_f > 0 else 9999
+                if dias_ag_f <= 7:
+                    criticidad_f = "critico"
+                elif dias_ag_f <= 15:
+                    criticidad_f = "bajo"
+                elif dias_ag_f <= 30:
+                    criticidad_f = "medio"
+                elif dias_ag_f <= 90:
+                    criticidad_f = "alto"
+                else:
+                    criticidad_f = "sobrestock"
+
             fd = FamilyData(
                 nombre=tmpl_name,
                 cat_id=0,
                 stock=tmpl_stock,
+                qty_vendida=tmpl_qty_sold,
+                subtotal_ventas=tmpl_subtotal,
+                num_ordenes=tmpl_num_orders,
                 cantidad_promedio=qty_per_order,
+                ticket_real=ticket_real,
                 ticket_comercial=TICKET_COMERCIAL_DEFAULT,
                 ticket_usado=TICKET_COMERCIAL_DEFAULT,
                 ventas_proyectadas=ventas_proy,
                 ingresos_brutos=ingresos,
-                clasificacion_criticidad="sin_historial",
+                clasificacion_criticidad=criticidad_f,
             )
             families.append(fd)
             totals.stock += tmpl_stock

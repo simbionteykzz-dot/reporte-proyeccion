@@ -317,11 +317,21 @@
     gap: var(--space-1);
     flex-wrap: wrap;
   }
-  
-  .tab-button {
+
+  .section-nav {
+    gap: 2px;
     padding: var(--space-2) var(--space-3);
-    font-size: 0.8125rem;
-    min-height: 44px;
+    overflow-x: auto;
+  }
+
+  .tab-button {
+    padding: 6px var(--space-2);
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .section-nav-sub {
+    display: none;
   }
   
   .content-scroll {
