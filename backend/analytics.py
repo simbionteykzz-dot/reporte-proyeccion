@@ -472,12 +472,12 @@ class OdooRealExtractor:
             pass
 
         # Fallback for instances where move state/company access is restricted
-        ml_domain = [("product_id", "!=", False), ("qty_done", ">", 0)]
+        ml_domain = [("product_id", "!=", False), ("quantity", ">", 0)]
         if self.company_id:
             ml_domain.append(("company_id", "=", self.company_id))
         ml_fields = [
             "id", "date", "create_date", "reference", "origin",
-            "product_id", "location_id", "location_dest_id", "qty_done", "move_id"
+            "product_id", "location_id", "location_dest_id", "quantity", "move_id"
         ]
         try:
             lines = self.models.execute_kw(
@@ -502,8 +502,8 @@ class OdooRealExtractor:
                 "product_id": ln.get("product_id"),
                 "location_id": ln.get("location_id"),
                 "location_dest_id": ln.get("location_dest_id"),
-                "quantity_done": ln.get("qty_done"),
-                "product_uom_qty": ln.get("qty_done"),
+                "quantity_done": ln.get("quantity"),
+                "product_uom_qty": ln.get("quantity"),
             })
         return out
 
@@ -2941,7 +2941,7 @@ def generate_product_dashboard_payload(
     if companies_to_query:
         sml_domain.append(('company_id', 'in', companies_to_query))
 
-    sml_fields = ['product_id', 'company_id', 'qty_done']
+    sml_fields = ['product_id', 'company_id', 'quantity']
     sml_rows = extractor._sr("stock.move.line", sml_domain, sml_fields)
 
     # Pre-identificar todos los productos para traer sus nombres y costos
@@ -3002,7 +3002,7 @@ def generate_product_dashboard_payload(
         if not pid or not cid: continue
         pid_id = int(pid[0]) if isinstance(pid, (list, tuple)) else int(pid)
         cid_id = int(cid[0]) if isinstance(cid, (list, tuple)) else int(cid)
-        agg[(cid_id, pid_id)]["unidades"] += float(r.get("qty_done") or 0)
+        agg[(cid_id, pid_id)]["unidades"] += float(r.get("quantity") or 0)
 
     # Agrupar pos_rows por ticket
     orders_data = defaultdict(lambda: {"lines": [], "discount_lines": [], "positive_revenue": 0.0, "service_revenue": 0.0})
