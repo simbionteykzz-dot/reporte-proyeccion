@@ -993,30 +993,39 @@
               </div>
               <!-- Filtros Lima -->
               <div class="zazu-lima-filters" id="zazu-lima-filters" role="group" aria-label="Filtros de envíos Lima">
-                <div class="filter-group">
-                  <label class="filter-label" for="zazu-lima-date-from">Desde</label>
-                  <input type="date" id="zazu-lima-date-from" class="input-date">
+                <div class="filter-row">
+                  <div class="filter-shortcuts">
+                    <button type="button" class="btn-shortcut" data-lima-shortcut="hoy">Hoy</button>
+                    <button type="button" class="btn-shortcut" data-lima-shortcut="ayer">Ayer</button>
+                    <button type="button" class="btn-shortcut" data-lima-shortcut="semana">Esta sem.</button>
+                    <button type="button" class="btn-shortcut" data-lima-shortcut="mes">Este mes</button>
+                  </div>
+                  <div class="filter-group">
+                    <label class="filter-label" for="zazu-lima-date-from">Desde</label>
+                    <input type="date" id="zazu-lima-date-from" class="input-date">
+                  </div>
+                  <div class="filter-group">
+                    <label class="filter-label" for="zazu-lima-date-to">Hasta</label>
+                    <input type="date" id="zazu-lima-date-to" class="input-date">
+                  </div>
+                  <div class="filter-group">
+                    <label class="filter-label" for="zazu-lima-empresa">Empresa</label>
+                    <select id="zazu-lima-empresa" class="soni-select">
+                      <option value="__ALL__">Todas</option>
+                    </select>
+                  </div>
+                  <div class="filter-group">
+                    <label class="filter-label" for="zazu-lima-search">Cliente</label>
+                    <input type="text" id="zazu-lima-search" class="input-date" placeholder="Nombre del cliente">
+                  </div>
+                  <div class="filter-group">
+                    <label class="filter-label" for="zazu-lima-pedido">Pedido</label>
+                    <input type="text" id="zazu-lima-pedido" class="input-date" placeholder="Nº orden, guía, código...">
+                  </div>
+                  <button type="button" class="btn btn-primary btn-sm" id="zazu-lima-apply">Aplicar</button>
+                  <button type="button" class="btn btn-ghost btn-sm" id="zazu-lima-clear">Limpiar</button>
                 </div>
-                <div class="filter-group">
-                  <label class="filter-label" for="zazu-lima-date-to">Hasta</label>
-                  <input type="date" id="zazu-lima-date-to" class="input-date">
-                </div>
-                <div class="filter-group">
-                  <label class="filter-label" for="zazu-lima-empresa">Empresa</label>
-                  <select id="zazu-lima-empresa" class="soni-select">
-                    <option value="__ALL__">Todas</option>
-                  </select>
-                </div>
-                <div class="filter-group">
-                  <label class="filter-label" for="zazu-lima-search">Cliente</label>
-                  <input type="text" id="zazu-lima-search" class="input-date" placeholder="Nombre del cliente">
-                </div>
-                <div class="filter-group">
-                  <label class="filter-label" for="zazu-lima-pedido">Pedido</label>
-                  <input type="text" id="zazu-lima-pedido" class="input-date" placeholder="Nº orden, guía, código...">
-                </div>
-                <button type="button" class="btn btn-primary btn-sm" id="zazu-lima-apply">Aplicar</button>
-                <button type="button" class="btn btn-ghost btn-sm" id="zazu-lima-clear">Limpiar</button>
+                <div class="filter-chips-row" id="zazu-lima-chips"></div>
               </div>
               <!-- Vista Lima (tabla / ranking / kpis) -->
               <div class="risk-type-tabs zazu-tabs" id="zazu-lima-view-tabs" role="tablist" aria-label="Vista Lima">
@@ -1154,32 +1163,39 @@
               </header>
               <!-- Filtros Provincia -->
               <div class="zazu-prov-filters" role="group" aria-label="Filtros de envíos provincia">
-                <div class="filter-group">
-                  <label class="filter-label" for="zazu-prov-date-from">Desde</label>
-                  <input type="date" id="zazu-prov-date-from" class="input-date">
-                </div>
-                <div class="filter-group">
-                  <label class="filter-label" for="zazu-prov-date-to">Hasta</label>
-                  <input type="date" id="zazu-prov-date-to" class="input-date">
-                </div>
-                <div class="filter-group">
-                  <label class="filter-label" for="zazu-prov-empresa">Empresa</label>
-                  <select id="zazu-prov-empresa" class="soni-select">
-                    <option value="__ALL__">Todas</option>
-                  </select>
-                </div>
-                <div class="filter-group">
-                  <label class="filter-label" for="zazu-prov-cliente">Cliente</label>
-                  <input type="text" id="zazu-prov-cliente" class="input-date" placeholder="Nombre del cliente">
-                </div>
-                <div class="filter-group">
-                  <label class="filter-label" for="zazu-prov-guide-query">Pedido / Guía</label>
-                  <input type="text" id="zazu-prov-guide-query" class="input-date" placeholder="Ej: 6580496 o KD3H">
-                </div>
-                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <div class="filter-row">
+                  <div class="filter-shortcuts">
+                    <button type="button" class="btn-shortcut" data-prov-shortcut="hoy">Hoy</button>
+                    <button type="button" class="btn-shortcut" data-prov-shortcut="ayer">Ayer</button>
+                    <button type="button" class="btn-shortcut" data-prov-shortcut="semana">Esta sem.</button>
+                    <button type="button" class="btn-shortcut" data-prov-shortcut="mes">Este mes</button>
+                  </div>
+                  <div class="filter-group">
+                    <label class="filter-label" for="zazu-prov-date-from">Desde</label>
+                    <input type="date" id="zazu-prov-date-from" class="input-date">
+                  </div>
+                  <div class="filter-group">
+                    <label class="filter-label" for="zazu-prov-date-to">Hasta</label>
+                    <input type="date" id="zazu-prov-date-to" class="input-date">
+                  </div>
+                  <div class="filter-group">
+                    <label class="filter-label" for="zazu-prov-empresa">Empresa</label>
+                    <select id="zazu-prov-empresa" class="soni-select">
+                      <option value="__ALL__">Todas</option>
+                    </select>
+                  </div>
+                  <div class="filter-group">
+                    <label class="filter-label" for="zazu-prov-cliente">Cliente</label>
+                    <input type="text" id="zazu-prov-cliente" class="input-date" placeholder="Nombre del cliente">
+                  </div>
+                  <div class="filter-group">
+                    <label class="filter-label" for="zazu-prov-guide-query">Pedido / Guía</label>
+                    <input type="text" id="zazu-prov-guide-query" class="input-date" placeholder="Ej: 6580496 o KD3H">
+                  </div>
                   <button type="button" class="btn btn-primary btn-sm" id="zazu-prov-apply">Aplicar</button>
                   <button type="button" class="btn btn-ghost btn-sm" id="zazu-prov-clear">Limpiar</button>
                 </div>
+                <div class="filter-chips-row" id="zazu-prov-chips"></div>
               </div>
               <!-- Tabs de estado Provincia -->
               <div class="risk-type-tabs zazu-tabs" id="zazu-prov-estado-tabs" role="tablist"

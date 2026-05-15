@@ -5113,11 +5113,118 @@ ${sections}
       zazuRenderProvRankings(S.zazuProvRows || []);
     });
 
+    // ── Helpers filtros rápidos ──
+    function _dateShortcutRange(shortcut) {
+      const today = new Date();
+      const fmt = (dt) => dt.toISOString().slice(0, 10);
+      if (shortcut === 'hoy') return { from: fmt(today), to: fmt(today) };
+      if (shortcut === 'ayer') {
+        const y = new Date(today); y.setDate(y.getDate() - 1);
+        return { from: fmt(y), to: fmt(y) };
+      }
+      if (shortcut === 'semana') {
+        const mon = new Date(today);
+        const day = today.getDay();
+        mon.setDate(today.getDate() - (day === 0 ? 6 : day - 1));
+        return { from: fmt(mon), to: fmt(today) };
+      }
+      if (shortcut === 'mes') {
+        const first = new Date(today.getFullYear(), today.getMonth(), 1);
+        return { from: fmt(first), to: fmt(today) };
+      }
+      return null;
+    }
+
+    // ── Chips de filtros activos Lima ──
+    function renderLimaChips() {
+      const container = d.getElementById('zazu-lima-chips');
+      if (!container) return;
+      const chips = [];
+      if (S.zazuDateFrom) chips.push({ label: 'Desde: ' + S.zazuDateFrom, clear() { S.zazuDateFrom = ''; const el = d.getElementById('zazu-lima-date-from'); if (el) el.value = ''; _updateLimaShortcutActive(); fetchZazuEnvios(true); } });
+      if (S.zazuDateTo) chips.push({ label: 'Hasta: ' + S.zazuDateTo, clear() { S.zazuDateTo = ''; const el = d.getElementById('zazu-lima-date-to'); if (el) el.value = ''; _updateLimaShortcutActive(); fetchZazuEnvios(true); } });
+      if (S.zazuEmpresa && S.zazuEmpresa !== '__ALL__') chips.push({ label: 'Empresa: ' + S.zazuEmpresa, clear() { S.zazuEmpresa = '__ALL__'; const el = d.getElementById('zazu-lima-empresa'); if (el) el.value = '__ALL__'; renderZazuRows(S.zazuRowsAll || [], null); renderLimaChips(); } });
+      if (S.zazuLimaSearch) chips.push({ label: 'Cliente: ' + S.zazuLimaSearch, clear() { S.zazuLimaSearch = ''; const el = d.getElementById('zazu-lima-search'); if (el) el.value = ''; renderZazuRows(S.zazuRowsAll || [], null); renderLimaChips(); } });
+      if (S.zazuLimaPedidoSearch) chips.push({ label: 'Pedido: ' + S.zazuLimaPedidoSearch, clear() { S.zazuLimaPedidoSearch = ''; const el = d.getElementById('zazu-lima-pedido'); if (el) el.value = ''; renderZazuRows(S.zazuRowsAll || [], null); renderLimaChips(); } });
+      container.innerHTML = '';
+      chips.forEach((chip) => {
+        const span = document.createElement('span');
+        span.className = 'filter-chip';
+        span.innerHTML = chip.label + ' <button class="filter-chip-x" title="Quitar">&times;</button>';
+        span.querySelector('.filter-chip-x').addEventListener('click', chip.clear);
+        container.appendChild(span);
+      });
+    }
+
+    // ── Chips de filtros activos Provincia ──
+    function renderProvChips() {
+      const container = d.getElementById('zazu-prov-chips');
+      if (!container) return;
+      const chips = [];
+      if (S.zazuProvDateFrom) chips.push({ label: 'Desde: ' + S.zazuProvDateFrom, clear() { S.zazuProvDateFrom = ''; const el = d.getElementById('zazu-prov-date-from'); if (el) el.value = ''; _updateProvShortcutActive(); fetchZazuProvinciaDetail(true); } });
+      if (S.zazuProvDateTo) chips.push({ label: 'Hasta: ' + S.zazuProvDateTo, clear() { S.zazuProvDateTo = ''; const el = d.getElementById('zazu-prov-date-to'); if (el) el.value = ''; _updateProvShortcutActive(); fetchZazuProvinciaDetail(true); } });
+      if (S.zazuProvEmpresa && S.zazuProvEmpresa !== '__ALL__') chips.push({ label: 'Empresa: ' + S.zazuProvEmpresa, clear() { S.zazuProvEmpresa = '__ALL__'; const el = d.getElementById('zazu-prov-empresa'); if (el) el.value = '__ALL__'; zazuProvRenderRows(S.zazuProvRows || [], S.zazuProvMeta); renderProvChips(); } });
+      if (S.zazuProvClienteSearch) chips.push({ label: 'Cliente: ' + S.zazuProvClienteSearch, clear() { S.zazuProvClienteSearch = ''; const el = d.getElementById('zazu-prov-cliente'); if (el) el.value = ''; zazuProvRenderRows(S.zazuProvRows || [], S.zazuProvMeta); renderProvChips(); } });
+      if (S.zazuProvGuideQuery) chips.push({ label: 'Pedido: ' + S.zazuProvGuideQuery, clear() { S.zazuProvGuideQuery = ''; const el = d.getElementById('zazu-prov-guide-query'); if (el) el.value = ''; fetchZazuProvinciaDetail(true); } });
+      container.innerHTML = '';
+      chips.forEach((chip) => {
+        const span = document.createElement('span');
+        span.className = 'filter-chip';
+        span.innerHTML = chip.label + ' <button class="filter-chip-x" title="Quitar">&times;</button>';
+        span.querySelector('.filter-chip-x').addEventListener('click', chip.clear);
+        container.appendChild(span);
+      });
+    }
+
+    // ── Resaltar botón de atajo activo Lima ──
+    function _updateLimaShortcutActive() {
+      d.querySelectorAll('[data-lima-shortcut]').forEach((btn) => btn.classList.remove('active'));
+    }
+    function _updateProvShortcutActive() {
+      d.querySelectorAll('[data-prov-shortcut]').forEach((btn) => btn.classList.remove('active'));
+    }
+
+    // ── Atajos de fecha Lima ──
+    d.querySelectorAll('[data-lima-shortcut]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const range = _dateShortcutRange(btn.getAttribute('data-lima-shortcut'));
+        if (!range) return;
+        S.zazuDateFrom = range.from;
+        S.zazuDateTo = range.to;
+        const fromEl = d.getElementById('zazu-lima-date-from');
+        const toEl = d.getElementById('zazu-lima-date-to');
+        if (fromEl) fromEl.value = range.from;
+        if (toEl) toEl.value = range.to;
+        d.querySelectorAll('[data-lima-shortcut]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        S.zazuPage = 1;
+        fetchZazuEnvios(true);
+      });
+    });
+
+    // ── Atajos de fecha Provincia ──
+    d.querySelectorAll('[data-prov-shortcut]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const range = _dateShortcutRange(btn.getAttribute('data-prov-shortcut'));
+        if (!range) return;
+        S.zazuProvDateFrom = range.from;
+        S.zazuProvDateTo = range.to;
+        const fromEl = d.getElementById('zazu-prov-date-from');
+        const toEl = d.getElementById('zazu-prov-date-to');
+        if (fromEl) fromEl.value = range.from;
+        if (toEl) toEl.value = range.to;
+        d.querySelectorAll('[data-prov-shortcut]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        S.zazuProvPage = 1;
+        fetchZazuProvinciaDetail(true);
+      });
+    });
+
     // Búsqueda en tiempo real para Lima — cliente
     d.getElementById('zazu-lima-search')?.addEventListener('input', () => {
       S.zazuLimaSearch = (d.getElementById('zazu-lima-search')?.value || '').trim();
       S.zazuPage = 1;
       renderZazuRows(S.zazuRowsAll || [], null);
+      renderLimaChips();
     });
 
     // Búsqueda en tiempo real para Lima — pedido
@@ -5125,6 +5232,14 @@ ${sections}
       S.zazuLimaPedidoSearch = (d.getElementById('zazu-lima-pedido')?.value || '').trim();
       S.zazuPage = 1;
       renderZazuRows(S.zazuRowsAll || [], null);
+      renderLimaChips();
+    });
+
+    // Enter para aplicar Lima
+    ['zazu-lima-search', 'zazu-lima-pedido'].forEach((id) => {
+      d.getElementById(id)?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') d.getElementById('zazu-lima-apply')?.click();
+      });
     });
 
     d.getElementById('zazu-lima-apply')?.addEventListener('click', () => {
@@ -5135,6 +5250,7 @@ ${sections}
       S.zazuLimaPedidoSearch = (d.getElementById('zazu-lima-pedido')?.value || '').trim();
       S.zazuPage = 1;
       fetchZazuEnvios(true);
+      renderLimaChips();
     });
 
     d.getElementById('zazu-lima-clear')?.addEventListener('click', () => {
@@ -5154,7 +5270,9 @@ ${sections}
       if (empresaSelect) empresaSelect.value = '__ALL__';
       if (searchInput) searchInput.value = '';
       if (pedidoInput) pedidoInput.value = '';
+      _updateLimaShortcutActive();
       fetchZazuEnvios(true);
+      renderLimaChips();
     });
 
     d.getElementById('zazu-filter-apply')?.addEventListener('click', () => {
@@ -5184,7 +5302,9 @@ ${sections}
       S.zazuProvPage = 1;
       d.querySelectorAll('[data-prov-estado]').forEach(b => b.classList.toggle('active', b.getAttribute('data-prov-estado') === 'todos'));
       zazuProvSyncInputs();
+      _updateProvShortcutActive();
       fetchZazuProvinciaDetail(true);
+      renderProvChips();
     });
     d.getElementById('zazu-prov-apply')?.addEventListener('click', () => {
       S.zazuProvDateFrom = (d.getElementById('zazu-prov-date-from')?.value || '').trim();
@@ -5195,6 +5315,7 @@ ${sections}
       S.zazuProvPage = 1;
       zazuProvRenderRows(S.zazuProvRows || [], S.zazuProvMeta);
       zazuProvRenderPager();
+      renderProvChips();
     });
 
     // Búsqueda en tiempo real para Provincia — cliente
@@ -5203,6 +5324,14 @@ ${sections}
       S.zazuProvPage = 1;
       zazuProvRenderRows(S.zazuProvRows || [], S.zazuProvMeta);
       zazuProvRenderPager();
+      renderProvChips();
+    });
+
+    // Enter para aplicar Provincia
+    ['zazu-prov-cliente', 'zazu-prov-guide-query'].forEach((id) => {
+      d.getElementById(id)?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') d.getElementById('zazu-prov-apply')?.click();
+      });
     });
     d.getElementById('zazu-prov-prev')?.addEventListener('click', () => {
       if ((S.zazuProvPage || 1) <= 1) return;
@@ -5261,7 +5390,7 @@ ${sections}
     d.getElementById('zazu-prov-guide-query')?.addEventListener('input', () => {
       S.zazuProvGuideQuery = (d.getElementById('zazu-prov-guide-query')?.value || '').trim();
       S.zazuProvPage = 1;
-      // Usar debounce para evitar demasiadas peticiones
+      renderProvChips();
       clearTimeout(window.zazuProvSearchTimeout);
       window.zazuProvSearchTimeout = setTimeout(() => {
         fetchZazuProvinciaDetail(true);

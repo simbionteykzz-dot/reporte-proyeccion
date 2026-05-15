@@ -1,6 +1,78 @@
 /* Dashboard — KPI, Tabs, Charts, Table, Insights, Alerts, Animations */
 
 /* --------------------------------------------------
+   Filter Shortcuts & Active Chips
+   -------------------------------------------------- */
+.filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 8px;
+}
+.filter-shortcuts {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  flex-shrink: 0;
+  padding-bottom: 1px;
+}
+.btn-shortcut {
+  padding: 4px 9px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.05);
+  color: var(--color-text-muted, #94a3b8);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.btn-shortcut:hover {
+  background: rgba(234,179,8,0.15);
+  border-color: rgba(234,179,8,0.4);
+  color: #eab308;
+}
+.btn-shortcut.active {
+  background: rgba(234,179,8,0.2);
+  border-color: #eab308;
+  color: #eab308;
+}
+.filter-chips-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 0;
+  margin-top: 6px;
+}
+.filter-chips-row:empty { margin-top: 0; }
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px 3px 10px;
+  border-radius: 20px;
+  background: rgba(234,179,8,0.12);
+  border: 1px solid rgba(234,179,8,0.3);
+  color: #eab308;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.filter-chip-x {
+  background: none;
+  border: none;
+  color: #eab308;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+  opacity: 0.6;
+  transition: opacity 0.15s;
+}
+.filter-chip-x:hover { opacity: 1; }
+
+/* --------------------------------------------------
    KPI Info Tooltips
    -------------------------------------------------- */
 .kpi-info-icon {
