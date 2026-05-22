@@ -2048,30 +2048,10 @@
     } catch (_) {}
 
     // Formato que reconoce la app Shalom al escanear: "<guia>/box/1/1".
-    // Si no hay guía, caemos al código; si tampoco, dejamos un fallback informativo.
-    const guiaShalom = String(guia || codigo || '').trim();
-    const qrData = guiaShalom
-      ? `${guiaShalom}/box/1/1`
-      : [
-          voucherId ? `ID:${voucherId}` : '',
-          codigo ? `COD:${codigo}` : '',
-        ].filter(Boolean).join('|') || 'Sin datos';
-
-    const qrCanvas = d.createElement('canvas');
-    qrCanvas.id = 'voucher-qr-canvas';
-    qrCanvas.style.cssText = 'display:block;margin:0 auto;border-radius:8px;';
-
-    try {
-      if (typeof QRCode !== 'undefined') {
-        await QRCode.toCanvas(qrCanvas, qrData || 'Sin datos', {
-          width: 220,
-          margin: 2,
-          color: { dark: '#18181b', light: '#ffffff' }
-        });
-      }
-    } catch (err) {
-      console.error('Error generando QR:', err);
-    }
+    // Si no hay guía no se puede generar un QR útil para Shalom (el código
+    // interno Zazu no le sirve a su app), así que mostramos error explícito.
+    const guiaShalom = String(guia || '').trim();
+    const qrData = guiaShalom ? `${guiaShalom}/box/1/1` : '';
 
     body.innerHTML = `
       <div class="voucher-content">
@@ -2082,7 +2062,9 @@
           <div class="voucher-title">Zazu Express × Shalom</div>
           <div class="voucher-subtitle">Comprobante de Envío</div>
         </div>
-        <div class="voucher-qr" id="voucher-qr-container" style="text-align:center;padding:16px 0;"></div>
+        <div class="voucher-qr" id="voucher-qr-container" style="text-align:center;padding:16px 0;min-height:240px;display:flex;align-items:center;justify-content:center;">
+          <canvas id="voucher-qr-canvas" width="220" height="220" style="display:block;margin:0 auto;border-radius:8px;background:#fff;"></canvas>
+        </div>
         <div class="voucher-info">
           ${voucherId ? `<div class="voucher-info-row"><span class="voucher-info-label">ID Venta</span><span class="voucher-info-value">${escHtml(voucherId)}</span></div>` : ''}
           ${guia ? `<div class="voucher-info-row"><span class="voucher-info-label">Guía Shalom</span><span class="voucher-info-value">${escHtml(guia)}</span></div>` : ''}
@@ -2096,15 +2078,51 @@
           </div>` : ''}
         </div>
         <p style="text-align:center;font-size:11px;color:var(--color-text-muted);margin-top:12px;">Escanea el QR con la app Shalom para rastrear el envío</p>
-        <p style="text-align:center;font-size:10px;font-family:var(--font-mono, monospace);color:var(--color-text-muted);margin-top:4px;letter-spacing:0.5px;">${escHtml(qrData)}</p>
+        <p style="text-align:center;font-size:10px;font-family:var(--font-mono, monospace);color:var(--color-text-muted);margin-top:4px;letter-spacing:0.5px;">${qrData ? escHtml(qrData) : '(sin guía Shalom)'}</p>
       </div>
     `;
 
+    const canvas = d.getElementById('voucher-qr-canvas');
     const container = d.getElementById('voucher-qr-container');
-    if (container && qrCanvas.width > 0) {
-      container.appendChild(qrCanvas);
-    } else if (container) {
-      container.innerHTML = `<p style="color:var(--color-text-muted);font-size:12px;padding:16px;">QR: ${escHtml(guia || codigo || voucherId || '—')}</p>`;
+
+    // Si la fila no tiene guía Shalom, no hay QR posible: mostrar mensaje claro.
+    if (!qrData) {
+      if (container) {
+        container.innerHTML = '<p style="color:#dc2626;font-size:13px;padding:24px;text-align:center;">Esta fila no tiene número de guía Shalom registrado en Supabase.<br>Sin guía no se puede generar el QR para la app Shalom.</p>';
+      }
+      return;
+    }
+
+    // Validación: la librería QRCode (qrcode.min.js) debe estar cargada.
+    if (typeof QRCode === 'undefined' || !canvas) {
+      console.error('[voucher] QRCode library no disponible o canvas no encontrado.');
+      if (container) {
+        container.innerHTML = `<p style="color:#dc2626;font-size:13px;padding:24px;text-align:center;">No se pudo cargar la librería de QR.<br>Recarga la página (Ctrl+F5) o revisa la consola.</p>`;
+      }
+      return;
+    }
+
+    // Dibujar el QR sobre el canvas YA insertado en el DOM. Usa callback-style
+    // para máxima compatibilidad con versiones de qrcode.js (algunas builds
+    // viejas no devuelven Promise).
+    try {
+      QRCode.toCanvas(canvas, qrData, {
+        width: 220,
+        margin: 2,
+        color: { dark: '#18181b', light: '#ffffff' }
+      }, (err) => {
+        if (err) {
+          console.error('[voucher] QRCode.toCanvas falló:', err, 'data:', qrData);
+          if (container) {
+            container.innerHTML = `<p style="color:#dc2626;font-size:13px;padding:24px;text-align:center;">Error generando QR: ${escHtml(String(err.message || err))}</p>`;
+          }
+        }
+      });
+    } catch (err) {
+      console.error('[voucher] excepción en QRCode.toCanvas:', err, 'data:', qrData);
+      if (container) {
+        container.innerHTML = `<p style="color:#dc2626;font-size:13px;padding:24px;text-align:center;">Error generando QR: ${escHtml(String(err.message || err))}</p>`;
+      }
     }
   }
 
