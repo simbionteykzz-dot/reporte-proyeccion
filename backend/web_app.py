@@ -69,14 +69,35 @@ def _load_api_folder_dotenv() -> None:
 _load_api_folder_dotenv()
 
 app = Flask(__name__, static_folder=str(ASSETS_DIR), static_url_path="/assets")
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "").strip() or "dev-cambiar-FLASK_SECRET_KEY"
+
+_IS_DEV = os.environ.get("FLASK_DEBUG", "").strip().lower() in ("1", "true", "yes")
+_SECRET_KEY = os.environ.get("FLASK_SECRET_KEY", "").strip()
+if not _SECRET_KEY:
+    if _IS_DEV:
+        _SECRET_KEY = "dev-only-INSECURE-do-not-use-in-prod"
+    else:
+        raise RuntimeError(
+            "FLASK_SECRET_KEY no está definida. Es obligatoria en producción "
+            "(firma de cookies de sesión). Configúrala en Vercel/.env y reintenta."
+        )
+app.secret_key = _SECRET_KEY
+
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=7)
 app.config["SESSION_COOKIE_HTTPONLY"] = True
-app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-if os.environ.get("SESSION_COOKIE_SECURE", "").strip().lower() in ("1", "true", "yes"):
-    app.config["SESSION_COOKIE_SECURE"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = "Strict"
+# En producción la cookie debe viajar solo por HTTPS. Permite override explícito a False solo para desarrollo.
+_cookie_secure_env = os.environ.get("SESSION_COOKIE_SECURE", "").strip().lower()
+if _cookie_secure_env in ("0", "false", "no"):
+    app.config["SESSION_COOKIE_SECURE"] = False
+else:
+    app.config["SESSION_COOKIE_SECURE"] = not _IS_DEV
 
-CORS(app, supports_credentials=True)
+# CORS cerrado por defecto: la SPA se sirve desde el mismo origen Flask, no necesita CORS.
+# Para activarlo definir ALLOWED_ORIGINS="https://dominio1,https://dominio2" en el entorno.
+_cors_origins_raw = os.environ.get("ALLOWED_ORIGINS", "").strip()
+if _cors_origins_raw:
+    _cors_origins = [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
+    CORS(app, origins=_cors_origins, supports_credentials=True)
 
 DASHBOARD_CACHE: dict[str, dict] = {}
 
@@ -141,22 +162,13 @@ def _match_name_only_from_request() -> bool:
 
 def _odoo_diagnostic_key_authorized() -> bool:
     """
-    Si ODOO_PANEL_DIAGNOSTIC_KEY está definido, permite GET a lookup/PDF con ?diag_key=...
-    sin cookie de panel (solo para diagnóstico; no uses una clave débil en producción pública).
+    Deshabilitado: la versión anterior permitía bypass de autenticación con
+    ?diag_key=... por query string. Las query strings se filtran en logs de
+    servidor, en cabeceras Referer y en historial del navegador, por lo que
+    no es un canal seguro para una credencial. Si se necesita diagnóstico,
+    iniciar sesión normalmente como cualquier usuario del panel.
     """
-    secret = _env_strip("ODOO_PANEL_DIAGNOSTIC_KEY")
-    if not secret or request.method != "GET":
-        return False
-    path = request.path or ""
-    if path not in ("/api/odoo/sale-order-lookup", "/api/odoo/nota-venta-pdf"):
-        return False
-    given = request.args.get("diag_key", "").strip()
-    if len(given) != len(secret):
-        return False
-    try:
-        return hmac.compare_digest(given.encode("utf-8"), secret.encode("utf-8"))
-    except (ValueError, TypeError):
-        return False
+    return False
 
 
 def _password_ok(given: str, expected: str) -> bool:

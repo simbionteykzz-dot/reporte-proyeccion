@@ -1,7 +1,10 @@
-.env
-pass.env
-odoo.env
-api/.env
+# --- Variables de entorno (NUNCA versionar credenciales) ---
+# Catch-all: cualquier .env en cualquier carpeta queda excluido.
+*.env
+# Se permiten plantillas de ejemplo (sin secretos).
+!*.env.example
+!**/.env.example
+
 __pycache__/
 *.pyc
 .venv/
@@ -17,6 +20,3 @@ Thumbs.db
 
 # Copias locales de asistentes (muy pesadas; no son la app)
 .claude/
-
-# Credenciales Zazu
-backend/zazu_credentials.env
