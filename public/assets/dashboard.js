@@ -2037,11 +2037,15 @@
       }
     } catch (_) {}
 
-    const qrData = trackingUrl || [
-      voucherId ? `ID:${voucherId}` : '',
-      guia ? `GUIA:${guia}` : '',
-      codigo ? `COD:${codigo}` : '',
-    ].filter(Boolean).join('|');
+    // Formato que reconoce la app Shalom al escanear: "<guia>/box/1/1".
+    // Si no hay guía, caemos al código; si tampoco, dejamos un fallback informativo.
+    const guiaShalom = String(guia || codigo || '').trim();
+    const qrData = guiaShalom
+      ? `${guiaShalom}/box/1/1`
+      : [
+          voucherId ? `ID:${voucherId}` : '',
+          codigo ? `COD:${codigo}` : '',
+        ].filter(Boolean).join('|') || 'Sin datos';
 
     const qrCanvas = d.createElement('canvas');
     qrCanvas.id = 'voucher-qr-canvas';
@@ -2081,7 +2085,8 @@
             </a>
           </div>` : ''}
         </div>
-        <p style="text-align:center;font-size:11px;color:var(--color-text-muted);margin-top:12px;">Escanea el QR para rastrear el envío</p>
+        <p style="text-align:center;font-size:11px;color:var(--color-text-muted);margin-top:12px;">Escanea el QR con la app Shalom para rastrear el envío</p>
+        <p style="text-align:center;font-size:10px;font-family:var(--font-mono, monospace);color:var(--color-text-muted);margin-top:4px;letter-spacing:0.5px;">${escHtml(qrData)}</p>
       </div>
     `;
 
