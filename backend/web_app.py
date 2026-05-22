@@ -437,16 +437,26 @@ def api_auth_status():
 
 @app.route("/api/health")
 def health():
+    """
+    Healthcheck. Para clientes sin sesión devuelve solo {ok, time} (suficiente
+    para los probes de Vercel). Si hay sesión activa, devuelve el detalle de
+    configuración (status de Odoo/Supabase/auth/secret/etc.) para diagnóstico.
+    """
+    base = {
+        "ok": True,
+        "time": datetime.now().isoformat(timespec="seconds"),
+    }
+    if not _dashboard_session_ok():
+        return jsonify(base)
+
     dash_html = PUBLIC_DIR / "dashboard.html"
     login_html = PUBLIC_DIR / "login.html"
     supabase_status = supabase_health_payload()
-    return jsonify({
-        "ok": True,
+    base.update({
         "odoo_configured": is_configured(),
         "missing_keys": missing_config_keys(),
         "python_dotenv_installed": dotenv_package_available(),
         "dotenv_files": dotenv_file_status(),
-        "time": datetime.now().isoformat(timespec="seconds"),
         "deployment": {
             "public_dir_exists": PUBLIC_DIR.is_dir(),
             "dashboard_html_on_disk": dash_html.is_file(),
@@ -457,6 +467,7 @@ def health():
             "supabase_configured": supabase_status["configured"],
         },
     })
+    return jsonify(base)
 
 
 @app.route("/api/supabase/health")
