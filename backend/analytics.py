@@ -6,6 +6,7 @@ Uses existing odoo_connector.py infrastructure.
 """
 from __future__ import annotations
 
+import logging
 import os
 import re
 import sys
@@ -16,6 +17,8 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass, field, asdict
 from typing import Any, Optional
 from functools import lru_cache
+
+logger = logging.getLogger(__name__)
 
 sys.path.insert(0, os.path.dirname(__file__))
 from odoo_connector import (
@@ -436,6 +439,7 @@ class OdooRealExtractor:
         try:
             rows = self._sr("pos.order", [("id", "in", order_ids)], fields_full)
         except Exception:
+            logger.debug("pos.order con amount_total falló; fallback a campos base", exc_info=True)
             rows = self._sr("pos.order", [("id", "in", order_ids)], fields_base)
         out: dict[int, dict] = {}
         for r in rows:
@@ -469,7 +473,10 @@ class OdooRealExtractor:
             if rows:
                 return rows
         except Exception:
-            pass
+            logger.debug(
+                "stock.move search_read falló; fallback a stock.move.line",
+                exc_info=True,
+            )
 
         # Fallback for instances where move state/company access is restricted
         ml_domain = [("product_id", "!=", False), ("quantity", ">", 0)]
@@ -490,6 +497,10 @@ class OdooRealExtractor:
                 {"fields": ml_fields, "limit": safe_limit, "order": "date desc, id desc"},
             )
         except Exception:
+            logger.warning(
+                "stock.move.line search_read falló; movimientos recientes vendrán vacíos",
+                exc_info=True,
+            )
             lines = []
 
         out = []
@@ -544,6 +555,10 @@ def compute_ticket_promedio_por_empresa(
     try:
         sale_lines = extractor._sr("sale.order.line", domain_s, ["order_id", "price_subtotal"])
     except Exception:
+        logger.warning(
+            "sale.order.line falló al calcular ticket promedio; se asume 0 ventas en este canal",
+            exc_info=True,
+        )
         sale_lines = []
 
     if _include_pos_from_env():
@@ -562,6 +577,10 @@ def compute_ticket_promedio_por_empresa(
                 ["order_id", "price_subtotal", "price_subtotal_incl"],
             )
         except Exception:
+            logger.warning(
+                "pos.order.line falló al calcular ticket promedio; se asume 0 ventas TPV en este canal",
+                exc_info=True,
+            )
             pos_lines_all = []
 
     sale_oids: set[int] = set()

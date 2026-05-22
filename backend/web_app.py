@@ -5,9 +5,12 @@ import hmac
 import json
 import logging
 import os
+import time
 import xmlrpc.client
+from collections import OrderedDict
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 from flask import Flask, Response, jsonify, redirect, request, send_from_directory, session
 from flask_cors import CORS
@@ -112,7 +115,55 @@ def _internal_error(exc: BaseException, *, context: str = ""):
     return jsonify({"error": "Error interno del servidor."}), 500
 
 
-DASHBOARD_CACHE: dict[str, dict] = {}
+class TTLCache:
+    """
+    Caché en memoria con TTL y tamaño máximo. Reemplaza un dict simple sin
+    cambiar el call-site (`x in cache`, `cache[k]`, `cache[k] = v`).
+
+    Motivo: un dict global crecía sin límite (memory leak en procesos de larga
+    vida) y nunca expiraba (los datos quedaban rancios indefinidamente, sobre
+    todo entre cold-starts en serverless donde la primera petición tras un
+    despertar tomaba siempre la copia obsoleta de la instancia previa).
+    """
+
+    def __init__(self, *, ttl_seconds: int, maxsize: int) -> None:
+        self._ttl = max(1, int(ttl_seconds))
+        self._maxsize = max(1, int(maxsize))
+        self._store: "OrderedDict[str, tuple[float, Any]]" = OrderedDict()
+
+    def _expired(self, ts: float) -> bool:
+        return (time.monotonic() - ts) > self._ttl
+
+    def __contains__(self, key: str) -> bool:
+        entry = self._store.get(key)
+        if entry is None:
+            return False
+        if self._expired(entry[0]):
+            self._store.pop(key, None)
+            return False
+        return True
+
+    def __getitem__(self, key: str) -> Any:
+        ts, value = self._store[key]
+        if self._expired(ts):
+            self._store.pop(key, None)
+            raise KeyError(key)
+        # Renueva orden de uso (acerca al MRU); no reinicia el TTL.
+        self._store.move_to_end(key)
+        return value
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        if key in self._store:
+            self._store.move_to_end(key)
+        self._store[key] = (time.monotonic(), value)
+        while len(self._store) > self._maxsize:
+            self._store.popitem(last=False)
+
+
+_CACHE_TTL_SECONDS = int(os.environ.get("DASHBOARD_CACHE_TTL_SECONDS", "600"))
+_CACHE_MAXSIZE = int(os.environ.get("DASHBOARD_CACHE_MAXSIZE", "64"))
+
+DASHBOARD_CACHE = TTLCache(ttl_seconds=_CACHE_TTL_SECONDS, maxsize=_CACHE_MAXSIZE)
 
 
 def _env_strip(name: str) -> str:
@@ -522,7 +573,7 @@ def api_dashboard_consolidado_ingresos():
         return _internal_error(e)
 
 
-PRODUCT_DASHBOARD_CACHE: dict[str, dict] = {}
+PRODUCT_DASHBOARD_CACHE = TTLCache(ttl_seconds=_CACHE_TTL_SECONDS, maxsize=_CACHE_MAXSIZE)
 
 @app.route("/api/dashboard/productos")
 def api_dashboard_productos():
