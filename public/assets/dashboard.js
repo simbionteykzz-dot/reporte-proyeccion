@@ -742,7 +742,7 @@
       ? preFiltered
       : preFiltered.filter((r) => zazuProvStateBucket(r) === provFiltro);
     if (!allRows.length) {
-      tbody.innerHTML = '<tr><td colspan="12">Sin datos para este filtro.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="13">Sin datos para este filtro.</td></tr>';
       if (serviceBadge) serviceBadge.textContent = 'Costo servicio: S/ 0.00';
       if (odooBadge) odooBadge.textContent = 'Odoo vinculados: 0';
       zazuRenderProvRankings([]);
@@ -810,6 +810,15 @@
         ? `<a href="#" class="zazu-note-link" data-nota-ref="${escHtml(notaRef)}">Ver detalle</a>`
         : '—';
       const estadoText = String(r.estado || r.estado_qr || r.estado_odoo || '—').trim();
+      const guiaStr = String(r.guia || '').trim();
+      const codigoStr = String(r.codigo || '').trim();
+      const voucherIdStr = String(r.id_venta || '').trim();
+      const qrCell = (guiaStr || codigoStr)
+        ? `<button type="button" class="zazu-voucher-btn" data-voucher-id="${escHtml(voucherIdStr)}" data-guia="${escHtml(guiaStr)}" data-codigo="${escHtml(codigoStr)}" title="Generar QR de tracking Shalom">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3z"/><path d="M20 14v7h-3"/></svg>
+            QR
+          </button>`
+        : '—';
       return `<tr>
         <td><span class="zazu-prov-id">${escHtml(String(r.id_venta || '—'))}</span></td>
         <td><span class="zazu-status ${zazuStatusClass(estadoText)}">${escHtml(estadoText)}</span></td>
@@ -823,6 +832,7 @@
         <td>${escHtml(money(costoServicio))}</td>
         <td>${cxcCell}</td>
         <td title="${escHtml(odDetail)}">${odPreviewCell}</td>
+        <td>${qrCell}</td>
       </tr>`;
     }).join('');
     if (serviceBadge) serviceBadge.textContent = `Costo servicio: ${money(serviceTotal)}`;
