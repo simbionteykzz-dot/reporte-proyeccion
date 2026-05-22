@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hmac
 import json
+import logging
 import os
 import xmlrpc.client
 from datetime import datetime, timedelta
@@ -99,6 +100,18 @@ if _cors_origins_raw:
     _cors_origins = [o.strip() for o in _cors_origins_raw.split(",") if o.strip()]
     CORS(app, origins=_cors_origins, supports_credentials=True)
 
+logging.basicConfig(
+    level=logging.DEBUG if _IS_DEV else logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
+
+
+def _internal_error(exc: BaseException, *, context: str = ""):
+    """Loguea la excepción al servidor y devuelve un 500 genérico sin filtrar detalles internos."""
+    app.logger.exception("Error interno%s", f" [{context}]" if context else "")
+    return jsonify({"error": "Error interno del servidor."}), 500
+
+
 DASHBOARD_CACHE: dict[str, dict] = {}
 
 
@@ -181,6 +194,22 @@ def _password_ok(given: str, expected: str) -> bool:
         )
     except (ValueError, TypeError):
         return False
+
+
+# En producción la app NUNCA debe arrancar sin autenticación configurada:
+# de lo contrario el middleware deja pasar todas las peticiones (panel abierto).
+if not _auth_configured():
+    if _IS_DEV:
+        app.logger.warning(
+            "DASHBOARD_USERS / DASHBOARD_LOGIN_EMAIL vacíos: el panel está SIN AUTENTICACIÓN. "
+            "Aceptable solo en desarrollo local."
+        )
+    else:
+        raise RuntimeError(
+            "No hay usuarios de panel configurados (DASHBOARD_USERS o "
+            "DASHBOARD_LOGIN_EMAIL/DASHBOARD_PASSWORD). Negativa a arrancar en producción "
+            "para no exponer el panel sin autenticación."
+        )
 
 
 @app.before_request
@@ -366,7 +395,7 @@ def api_supabase_zazu_envios():
     except RuntimeError as e:
         return jsonify({"error": str(e)}), 502
     except Exception as e:
-        return jsonify({"error": f"Error interno: {e}"}), 500
+        return _internal_error(e)
 
 
 @app.route("/api/supabase/courier-summary")
@@ -383,7 +412,7 @@ def api_supabase_courier_summary():
     except RuntimeError as e:
         return jsonify({"error": str(e)}), 502
     except Exception as e:
-        return jsonify({"error": f"Error interno: {e}"}), 500
+        return _internal_error(e)
 
 
 @app.route("/api/supabase/provincia-envios")
@@ -426,8 +455,12 @@ def api_supabase_provincia_envios():
                         if ref and ref in extra:
                             r["odoo"] = extra[ref]
                 except Exception:
-                    # Si falla Odoo, no romper el listado principal de provincia.
-                    pass
+                    # Si falla Odoo, no romper el listado principal de provincia,
+                    # pero registrar la causa para que sea diagnosticable.
+                    app.logger.exception(
+                        "Enriquecimiento Odoo en provincia-envios falló (refs=%d)",
+                        len(refs),
+                    )
         resp = jsonify(payload)
         resp.headers["Cache-Control"] = "no-store"
         return resp
@@ -436,7 +469,7 @@ def api_supabase_provincia_envios():
     except RuntimeError as e:
         return jsonify({"error": str(e)}), 502
     except Exception as e:
-        return jsonify({"error": f"Error interno: {e}"}), 500
+        return _internal_error(e)
 
 
 
@@ -460,7 +493,7 @@ def api_companies():
     except OSError as e:
         return jsonify({"error": f"Red / conexion: {e}"}), 502
     except Exception as e:
-        return jsonify({"error": f"Error interno: {e}"}), 500
+        return _internal_error(e)
 
 
 @app.route("/api/dashboard/consolidado-ingresos")
@@ -486,7 +519,7 @@ def api_dashboard_consolidado_ingresos():
     except OSError as e:
         return jsonify({"error": f"Red / conexion: {e}"}), 502
     except Exception as e:
-        return jsonify({"error": f"Error interno: {e}"}), 500
+        return _internal_error(e)
 
 
 PRODUCT_DASHBOARD_CACHE: dict[str, dict] = {}
@@ -528,11 +561,7 @@ def api_dashboard_productos():
     except OSError as e:
         return jsonify({"error": f"Red / conexion: {e}"}), 502
     except Exception as e:
-        import traceback
-        return jsonify({
-            "error": f"Error interno: {e}",
-            "traceback": traceback.format_exc()
-        }), 500
+        return _internal_error(e, context="dashboard/productos")
 
 
 @app.route("/api/dashboard")
@@ -578,7 +607,7 @@ def api_dashboard():
     except OSError as e:
         return jsonify({"error": f"Red / conexion: {e}"}), 502
     except Exception as e:
-        return jsonify({"error": f"Error interno: {e}"}), 500
+        return _internal_error(e)
 
 
 @app.route("/api/pos/geographic")
@@ -609,7 +638,7 @@ def api_pos_geographic():
     except OSError as e:
         return jsonify({"error": f"Red / conexion: {e}"}), 502
     except Exception as e:
-        return jsonify({"error": f"Error interno: {e}"}), 500
+        return _internal_error(e)
 
 
 @app.route("/api/inventory-risks")
@@ -645,7 +674,7 @@ def api_inventory_risks():
     except OSError as e:
         return jsonify({"error": f"Red / conexion: {e}"}), 502
     except Exception as e:
-        return jsonify({"error": f"Error interno: {e}"}), 500
+        return _internal_error(e)
 
 
 @app.route("/api/odoo/sale-order-lookup")
@@ -680,7 +709,7 @@ def api_odoo_sale_order_lookup():
     except OSError as e:
         return jsonify({"error": f"Red / conexión: {e}"}), 502
     except Exception as e:
-        return jsonify({"error": f"Error interno: {e}"}), 500
+        return _internal_error(e)
 
 
 @app.route("/api/odoo/nota-venta-pdf")
@@ -749,7 +778,7 @@ def api_odoo_nota_venta_pdf():
     except OSError as e:
         return jsonify({"error": f"Red / conexión: {e}"}), 502
     except Exception as e:
-        return jsonify({"error": f"Error interno: {e}"}), 500
+        return _internal_error(e)
 
 
 @app.route("/api/odoo/order-receipt-json")
@@ -773,7 +802,7 @@ def api_odoo_order_receipt_json():
         )
         return jsonify(details)
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return _internal_error(e, context="order-receipt-json")
 
 
 @app.route("/api/odoo/accounts-receivable", methods=["POST"])
@@ -808,7 +837,7 @@ def api_odoo_accounts_receivable():
     except OSError as e:
         return jsonify({"error": f"Red / conexión: {e}"}), 502
     except Exception as e:
-        return jsonify({"error": f"Error interno: {e}"}), 500
+        return _internal_error(e)
 
 
 @app.route("/api/shalom/config")
@@ -817,7 +846,7 @@ def api_shalom_config():
         config = get_shalom_config()
         return jsonify(config)
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return _internal_error(e, context="shalom/config")
 
 @app.route("/api/shalom/tracking-url")
 def api_shalom_tracking_url():
