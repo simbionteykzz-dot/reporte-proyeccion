@@ -780,6 +780,11 @@ class BusinessEngine:
                 d2 = datetime.strptime(date_to, "%Y-%m-%d").date()
                 days_in_period = max((d2 - d1).days, 1)
             except Exception:
+                logger.warning(
+                    "Fechas inválidas en payload (from=%r, to=%r); usando ventana default de 30 días",
+                    date_from, date_to,
+                    exc_info=True,
+                )
                 days_in_period = 30
 
         # ── Days remaining in month ──
@@ -985,6 +990,11 @@ class BusinessEngine:
                 d2 = datetime.strptime(date_to, "%Y-%m-%d").date()
                 days_in_period = max((d2 - d1).days, 1)
             except Exception:
+                logger.warning(
+                    "Fechas inválidas en payload (from=%r, to=%r); usando ventana default de 30 días",
+                    date_from, date_to,
+                    exc_info=True,
+                )
                 days_in_period = 30
 
         today = date.today()
@@ -1183,6 +1193,11 @@ class BusinessEngine:
                 d2 = datetime.strptime(date_to, "%Y-%m-%d").date()
                 days_in_period = max((d2 - d1).days, 1)
             except Exception:
+                logger.warning(
+                    "Fechas inválidas en payload (from=%r, to=%r); usando ventana default de 30 días",
+                    date_from, date_to,
+                    exc_info=True,
+                )
                 days_in_period = 30
 
         today = date.today()
@@ -1853,6 +1868,10 @@ def generate_dashboard_payload(
                     ["order_id", "product_uom_qty", "price_subtotal"],
                 )
             except Exception:
+                logger.warning(
+                    "sale.order.line por plantilla falló (Bravos); asumiendo 0 ventas",
+                    exc_info=True,
+                )
                 sol_rows = []
             tmpl_qty_sold = sum(float(r.get("product_uom_qty") or 0) for r in sol_rows)
             tmpl_subtotal = sum(float(r.get("price_subtotal") or 0) for r in sol_rows)
@@ -2245,6 +2264,10 @@ def _inventory_fetch_colors(extractor: OdooRealExtractor, product_ids: list[int]
             )
             at_map = {int(p["id"]): p for p in ptavs}
         except Exception:
+            logger.warning(
+                "product.template.attribute.value falló; las variantes saldrán sin color/talla",
+                exc_info=True,
+            )
             at_map = {}
 
     color_re = re.compile(r"color|colour|colo\.|tinte|tono", re.I)

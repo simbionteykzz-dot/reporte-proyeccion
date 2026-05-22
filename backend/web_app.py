@@ -14,6 +14,7 @@ from typing import Any
 
 from flask import Flask, Response, jsonify, redirect, request, send_from_directory, session
 from flask_cors import CORS
+from werkzeug.security import check_password_hash
 
 from odoo_connector import (
     config_from_environ,
@@ -171,44 +172,91 @@ def _env_strip(name: str) -> str:
     return (os.environ.get(name) or "").strip()
 
 
-def _dashboard_user_pairs() -> list[tuple[str, str]]:
+def _dashboard_user_entries() -> list[dict[str, str]]:
     """
-    Usuarios del panel: (email_lower, password).
-    Prioridad 1: DASHBOARD_USERS = JSON [{"email":"...","password":"..."}, ...]
-    Prioridad 2: DASHBOARD_LOGIN_EMAIL + DASHBOARD_PASSWORD (un solo usuario, compatible con despliegues actuales).
+    Usuarios del panel como dicts con email + (password_hash | password).
+
+    Acepta dos formatos en cada entrada (preferencia: hash):
+      {"email": "...", "password_hash": "pbkdf2:sha256:..."}   ← recomendado
+      {"email": "...", "password": "clave_en_texto"}           ← legacy
+
+    Prioridad de fuentes:
+      1. DASHBOARD_USERS = JSON array (multi-usuario)
+      2. DASHBOARD_LOGIN_EMAIL + DASHBOARD_PASSWORD_HASH (single-user, hash)
+      3. DASHBOARD_LOGIN_EMAIL + DASHBOARD_PASSWORD       (single-user, legacy)
+
+    Para generar un hash:
+      python -m hash_password "mi_password"
     """
+    out: list[dict[str, str]] = []
     raw = _env_strip("DASHBOARD_USERS")
     if raw:
         try:
             data = json.loads(raw)
             if isinstance(data, list):
-                out: list[tuple[str, str]] = []
                 for item in data:
                     if not isinstance(item, dict):
                         continue
                     em = (item.get("email") or "").strip().lower()
+                    if not em:
+                        continue
+                    ph = (item.get("password_hash") or "").strip()
+                    if ph:
+                        out.append({"email": em, "password_hash": ph})
+                        continue
                     pw = (item.get("password") or "").strip()
-                    if em and pw:
-                        out.append((em, pw))
-                if out:
-                    return out
+                    if pw:
+                        out.append({"email": em, "password": pw})
         except (json.JSONDecodeError, TypeError, ValueError):
             pass
+    if out:
+        return out
+    # Fallback single-user legacy
     em = _env_strip("DASHBOARD_LOGIN_EMAIL").lower()
-    pw = _env_strip("DASHBOARD_PASSWORD")
-    if em and pw:
-        return [(em, pw)]
-    return []
+    if em:
+        ph = _env_strip("DASHBOARD_PASSWORD_HASH")
+        if ph:
+            out.append({"email": em, "password_hash": ph})
+        else:
+            pw = _env_strip("DASHBOARD_PASSWORD")
+            if pw:
+                out.append({"email": em, "password": pw})
+    return out
+
+
+def _check_user_password(given: str, entry: dict[str, str]) -> bool:
+    """Valida la password del usuario. Soporta hash (werkzeug) y texto plano (legacy)."""
+    if not given:
+        return False
+    ph = entry.get("password_hash")
+    if ph:
+        try:
+            return check_password_hash(ph, given)
+        except Exception:
+            app.logger.exception("Hash de password invalido en DASHBOARD_USERS")
+            return False
+    pw = entry.get("password")
+    if pw:
+        try:
+            return hmac.compare_digest(given.encode("utf-8"), pw.encode("utf-8"))
+        except (ValueError, TypeError):
+            return False
+    return False
 
 
 def _auth_configured() -> bool:
     """Si hay al menos un usuario de panel definido, se exige login."""
-    return len(_dashboard_user_pairs()) > 0
+    return len(_dashboard_user_entries()) > 0
 
 
 def _dashboard_auth_env_ok() -> bool:
     """True si hay usuarios configurados (sin revelar valores)."""
-    return len(_dashboard_user_pairs()) > 0
+    return len(_dashboard_user_entries()) > 0
+
+
+def _users_with_plaintext_count() -> int:
+    """Cuántos usuarios siguen guardados en texto plano (para nudge de migración)."""
+    return sum(1 for u in _dashboard_user_entries() if "password" in u and "password_hash" not in u)
 
 
 def _dashboard_session_ok() -> bool:
@@ -235,18 +283,6 @@ def _odoo_diagnostic_key_authorized() -> bool:
     return False
 
 
-def _password_ok(given: str, expected: str) -> bool:
-    if not expected:
-        return False
-    try:
-        return hmac.compare_digest(
-            given.encode("utf-8"),
-            expected.encode("utf-8"),
-        )
-    except (ValueError, TypeError):
-        return False
-
-
 # En producción la app NUNCA debe arrancar sin autenticación configurada:
 # de lo contrario el middleware deja pasar todas las peticiones (panel abierto).
 if not _auth_configured():
@@ -261,6 +297,17 @@ if not _auth_configured():
             "DASHBOARD_LOGIN_EMAIL/DASHBOARD_PASSWORD). Negativa a arrancar en producción "
             "para no exponer el panel sin autenticación."
         )
+
+# Aviso suave si quedan passwords en texto plano (migración recomendada a password_hash).
+_plain_count = _users_with_plaintext_count()
+if _plain_count > 0:
+    app.logger.warning(
+        "%d usuario(s) del panel siguen con password en TEXTO PLANO. "
+        "Migrar a password_hash: `python -m hash_password 'tu_clave'` y reemplazar "
+        "la variable de entorno. La password en texto sigue funcionando pero queda visible "
+        "a cualquiera con acceso a las variables (Vercel UI, logs, auditoría).",
+        _plain_count,
+    )
 
 
 @app.before_request
@@ -358,14 +405,14 @@ def reporte_auditoria_html_page():
 
 @app.route("/api/auth/login", methods=["POST"])
 def api_auth_login():
-    pairs = _dashboard_user_pairs()
-    if not pairs:
+    entries = _dashboard_user_entries()
+    if not entries:
         return jsonify({"ok": True, "auth_disabled": True})
     data = request.get_json(silent=True) or {}
     email = (data.get("email") or "").strip().lower()
     password = data.get("password") or ""
-    for expected_email, expected_password in pairs:
-        if email == expected_email and _password_ok(password, expected_password):
+    for entry in entries:
+        if email == entry["email"] and _check_user_password(password, entry):
             session.permanent = True
             session["dashboard_ok"] = True
             return jsonify({"ok": True})
@@ -405,7 +452,7 @@ def health():
             "dashboard_html_on_disk": dash_html.is_file(),
             "login_html_on_disk": login_html.is_file(),
             "dashboard_auth_env_ok": _dashboard_auth_env_ok(),
-            "dashboard_users_count": len(_dashboard_user_pairs()),
+            "dashboard_users_count": len(_dashboard_user_entries()),
             "flask_secret_key_set": bool(_env_strip("FLASK_SECRET_KEY")),
             "supabase_configured": supabase_status["configured"],
         },
