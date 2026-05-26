@@ -1860,7 +1860,7 @@ def generate_dashboard_payload(
             quants = extractor._sr("stock.quant", quant_domain, ["quantity"])
             tmpl_stock = sum(float(q.get("quantity") or 0) for q in quants)
 
-            # Ventas reales desde sale.order.line para calcular ticket_real
+            # Ventas reales: sale.order.line + pos.order.line para calcular ticket_real
             sol_domain = _sol_domain_base + [("product_id.product_tmpl_id", "=", tmpl_id)]
             try:
                 sol_rows = extractor._sr(
@@ -1873,10 +1873,47 @@ def generate_dashboard_payload(
                     exc_info=True,
                 )
                 sol_rows = []
-            tmpl_qty_sold = sum(float(r.get("product_uom_qty") or 0) for r in sol_rows)
-            tmpl_subtotal = sum(float(r.get("price_subtotal") or 0) for r in sol_rows)
+
+            pos_sol_rows: list[dict] = []
+            if _include_pos_from_env():
+                _pos_states = _pos_order_states_from_env()
+                pos_sol_domain: list[Any] = [
+                    ("product_id.product_tmpl_id", "=", tmpl_id),
+                    ("order_id.state", "in", _pos_states),
+                ]
+                if date_from:
+                    pos_sol_domain.append(("order_id.date_order", ">=", date_from + " 00:00:00"))
+                if date_to:
+                    pos_sol_domain.append(("order_id.date_order", "<=", date_to + " 23:59:59"))
+                if extractor.company_id:
+                    pos_sol_domain.append(("order_id.company_id", "=", extractor.company_id))
+                try:
+                    pos_sol_rows = extractor._sr(
+                        "pos.order.line", pos_sol_domain,
+                        ["order_id", "qty", "price_subtotal"],
+                    )
+                except Exception:
+                    logger.warning(
+                        "pos.order.line por plantilla falló para tmpl_id=%s; asumiendo 0 ventas POS",
+                        tmpl_id, exc_info=True,
+                    )
+                    pos_sol_rows = []
+
+            tmpl_qty_sold = (
+                sum(float(r.get("product_uom_qty") or 0) for r in sol_rows)
+                + sum(float(r.get("qty") or 0) for r in pos_sol_rows)
+            )
+            tmpl_subtotal = (
+                sum(float(r.get("price_subtotal") or 0) for r in sol_rows)
+                + sum(float(r.get("price_subtotal") or 0) for r in pos_sol_rows)
+            )
             tmpl_order_ids: set[int] = set()
             for r in sol_rows:
+                oid_t = r.get("order_id")
+                oid = oid_t[0] if isinstance(oid_t, (list, tuple)) else int(oid_t or 0)
+                if oid:
+                    tmpl_order_ids.add(oid)
+            for r in pos_sol_rows:
                 oid_t = r.get("order_id")
                 oid = oid_t[0] if isinstance(oid_t, (list, tuple)) else int(oid_t or 0)
                 if oid:
@@ -1924,6 +1961,10 @@ def generate_dashboard_payload(
             totals.stock += tmpl_stock
             totals.ventas_proyectadas += ventas_proy
             totals.ingresos_brutos += ingresos
+        # Recalculate % for ALL families now that injected rows are included in totals
+        if totals.ingresos_brutos > 0:
+            for _f in families:
+                _f.porcentaje = round((_f.ingresos_brutos / totals.ingresos_brutos) * 100, 4)
         ticket_promedio, ticket_promedio_meta = compute_ticket_promedio_por_empresa(
             extractor, date_from, date_to
         )

@@ -83,6 +83,39 @@
   --transition-slow: 400ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* ─── ZAZU Semantic Color Tokens ─────────────────────── */
+:root {
+  --zazu-emerald: #10b981; --zazu-emerald-text: #6ee7b7;
+  --zazu-emerald-bg: rgba(16,185,129,0.13); --zazu-emerald-border: rgba(16,185,129,0.32);
+
+  --zazu-amber: #f59e0b; --zazu-amber-text: #fcd34d;
+  --zazu-amber-bg: rgba(245,158,11,0.13); --zazu-amber-border: rgba(245,158,11,0.32);
+
+  --zazu-rose: #f43f5e; --zazu-rose-text: #fda4af;
+  --zazu-rose-bg: rgba(244,63,94,0.13); --zazu-rose-border: rgba(244,63,94,0.32);
+
+  --zazu-sky: #38bdf8; --zazu-sky-text: #7dd3fc;
+  --zazu-sky-bg: rgba(56,189,248,0.12); --zazu-sky-border: rgba(56,189,248,0.30);
+
+  --zazu-slate: #94a3b8; --zazu-slate-text: #cbd5e1;
+  --zazu-slate-bg: rgba(148,163,184,0.10); --zazu-slate-border: rgba(148,163,184,0.22);
+
+  --zazu-violet: #7c3aed; --zazu-violet-text: #c4b5fd;
+  --zazu-violet-bg: rgba(124,58,237,0.14); --zazu-violet-border: rgba(124,58,237,0.34);
+
+  --zazu-purple: #a855f7; --zazu-purple-text: #d8b4fe;
+  --zazu-purple-bg: rgba(168,85,247,0.13); --zazu-purple-border: rgba(168,85,247,0.30);
+
+  --zazu-teal: #14b8a6; --zazu-teal-text: #5eead4;
+  --zazu-teal-bg: rgba(20,184,166,0.12); --zazu-teal-border: rgba(20,184,166,0.30);
+
+  --zazu-cyan: #06b6d4; --zazu-cyan-text: #67e8f9;
+  --zazu-cyan-bg: rgba(6,182,212,0.12); --zazu-cyan-border: rgba(6,182,212,0.30);
+
+  --zazu-orange: #f97316; --zazu-orange-text: #fdba74;
+  --zazu-orange-bg: rgba(249,115,22,0.13); --zazu-orange-border: rgba(249,115,22,0.32);
+}
+
 /* Light Mode */
 [data-theme="light"] {
   --color-bg: #fafafa;
@@ -110,6 +143,61 @@
   --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.15);
   --shadow-glow: 0 0 40px rgba(217, 119, 6, 0.2);
   --shadow-accent: 0 0 20px rgba(217, 119, 6, 0.3);
+}
+
+/* ─── ZAZU Tokens — Light Mode overrides ─────────── */
+[data-theme="light"] {
+  --zazu-emerald-text: #065f46; --zazu-emerald-bg: rgba(16,185,129,0.10); --zazu-emerald-border: rgba(16,185,129,0.28);
+  --zazu-amber-text: #92400e;   --zazu-amber-bg: rgba(245,158,11,0.10);   --zazu-amber-border: rgba(245,158,11,0.28);
+  --zazu-rose-text: #9f1239;    --zazu-rose-bg: rgba(244,63,94,0.09);     --zazu-rose-border: rgba(244,63,94,0.24);
+  --zazu-sky-text: #0c4a6e;     --zazu-sky-bg: rgba(56,189,248,0.09);     --zazu-sky-border: rgba(56,189,248,0.24);
+  --zazu-slate-text: #334155;   --zazu-slate-bg: rgba(100,116,139,0.09);  --zazu-slate-border: rgba(100,116,139,0.22);
+  --zazu-violet-text: #3b0764;  --zazu-violet-bg: rgba(124,58,237,0.09);  --zazu-violet-border: rgba(124,58,237,0.24);
+  --zazu-purple-text: #581c87;  --zazu-purple-bg: rgba(168,85,247,0.09);  --zazu-purple-border: rgba(168,85,247,0.24);
+  --zazu-teal-text: #134e4a;    --zazu-teal-bg: rgba(20,184,166,0.09);    --zazu-teal-border: rgba(20,184,166,0.24);
+  --zazu-cyan-text: #164e63;    --zazu-cyan-bg: rgba(6,182,212,0.09);     --zazu-cyan-border: rgba(6,182,212,0.24);
+  --zazu-orange-text: #7c2d12;  --zazu-orange-bg: rgba(249,115,22,0.09);  --zazu-orange-border: rgba(249,115,22,0.24);
+}
+
+[data-theme="light"] .zazu-status,
+[data-theme="light"] .zazu-cobro-pill,
+[data-theme="light"] .zazu-deuda-pill { backdrop-filter: none; -webkit-backdrop-filter: none; text-shadow: none; }
+
+[data-theme="light"] .zazu-money-chip,
+[data-theme="light"] .zazu-pay-chip {
+  background: rgba(0,0,0,0.04); border-color: rgba(0,0,0,0.12);
+  color: var(--color-text-secondary); backdrop-filter: none; -webkit-backdrop-filter: none;
+}
+[data-theme="light"] .zazu-money-chip--strong {
+  background: rgba(0,0,0,0.06); border-color: rgba(0,0,0,0.15); color: var(--color-text);
+}
+[data-theme="light"] .zazu-nivel-chip { backdrop-filter: none; -webkit-backdrop-filter: none; text-shadow: none; }
+[data-theme="light"] .zazu-company-chip {
+  background: rgba(0,0,0,0.04); border-color: rgba(0,0,0,0.10);
+  color: var(--color-text-secondary); backdrop-filter: none; -webkit-backdrop-filter: none;
+}
+[data-theme="light"] .zazu-filters-card,
+[data-theme="light"] .zazu-prov-filters {
+  background: #ffffff; border-color: rgba(0,0,0,0.09);
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.03) inset, 0 2px 8px rgba(0,0,0,0.07);
+  backdrop-filter: none; -webkit-backdrop-filter: none;
+}
+[data-theme="light"] .zazu-pagination {
+  background: #ffffff; border-color: rgba(0,0,0,0.09);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08); backdrop-filter: none; -webkit-backdrop-filter: none;
+}
+[data-theme="light"] .zazu-page-btn.btn {
+  background: rgba(0,0,0,0.04); border-color: rgba(0,0,0,0.10); color: var(--color-text-secondary);
+}
+[data-theme="light"] .zazu-page-btn.btn:hover:not(:disabled) {
+  background: rgba(217,119,6,0.10); border-color: rgba(217,119,6,0.25); color: #92400e;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zazu-status, .zazu-cobro-pill, .zazu-deuda-pill,
+  .zazu-nivel-chip, .zazu-money-chip, .zazu-pay-chip,
+  .zazu-company-chip, .zazu-page-btn { transition: none; }
+  .zazu-page-btn.btn:hover:not(:disabled) { transform: none; }
 }
 
 /* --------------------------------------------------
@@ -3017,6 +3105,10 @@ button.risk-overview__card:focus-visible {
   border-radius: 12px;
   background: var(--color-surface-2);
 }
+.zazu-nivel-tabs {
+  border-color: color-mix(in srgb, #6366f1 35%, transparent);
+  background: color-mix(in srgb, #6366f1 6%, var(--color-surface-2));
+}
 
 .zazu-scope-tabs {
   display: inline-flex;
@@ -3056,119 +3148,242 @@ button.risk-overview__card:focus-visible {
 }
 
 .zazu-filters-card {
-  padding: 12px;
-  border: 1px solid var(--color-border);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--color-surface-2) 56%, transparent);
+  padding: 14px 18px;
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.015) 100%),
+              var(--color-surface-2);
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.04) inset, 0 2px 8px rgba(0,0,0,0.35);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.zazu-filters-card:focus-within {
+  border-color: rgba(245,158,11,0.22);
+  box-shadow: 0 0 0 1px rgba(245,158,11,0.08) inset, 0 4px 16px rgba(0,0,0,0.45);
 }
 
 .zazu-table-wrap {
   border: 1px solid var(--color-border);
-  border-radius: 12px;
+  border-radius: 14px;
   overflow: auto;
   background: var(--color-surface);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-md), 0 0 0 1px rgba(255,255,255,0.03);
+  max-height: 74vh;
+  scroll-behavior: smooth;
+}
+
+.zazu-table-wrap::-webkit-scrollbar { width: 5px; height: 5px; }
+.zazu-table-wrap::-webkit-scrollbar-track { background: transparent; }
+.zazu-table-wrap::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.1);
+  border-radius: 999px;
+}
+.zazu-table-wrap::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.22); }
+
+.zazu-table {
+  border-collapse: collapse;
+  width: 100%;
 }
 
 .zazu-table thead th {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: var(--color-surface-2);
-  font-size: 0.74rem;
+  background: linear-gradient(180deg, var(--color-surface-3) 0%, var(--color-surface-2) 100%);
+  font-size: 0.71rem;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   color: var(--color-text-secondary);
   font-weight: 700;
+  padding: 11px 13px;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--color-border-strong);
+  user-select: none;
+}
+
+.zazu-table thead th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  box-shadow: 2px 0 8px rgba(0,0,0,0.4);
+  border-left: 2px solid var(--color-accent);
+}
+
+.zazu-table tbody tr {
+  transition: background 0.13s ease;
+}
+
+.zazu-table tbody td {
+  padding: 8px 13px;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: middle;
+  font-size: 0.82rem;
+}
+
+.zazu-table tbody td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--color-surface);
+  box-shadow: 2px 0 8px rgba(0,0,0,0.3);
+  transition: background 0.13s ease, box-shadow 0.13s ease;
+}
+
+.zazu-table tbody tr:last-child td {
+  border-bottom: none;
 }
 
 .zazu-table tbody tr:nth-child(even) {
   background: color-mix(in srgb, var(--color-surface-2) 46%, transparent);
 }
 
+.zazu-table tbody tr:nth-child(even) td:first-child {
+  background: color-mix(in srgb, var(--color-surface-2) 46%, var(--color-surface));
+}
+
 .zazu-table tbody tr:hover {
-  background: color-mix(in srgb, var(--color-accent-subtle) 48%, transparent);
+  background: color-mix(in srgb, var(--color-accent-subtle) 70%, transparent);
+}
+
+.zazu-table tbody tr:hover td:first-child {
+  background: color-mix(in srgb, var(--color-accent-subtle) 70%, var(--color-surface));
+  box-shadow: inset 3px 0 0 var(--color-accent), 2px 0 8px rgba(0,0,0,0.3);
+}
+
+/* Right-align numeric cols (Lima: 8=Costo servicio, 11=Monto) */
+.zazu-table thead th:nth-child(8),
+.zazu-table thead th:nth-child(11),
+.zazu-table tbody td:nth-child(8),
+.zazu-table tbody td:nth-child(11) {
+  text-align: right;
 }
 
 .zazu-id-cell {
-  display: grid;
-  gap: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
 }
 
 .zazu-id-main {
   font-family: var(--font-mono);
   font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text);
 }
 
 .zazu-client-name {
   font-weight: 600;
   color: var(--color-text);
+  line-height: 1.3;
 }
 
 .zazu-phone {
   font-family: var(--font-mono);
-  font-size: 0.77rem;
+  font-size: 0.76rem;
   color: var(--color-text-secondary);
+  letter-spacing: 0.02em;
 }
 
 .zazu-address {
   color: var(--color-text-secondary);
   font-size: 0.78rem;
   line-height: 1.4;
+  max-width: 200px;
 }
 
 .zazu-geo-cell {
   min-width: 130px;
+  line-height: 1.5;
 }
 
+/* ── Company chip ── */
 .zazu-company-chip {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: fit-content;
-  padding: 2px 8px;
+  padding: 3px 9px;
   border-radius: 999px;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface-2);
+  border: 1px solid rgba(255,255,255,0.11);
+  background: rgba(255,255,255,0.05);
   color: var(--color-text-secondary);
-  font-size: 0.69rem;
-  font-weight: 600;
+  font-size: 0.67rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  transition: border-color 150ms ease, background 150ms ease, color 150ms ease;
+}
+.zazu-company-chip:hover {
+  border-color: rgba(255,255,255,0.20);
+  background: rgba(255,255,255,0.09);
+  color: var(--color-text);
 }
 
+/* ── Status pills ── */
 .zazu-status {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 3px 9px;
+  padding: 3px 10px;
   border-radius: 999px;
-  font-size: 0.72rem;
+  font-size: 0.7rem;
   font-weight: 700;
+  letter-spacing: 0.03em;
   border: 1px solid transparent;
   white-space: nowrap;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  transition: opacity 150ms ease;
 }
 
 .zazu-status--ok {
-  color: #36d399;
-  border-color: rgba(54, 211, 153, 0.45);
-  background: rgba(54, 211, 153, 0.14);
+  color: var(--zazu-emerald-text);
+  background: var(--zazu-emerald-bg);
+  border-color: var(--zazu-emerald-border);
+  text-shadow: 0 0 12px rgba(16,185,129,0.4);
 }
 
 .zazu-status--warn {
-  color: #fbbf24;
-  border-color: rgba(251, 191, 36, 0.45);
-  background: rgba(251, 191, 36, 0.14);
+  color: var(--zazu-amber-text);
+  background: var(--zazu-amber-bg);
+  border-color: var(--zazu-amber-border);
+  text-shadow: 0 0 12px rgba(245,158,11,0.4);
 }
 
 .zazu-status--bad {
-  color: #fb7185;
-  border-color: rgba(251, 113, 133, 0.45);
-  background: rgba(251, 113, 133, 0.14);
+  color: var(--zazu-rose-text);
+  background: var(--zazu-rose-bg);
+  border-color: var(--zazu-rose-border);
+  text-shadow: 0 0 12px rgba(244,63,94,0.35);
 }
 
 .zazu-status--neutral {
-  color: var(--color-text-secondary);
-  border-color: var(--color-border);
-  background: color-mix(in srgb, var(--color-surface-2) 50%, transparent);
+  color: var(--zazu-slate-text);
+  background: var(--zazu-slate-bg);
+  border-color: var(--zazu-slate-border);
+}
+
+.zazu-status--info {
+  color: var(--zazu-sky-text);
+  background: var(--zazu-sky-bg);
+  border-color: var(--zazu-sky-border);
+  text-shadow: 0 0 12px rgba(56,189,248,0.3);
+}
+
+.zazu-status--cambio {
+  color: var(--zazu-teal-text);
+  background: var(--zazu-teal-bg);
+  border-color: var(--zazu-teal-border);
+  text-shadow: 0 0 12px rgba(20,184,166,0.3);
+}
+
+.zazu-status--espera {
+  color: var(--zazu-violet-text);
+  background: var(--zazu-violet-bg);
+  border-color: var(--zazu-violet-border);
+  text-shadow: 0 0 12px rgba(124,58,237,0.35);
 }
 
 .zazu-cxc {
@@ -3197,73 +3412,282 @@ button.risk-overview__card:focus-visible {
   background: rgba(54, 211, 153, 0.14);
 }
 
-.zazu-cxc--debt {
-  color: #fb7185;
-  border-color: rgba(251, 113, 133, 0.5);
-  background: rgba(251, 113, 133, 0.14);
-}
-
+/* ── Money & pay chips ── */
 .zazu-money-chip,
 .zazu-pay-chip {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 86px;
-  padding: 4px 8px;
+  min-width: 90px;
+  padding: 4px 10px;
   border-radius: 8px;
-  font-size: 0.74rem;
+  font-size: 0.73rem;
   font-weight: 600;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface-2);
+  font-family: var(--font-mono);
+  letter-spacing: -0.01em;
+  border: 1px solid var(--color-border-strong);
+  background: rgba(255,255,255,0.04);
   color: var(--color-text-secondary);
   white-space: nowrap;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  transition: background 150ms ease, border-color 150ms ease;
 }
 
 .zazu-money-chip--strong {
   color: var(--color-text);
-  font-family: var(--font-mono);
+  border-color: rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.07);
 }
 
-.zazu-pagination {
-  display: flex;
+/* ── Level chips ── */
+.zazu-nivel-chip {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  margin-top: 12px;
-  padding: 8px 10px;
-  border: 1px solid color-mix(in srgb, var(--color-border) 75%, transparent);
+  min-width: 82px;
+  padding: 3px 9px;
+  border-radius: 8px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  border: 1px solid var(--color-border);
+  background: rgba(255,255,255,0.04);
+  color: var(--color-text-secondary);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  transition: filter 150ms ease;
+}
+
+.zazu-nivel-chip--regular {
+  color: var(--zazu-slate-text);
+  background: var(--zazu-slate-bg);
+  border-color: var(--zazu-slate-border);
+}
+
+.zazu-nivel-chip--express {
+  color: var(--zazu-amber-text);
+  background: var(--zazu-amber-bg);
+  border-color: var(--zazu-amber-border);
+  text-shadow: 0 0 10px rgba(245,158,11,0.35);
+}
+
+.zazu-nivel-chip--express-plus {
+  color: var(--zazu-violet-text);
+  background: var(--zazu-violet-bg);
+  border-color: var(--zazu-violet-border);
+  text-shadow: 0 0 10px rgba(124,58,237,0.35);
+}
+
+.zazu-nivel-chip--cambio {
+  color: var(--zazu-teal-text);
+  background: var(--zazu-teal-bg);
+  border-color: var(--zazu-teal-border);
+  text-shadow: 0 0 10px rgba(20,184,166,0.3);
+}
+
+.zazu-nivel-chip--prov-base {
+  color: var(--zazu-slate-text);
+  background: var(--zazu-slate-bg);
+  border-color: var(--zazu-slate-border);
+}
+
+.zazu-nivel-chip--prov-plus {
+  color: var(--zazu-purple-text);
+  background: var(--zazu-purple-bg);
+  border-color: var(--zazu-purple-border);
+  text-shadow: 0 0 10px rgba(168,85,247,0.3);
+}
+
+.zazu-nivel-chip--custom {
+  color: var(--zazu-cyan-text);
+  background: var(--zazu-cyan-bg);
+  border-color: var(--zazu-cyan-border);
+  text-shadow: 0 0 10px rgba(6,182,212,0.3);
+}
+
+/* ── Deuda pill ── */
+.zazu-deuda-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--zazu-rose-bg);
+  border: 1px solid var(--zazu-rose-border);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--color-surface-2) 80%, transparent);
+  padding: 2px 8px;
+  font-size: 0.63rem;
+  font-weight: 800;
+  color: var(--zazu-rose-text);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-left: 5px;
+  vertical-align: middle;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  text-shadow: 0 0 10px rgba(244,63,94,0.3);
+}
+.zazu-deuda-pill::before {
+  content: '!';
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--zazu-rose-border);
+  font-size: 0.6rem;
+  font-weight: 900;
+  line-height: 1;
+  color: var(--zazu-rose-text);
+  flex-shrink: 0;
+}
+
+.zazu-cxc--debt {
+  display: inline-flex;
+  align-items: center;
+  background: var(--zazu-rose-bg);
+  border: 1px solid var(--zazu-rose-border);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-weight: 700;
+  color: var(--zazu-rose-text);
+  font-size: 0.75rem;
+}
+
+/* ── COD money chip ── */
+.zazu-money-chip--cod {
+  color: var(--zazu-orange-text) !important;
+  background: var(--zazu-orange-bg);
+  border: 1px solid var(--zazu-orange-border);
+  font-weight: 700;
+  text-shadow: 0 0 10px rgba(249,115,22,0.35);
+}
+
+/* ── Cobro pills (Provincia) ── */
+.zazu-cobro-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 0.63rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.zazu-cobro-pill::before {
+  content: '';
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: currentColor;
+  opacity: 0.8;
+}
+.zazu-cobro-pill--cobrado {
+  color: var(--zazu-emerald-text);
+  background: var(--zazu-emerald-bg);
+  border-color: var(--zazu-emerald-border);
+  text-shadow: 0 0 10px rgba(16,185,129,0.3);
+}
+.zazu-cobro-pill--parcial {
+  color: var(--zazu-amber-text);
+  background: var(--zazu-amber-bg);
+  border-color: var(--zazu-amber-border);
+  text-shadow: 0 0 10px rgba(245,158,11,0.3);
+}
+.zazu-cobro-pill--pendiente {
+  color: var(--zazu-rose-text);
+  background: var(--zazu-rose-bg);
+  border-color: var(--zazu-rose-border);
+  text-shadow: 0 0 10px rgba(244,63,94,0.3);
+}
+
+/* ── Pagination ── */
+.zazu-pagination {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 14px;
+  padding: 5px 8px;
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.035) 0%, rgba(255,255,255,0.018) 100%),
+              var(--color-surface-2);
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.04) inset, 0 2px 8px rgba(0,0,0,0.4);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .zazu-pagination__info {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
   min-width: 88px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.04);
+  color: var(--color-text-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
   text-align: center;
-  font-size: 0.76rem;
-  color: var(--color-text);
 }
 
 .zazu-page-btn.btn {
-  min-width: 92px;
+  height: 28px;
   border-radius: 999px;
-  padding: 6px 12px;
-  font-size: 0.74rem;
-  letter-spacing: 0.01em;
+  padding: 0 14px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border: 1px solid rgba(255,255,255,0.09);
+  background: rgba(255,255,255,0.05);
+  color: var(--color-text-secondary);
+  transition: background 150ms ease, border-color 150ms ease, color 150ms ease, transform 150ms ease;
+}
+.zazu-page-btn.btn:hover:not(:disabled) {
+  background: rgba(245,158,11,0.12);
+  border-color: rgba(245,158,11,0.30);
+  color: var(--zazu-amber-text);
+  transform: translateY(-1px);
+}
+.zazu-page-btn.btn:active:not(:disabled) {
+  transform: translateY(0);
+  background: rgba(245,158,11,0.18);
+}
+.zazu-page-btn.btn:disabled { opacity: 0.28; cursor: not-allowed; }
+.zazu-page-btn.btn:focus-visible {
+  outline: 2px solid rgba(245,158,11,0.7);
+  outline-offset: 2px;
 }
 
 .zazu-page-pill {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  height: 28px;
   min-width: 88px;
-  padding: 6px 12px;
+  padding: 0 12px;
   border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--color-border) 80%, transparent);
-  background: color-mix(in srgb, var(--color-surface-3) 75%, transparent);
-  color: var(--color-text);
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.04);
+  color: var(--color-text-muted);
   font-family: var(--font-mono);
-  font-size: 0.74rem;
+  font-size: 0.7rem;
   font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .zazu-courier-card {
@@ -3430,26 +3854,139 @@ button.risk-overview__card:focus-visible {
   gap: 10px;
   flex-wrap: wrap;
   margin: 10px 0 12px;
+  padding: 12px 16px;
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.015) 100%),
+              var(--color-surface-2);
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.04) inset, 0 2px 8px rgba(0,0,0,0.35);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.zazu-prov-filters:focus-within {
+  border-color: rgba(245,158,11,0.22);
+  box-shadow: 0 0 0 1px rgba(245,158,11,0.08) inset, 0 4px 16px rgba(0,0,0,0.45);
 }
 
 .zazu-prov-table-wrap {
   border: 1px solid var(--color-border);
-  border-radius: 10px;
+  border-radius: 14px;
   overflow: auto;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-md), 0 0 0 1px rgba(255,255,255,0.03);
+  max-height: 74vh;
+  scroll-behavior: smooth;
+}
+
+.zazu-prov-table {
+  border-collapse: collapse;
+  width: 100%;
 }
 
 .zazu-prov-table thead th {
-  font-size: 0.72rem;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: linear-gradient(180deg, var(--color-surface-3) 0%, var(--color-surface-2) 100%);
+  font-size: 0.71rem;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   color: var(--color-text-secondary);
-  background: var(--color-surface-2);
+  font-weight: 700;
+  padding: 11px 13px;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--color-border-strong);
+  user-select: none;
+}
+
+.zazu-prov-table thead th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  box-shadow: 2px 0 8px rgba(0,0,0,0.4);
+  border-left: 2px solid var(--color-accent);
+}
+
+.zazu-prov-table tbody tr {
+  transition: background 0.13s ease;
+}
+
+.zazu-prov-table tbody td {
+  padding: 8px 13px;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: middle;
+  font-size: 0.82rem;
+}
+
+.zazu-prov-table tbody td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--color-surface);
+  box-shadow: 2px 0 8px rgba(0,0,0,0.3);
+  transition: background 0.13s ease, box-shadow 0.13s ease;
+}
+
+.zazu-prov-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.zazu-prov-table tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--color-surface-2) 46%, transparent);
+}
+
+.zazu-prov-table tbody tr:nth-child(even) td:first-child {
+  background: color-mix(in srgb, var(--color-surface-2) 46%, var(--color-surface));
+}
+
+.zazu-prov-table tbody tr:hover {
+  background: color-mix(in srgb, var(--color-accent-subtle) 70%, transparent);
+}
+
+.zazu-prov-table tbody tr:hover td:first-child {
+  background: color-mix(in srgb, var(--color-accent-subtle) 70%, var(--color-surface));
+  box-shadow: inset 3px 0 0 var(--color-accent), 2px 0 8px rgba(0,0,0,0.3);
+}
+
+/* Right-align numeric cols (Prov: 9=Monto a cobrar, 11=Costo servicio) */
+.zazu-prov-table thead th:nth-child(9),
+.zazu-prov-table thead th:nth-child(11),
+.zazu-prov-table tbody td:nth-child(9),
+.zazu-prov-table tbody td:nth-child(11) {
+  text-align: right;
 }
 
 .zazu-prov-id {
   font-family: var(--font-mono);
-  font-size: 0.78rem;
+  font-size: 0.8rem;
+  font-weight: 600;
   color: var(--color-text);
+}
+
+/* Guía/código monospace (Provincia) */
+.zazu-guia-code {
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  color: var(--color-text);
+  letter-spacing: 0.02em;
+}
+
+/* Destino dos líneas (Provincia) */
+.zazu-destino-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.zazu-destino-geo {
+  font-size: 0.81rem;
+  color: var(--color-text);
+}
+
+.zazu-destino-sede {
+  font-size: 0.71rem;
+  color: var(--color-text-muted);
+  letter-spacing: 0.01em;
 }
 
 .zazu-ranking-wrap {
@@ -3916,122 +4453,6 @@ button.risk-overview__card:focus-visible {
   background: rgba(245, 158, 11, 0.15);
   color: rgb(245, 158, 11);
   border: 1px solid rgba(245, 158, 11, 0.3);
-}
-
-/* ── Voucher Modal ── */
-.voucher-modal {
-  max-width: 480px;
-}
-
-.voucher-content {
-  padding: 24px;
-  background: var(--color-surface-1);
-  border-radius: var(--radius-lg);
-}
-
-.voucher-header {
-  text-align: center;
-  margin-bottom: 24px;
-  padding-bottom: 20px;
-  border-bottom: 2px dashed var(--color-border);
-}
-
-.voucher-logo {
-  width: 80px;
-  height: 80px;
-  margin: 0 auto 12px;
-}
-
-.voucher-title {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--color-text);
-  margin-bottom: 4px;
-}
-
-.voucher-subtitle {
-  font-size: 0.875rem;
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.voucher-qr {
-  text-align: center;
-  margin: 24px 0;
-  padding: 20px;
-  background: #fff;
-  border-radius: var(--radius-md);
-}
-
-.voucher-qr canvas {
-  display: block;
-  margin: 0 auto;
-}
-
-.voucher-info {
-  display: grid;
-  gap: 12px;
-  margin-top: 20px;
-}
-
-.voucher-info-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 0;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.voucher-info-label {
-  font-size: 0.8125rem;
-  color: var(--color-text-muted);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.voucher-info-value {
-  font-size: 0.9375rem;
-  color: var(--color-text);
-  font-weight: 600;
-  font-family: var(--font-mono);
-}
-
-.voucher-footer {
-  text-align: center;
-  margin-top: 24px;
-  padding-top: 20px;
-  border-top: 2px dashed var(--color-border);
-  font-size: 0.75rem;
-  color: var(--color-text-muted);
-}
-
-/* ── Voucher Button ── */
-.zazu-voucher-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 10px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  background: var(--color-accent);
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-
-.zazu-voucher-btn:hover {
-  background: var(--color-accent-hover);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-
-.zazu-voucher-btn svg {
-  width: 14px;
-  height: 14px;
 }
 
 /* ── Receipt / Nota de Venta (rediseñado) ── */

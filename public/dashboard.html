@@ -977,6 +977,15 @@
                   </svg>
                   PDF
                 </button>
+                <button type="button" class="btn btn-ghost btn-sm" id="btn-zazu-xlsx" title="Exportar a Excel">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+                    <polyline points="10 9 9 9 8 9"/>
+                  </svg>
+                  Excel
+                </button>
               </div>
             </div>
 
@@ -990,6 +999,17 @@
                 <button type="button" class="risk-type-tab" data-lima-estado="no_entregado">No entregados</button>
                 <button type="button" class="risk-type-tab" data-lima-estado="anulado">Anulados</button>
                 <button type="button" class="risk-type-tab" data-lima-estado="reprogramado">Reprogramados</button>
+                <button type="button" class="risk-type-tab" data-lima-estado="en_espera">En Espera</button>
+                <button type="button" class="risk-type-tab" data-lima-estado="cambio">Cambio</button>
+              </div>
+              <!-- Tabs de nivel de envío (filtro client-side) -->
+              <div class="risk-type-tabs zazu-tabs zazu-nivel-tabs" id="zazu-lima-nivel-tabs" role="tablist"
+                aria-label="Filtrar por nivel de envío">
+                <button type="button" class="risk-type-tab active" data-lima-nivel="todos">Todos</button>
+                <button type="button" class="risk-type-tab" data-lima-nivel="regular">Regular</button>
+                <button type="button" class="risk-type-tab" data-lima-nivel="cambio">Cambio</button>
+                <button type="button" class="risk-type-tab" data-lima-nivel="express">Express</button>
+                <button type="button" class="risk-type-tab" data-lima-nivel="express_plus">ExpressPlus</button>
               </div>
               <!-- Filtros Lima -->
               <div class="zazu-lima-filters" id="zazu-lima-filters" role="group" aria-label="Filtros de envíos Lima">
@@ -1076,6 +1096,7 @@
                       <th>Dirección</th>
                       <th>Ubicación</th>
                       <th>Costo Servicio</th>
+                      <th>Nivel</th>
                       <th>Pago</th>
                       <th>Monto</th>
                       <th>CxC Odoo</th>
@@ -1197,6 +1218,13 @@
                 </div>
                 <div class="filter-chips-row" id="zazu-prov-chips"></div>
               </div>
+              <!-- Tabs transportista -->
+              <div class="risk-type-tabs zazu-tabs" id="zazu-prov-transport-tabs" role="tablist" aria-label="Filtrar por transportista">
+                <button type="button" class="risk-type-tab active" data-prov-transport="todos">Todos</button>
+                <button type="button" class="risk-type-tab" data-prov-transport="shalom">Shalom</button>
+                <button type="button" class="risk-type-tab" data-prov-transport="olva">Olva</button>
+                <button type="button" class="risk-type-tab" data-prov-transport="marvisur">Marvisur</button>
+              </div>
               <!-- Tabs de estado Provincia -->
               <div class="risk-type-tabs zazu-tabs" id="zazu-prov-estado-tabs" role="tablist"
                 aria-label="Filtrar por estado provincia">
@@ -1256,11 +1284,11 @@
                       <th>Teléfono</th>
                       <th>Destino (Provincia/Depto + Sede)</th>
                       <th>Tipo pago</th>
-                      <th>Monto cobrar</th>
+                      <th>Monto a cobrar</th>
+                      <th>Cobro</th>
                       <th>Costo servicio</th>
                       <th>CxC Odoo</th>
                       <th>Nota Odoo</th>
-                      <th>QR</th>
                     </tr>
                   </thead>
                   <tbody id="zazu-prov-tbody">
@@ -1698,34 +1726,6 @@
     </div>
   </div>
 
-  <!-- Modal de Voucher con QR -->
-  <div class="receipt-overlay" id="voucher-modal-overlay">
-    <div class="receipt-modal voucher-modal">
-      <div class="receipt-modal__header">
-        <h3 class="receipt-modal__title" id="voucher-modal-title">Voucher de Envío</h3>
-        <button type="button" class="btn btn-ghost btn-sm" id="voucher-modal-close-x">&times;</button>
-      </div>
-      <div class="receipt-modal__body" id="voucher-modal-body">
-        <!-- El contenido del voucher se inyecta aquí -->
-      </div>
-      <div class="receipt-modal__footer">
-        <button type="button" class="btn btn-ghost" id="voucher-modal-close">Cerrar</button>
-        <button type="button" class="btn btn-primary" id="voucher-modal-print">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-            style="margin-right:4px">
-            <path d="M6 9V2h12v7" />
-            <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-            <rect x="6" y="14" width="12" height="8" />
-          </svg>
-          Imprimir Voucher
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- qrcodejs (davidshimjs) — devuelve 404 en jsdelivr/npm "qrcode@1.5.x/build/", se cambia
-       a cdnjs/qrcodejs cuya URL si responde 200 y expone global QRCode. API: new QRCode(el, opts) -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
   <script src="/assets/dashboard.js"></script>
 </body>
 

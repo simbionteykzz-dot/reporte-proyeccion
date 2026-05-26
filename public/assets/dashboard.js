@@ -41,6 +41,7 @@
     })(),
     zazuTab: 'todos',
     zazuEstadoFiltro: '',
+    zazuNivelFiltro: 'todos',
     zazuScope: 'lima',
     zazuLimaView: 'tabla',
     zazuProvView: 'tabla',
@@ -68,8 +69,9 @@
     zazuProvRows: [],
     zazuProvMeta: null,
     zazuProvPage: 1,
-    zazuProvPageSize: 10000,
+    zazuProvPageSize: 5000,
     zazuProvHasMore: false,
+    zazuProvTransportista: 'todos',
     // ── POS Geographic ──
   };
 
@@ -327,6 +329,12 @@
       S.invRisksTimer = setInterval(() => fetchInventoryRisks(true, { force: true }), 5 * 60 * 1000);
     }
     syncRiskNavActive();
+    if (view !== 'dashboard' && view !== 'inventory') {
+      d.querySelectorAll('.nav-item[data-nav]').forEach(b => b.classList.remove('active'));
+    }
+    if (view !== 'zazu') {
+      d.querySelectorAll('[data-panel="zazu"][data-zazu-scope]').forEach(b => b.classList.remove('active'));
+    }
   }
 
   function syncRiskNavActive() {
@@ -347,8 +355,32 @@
     });
   }
 
+  function zazuNivelBucket(row) {
+    const nivel = zazuNivelServicioLima(row);
+    if (nivel.label === 'Regular') return 'regular';
+    if (nivel.label === 'Cambio') return 'cambio';
+    if (nivel.label === 'Express') return 'express';
+    if (nivel.label === 'ExpressPlus') return 'express_plus';
+    return 'otros';
+  }
+
+  function syncLimaNivelCounts(allRows) {
+    const map = { todos: allRows.length, regular: 0, cambio: 0, express: 0, express_plus: 0 };
+    allRows.forEach((r) => {
+      const b = zazuNivelBucket(r);
+      if (map[b] !== undefined) map[b] += 1;
+    });
+    d.querySelectorAll('[data-lima-nivel]').forEach((btn) => {
+      const key = btn.getAttribute('data-lima-nivel') || 'todos';
+      const n = map[key];
+      let pill = btn.querySelector('.tab-count');
+      if (!pill) { pill = document.createElement('span'); pill.className = 'tab-count'; btn.appendChild(pill); }
+      pill.textContent = n !== undefined ? String(n) : '';
+    });
+  }
+
   function syncLimaEstadoCounts(allRows) {
-    const map = { todos: allRows.length, entregado: 0, no_entregado: 0, anulado: 0, reprogramado: 0 };
+    const map = { todos: allRows.length, entregado: 0, no_entregado: 0, anulado: 0, reprogramado: 0, en_espera: 0, cambio: 0, en_curso: 0 };
     allRows.forEach((r) => {
       const b = zazuStateBucket(r);
       if (map[b] !== undefined) map[b] += 1;
@@ -572,19 +604,15 @@
     return filtered;
   }
 
-  // Aplica todos los filtros incluyendo el tab de estado
+  // Aplica todos los filtros incluyendo estado y nivel de envío
   function zazuFilteredRows(rows) {
     const preFiltered = zazuPreFilterRows(rows);
     const estadoFiltro = S.zazuEstadoFiltro || 'todos';
-    if (estadoFiltro === 'todos') return preFiltered;
-    return preFiltered.filter((r) => {
-      const bucket = zazuStateBucket(r);
-      if (estadoFiltro === 'entregado') return bucket === 'entregado';
-      if (estadoFiltro === 'no_entregado') return bucket === 'no_entregado';
-      if (estadoFiltro === 'anulado') return bucket === 'anulado';
-      if (estadoFiltro === 'reprogramado') return bucket === 'reprogramado';
-      return true;
-    });
+    const nivelFiltro = S.zazuNivelFiltro || 'todos';
+    let result = preFiltered;
+    if (estadoFiltro !== 'todos') result = result.filter((r) => zazuStateBucket(r) === estadoFiltro);
+    if (nivelFiltro !== 'todos') result = result.filter((r) => zazuNivelBucket(r) === nivelFiltro);
+    return result;
   }
 
 
@@ -722,16 +750,32 @@
     if (!tbody) return;
     const allRowsRaw = Array.isArray(rows) ? rows : [];
 
-    // Filtros pre-estado: empresa y cliente
+    // Sync transportista tab active class
+    const currentTransport = S.zazuProvTransportista || 'todos';
+    d.querySelectorAll('[data-prov-transport]').forEach((btn) => {
+      btn.classList.toggle('active', btn.getAttribute('data-prov-transport') === currentTransport);
+    });
+
+    // Filtros pre-estado: empresa, transportista y cliente
     const provEmpresa = S.zazuProvEmpresa || '__ALL__';
     const afterEmpresa = provEmpresa === '__ALL__'
       ? allRowsRaw
       : allRowsRaw.filter((r) => zazuRowEmpresa(r) === provEmpresa);
 
+    // Filtro por transportista
+    const transport = S.zazuProvTransportista || 'todos';
+    const afterTransport = transport === 'todos' ? afterEmpresa : afterEmpresa.filter((r) => {
+      const t = String(r.table || '');
+      if (transport === 'shalom') return t === 'tb_envios_shalom';
+      if (transport === 'olva') return t === 'tb_envios_olva';
+      if (transport === 'marvisur') return t === 'tb_envios_marvisur';
+      return true;
+    });
+
     const provCliente = (S.zazuProvClienteSearch || '').trim().toLowerCase();
     const preFiltered = provCliente
-      ? afterEmpresa.filter((r) => String(zazuClientName(r) || '').toLowerCase().includes(provCliente))
-      : afterEmpresa;
+      ? afterTransport.filter((r) => String(zazuClientName(r) || '').toLowerCase().includes(provCliente))
+      : afterTransport;
 
     // Counts sobre filas ya filtradas por empresa/cliente para que los badges coincidan
     syncProvEstadoCounts(preFiltered);
@@ -783,6 +827,7 @@
       const guiaCodigo = [String(r.guia || '').trim(), String(r.codigo || '').trim()].filter(Boolean).join(' / ') || '—';
       const od = r && typeof r.odoo === 'object' ? r.odoo : null;
       const costoServicio = num(r.monto_deuda);
+      const nivelProv = zazuNivelServicioProv(r);
       const notaRef = String(
         (od && (od.number_zazu || od.sale_order_name || od.pos_name || od.client_order_ref))
         || r.nota_odoo || r.id_venta || ''
@@ -812,27 +857,37 @@
       const estadoText = String(r.estado || r.estado_qr || r.estado_odoo || '—').trim();
       const guiaStr = String(r.guia || '').trim();
       const codigoStr = String(r.codigo || '').trim();
-      const voucherIdStr = String(r.id_venta || '').trim();
-      const qrCell = (guiaStr || codigoStr)
-        ? `<button type="button" class="zazu-voucher-btn" data-voucher-id="${escHtml(voucherIdStr)}" data-guia="${escHtml(guiaStr)}" data-codigo="${escHtml(codigoStr)}" title="Generar QR de tracking Shalom">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3z"/><path d="M20 14v7h-3"/></svg>
-            QR
-          </button>`
-        : '—';
+      // COD highlight + pill de cobro
+      const montoCobrarNum = Number(r.monto_cobrar) || 0;
+      const montoCobradoNum = Number(r.monto_cobrado) || 0;
+      const codClass = montoCobrarNum > 0 ? 'zazu-money-chip--cod' : '';
+      let cobroPill = '—';
+      if (montoCobrarNum > 0) {
+        if (montoCobradoNum >= montoCobrarNum) {
+          cobroPill = '<span class="zazu-cobro-pill zazu-cobro-pill--cobrado">COBRADO</span>';
+        } else if (montoCobradoNum > 0) {
+          cobroPill = '<span class="zazu-cobro-pill zazu-cobro-pill--parcial">PARCIAL</span>';
+        } else {
+          cobroPill = '<span class="zazu-cobro-pill zazu-cobro-pill--pendiente">PENDIENTE</span>';
+        }
+      }
+      const destinoCell = geo && geo !== '—'
+        ? `<div class="zazu-destino-cell"><span class="zazu-destino-geo">${escHtml(geo)}</span>${sede ? `<span class="zazu-destino-sede">${escHtml(sede)}</span>` : ''}</div>`
+        : (sede ? `<span class="zazu-destino-sede">${escHtml(sede)}</span>` : '—');
       return `<tr>
         <td><span class="zazu-prov-id">${escHtml(String(r.id_venta || '—'))}</span></td>
         <td><span class="zazu-status ${zazuStatusClass(estadoText)}">${escHtml(estadoText)}</span></td>
-        <td>${escHtml(guiaCodigo)}</td>
+        <td><span class="zazu-guia-code">${escHtml(guiaCodigo)}</span></td>
         <td>${escHtml(String(r.fecha || '—'))}</td>
-        <td>${escHtml(clientName)}</td>
-        <td>${escHtml(clientPhone)}</td>
-        <td>${escHtml(destino)}</td>
-        <td>${escHtml(String(r.tipo_pago || '—'))}</td>
-        <td>${escHtml(money(r.monto_cobrar))}</td>
-        <td>${escHtml(money(costoServicio))}</td>
+        <td><span class="zazu-client-name">${escHtml(clientName)}</span></td>
+        <td><span class="zazu-phone">${escHtml(clientPhone)}</span></td>
+        <td>${destinoCell}</td>
+        <td><span class="zazu-pay-chip">${escHtml(String(r.tipo_pago || '—'))}</span></td>
+        <td><span class="zazu-money-chip ${codClass}">${escHtml(money(r.monto_cobrar))}</span></td>
+        <td>${cobroPill}</td>
+        <td><span class="zazu-nivel-chip ${escHtml(nivelProv.cls)}">${escHtml(nivelProv.label)}</span></td>
         <td>${cxcCell}</td>
         <td title="${escHtml(odDetail)}">${odPreviewCell}</td>
-        <td>${qrCell}</td>
       </tr>`;
     }).join('');
     if (serviceBadge) serviceBadge.textContent = `Costo servicio: ${money(serviceTotal)}`;
@@ -921,7 +976,10 @@
     if (!s) return 'zazu-status--neutral';
     if (s.includes('entregado') || s.includes('done')) return 'zazu-status--ok';
     if (s.includes('anulado') || s.includes('cancel') || s.includes('rechaz')) return 'zazu-status--bad';
-    if (s.includes('curso') || s.includes('espera') || s.includes('proceso')) return 'zazu-status--warn';
+    if (s.includes('reprogram')) return 'zazu-status--info';
+    if (s === 'cambio') return 'zazu-status--cambio';
+    if (s.includes('espera')) return 'zazu-status--espera';
+    if (s.includes('curso') || s.includes('proceso')) return 'zazu-status--warn';
     return 'zazu-status--neutral';
   }
 
@@ -1034,6 +1092,9 @@
     if (Number.isFinite(transferencia) && transferencia > 0) tags.push('Transferencia');
     if (Number.isFinite(efectivo) && efectivo > 0) tags.push('Efectivo');
     if (tags.length) return tags.join(' + ');
+    const medioStr = String(medio || '').trim().toLowerCase();
+    // "Cambio" es tipo de pedido (estado), no método de pago
+    if (medioStr === 'cambio') return '—';
     if (medio != null && String(medio).trim()) return String(medio).trim();
     return '—';
   }
@@ -1089,6 +1150,7 @@
 
   function zazuStateBucket(row) {
     const estado = zazuNormalize(zazuPickField(row, ['estado_pedido', 'estado', 'estado_despacho', 'estado_qr']) || '');
+    const tipoPago = zazuNormalize(String(zazuPickField(row, ['tipo_pago', 'medio_pago']) || ''));
     const reprogramadoRaw = zazuPickField(row, ['reprogramado', 'motivo_reprogramado']);
     const reprogramado = zazuNormalize(String(reprogramadoRaw || ''));
 
@@ -1096,17 +1158,19 @@
     if (estado.includes('anulad') || estado.includes('cancel')) return 'anulado';
 
     // Si el estado dice claramente "entregado", se confía en ese dato
-    // aunque haya una nota de reprogramación previa (fue reprogramado y luego entregado)
     if (/\bno\s+entreg/.test(estado) || estado === 'no entregado' || estado === 'no entregada') return 'no_entregado';
     if (estado.includes('entreg')) return 'entregado';
 
-    // Reprogramado: explícito en estado o campo reprogramado con valor real
+    // Reprogramado: por estado, campo reprogramado, o motivo
     if (estado.includes('reprogram')) return 'reprogramado';
-    if (reprogramado && reprogramado !== 'false' && reprogramado !== '0' && reprogramado !== 'no') return 'reprogramado';
+    if (reprogramado && reprogramado !== 'false' && reprogramado !== '0' && reprogramado !== 'no' && reprogramado !== '') return 'reprogramado';
 
-    if (estado.includes('curso') || estado.includes('camino') || estado.includes('ruta') || estado.includes('pendiente') || estado.includes('despacho')) return 'no_entregado';
-    // Cualquier estado desconocido se agrupa en no_entregado para que no quede invisible
-    return 'no_entregado';
+    // Cambio: por estado o tipo_pago
+    if (estado === 'cambio' || tipoPago === 'cambio') return 'cambio';
+
+    if (estado.includes('espera')) return 'en_espera';
+    if (estado.includes('curso') || estado.includes('camino') || estado.includes('ruta') || estado.includes('pendiente') || estado.includes('despacho')) return 'en_curso';
+    return 'en_curso';
   }
 
   function zazuProvStateBucket(row) {
@@ -1159,6 +1223,30 @@
     return Number.isFinite(v) && v > 0 ? v : 0;
   }
 
+  // Provincia: 12 = terrestre, 18 = aéreo
+  function zazuNivelServicioProv(row) {
+    const v = zazuNum(zazuPickField(row, ['monto_deuda', 'costo_servicio', 'costo_envio']));
+    if (!Number.isFinite(v) || v <= 0) return { label: '—', cls: '' };
+    if (v === 12) return { label: 'Provincia · S/12', cls: 'zazu-nivel-chip--prov-base' };
+    if (v === 18) return { label: 'Aéreo · S/18', cls: 'zazu-nivel-chip--prov-plus' };
+    return { label: `S/ ${fmt.n(v, 2)}`, cls: 'zazu-nivel-chip--custom' };
+  }
+
+  // Lima (Delivery): 14 = Regular, 17 = Cambio, 19 = Express (14+5), 22 = ExpressPlus (14+8)
+  function zazuNivelServicioLima(row) {
+    // Pedido de tipo Cambio: detectado por tipo_pago o estado
+    const tipoPago = String(zazuPickField(row, ['tipo_pago', 'medio_pago', 'metodo_pago']) || '').trim().toLowerCase();
+    const estadoRaw = String(zazuPickField(row, ['estado_pedido', 'estado']) || '').trim().toLowerCase();
+    if (tipoPago === 'cambio' || estadoRaw === 'cambio') return { label: 'Cambio', cls: 'zazu-nivel-chip--cambio' };
+    const v = zazuNum(zazuPickField(row, ['monto_deuda', 'costo_servicio', 'costo_envio']));
+    if (!Number.isFinite(v) || v <= 0) return { label: '—', cls: '' };
+    if (v === 14) return { label: 'Regular', cls: 'zazu-nivel-chip--regular' };
+    if (v === 17) return { label: 'Cambio', cls: 'zazu-nivel-chip--cambio' };
+    if (v === 19) return { label: 'Express', cls: 'zazu-nivel-chip--express' };
+    if (v === 22) return { label: 'ExpressPlus', cls: 'zazu-nivel-chip--express-plus' };
+    return { label: `S/ ${v}`, cls: 'zazu-nivel-chip--custom' };
+  }
+
   function zazuComputeMetrics(rows) {
     const list = Array.isArray(rows) ? rows : [];
     let montoCobrado = 0;
@@ -1168,6 +1256,8 @@
     let noEntregados = 0;
     let reprogramados = 0;
     let enCurso = 0;
+    let enEspera = 0;
+    let cambios = 0;
     let anulados = 0;
     let minDate = '';
     let maxDate = '';
@@ -1183,6 +1273,8 @@
       else if (bucket === 'no_entregado') noEntregados += 1;
       else if (bucket === 'reprogramado') reprogramados += 1;
       else if (bucket === 'anulado') anulados += 1;
+      else if (bucket === 'en_espera') enEspera += 1;
+      else if (bucket === 'cambio') cambios += 1;
       else enCurso += 1;
       const mc = zazuMontoCobradoResolved(r);
       montoCobrado += mc.value;
@@ -1205,6 +1297,8 @@
       noEntregados,
       reprogramados,
       enCurso,
+      enEspera,
+      cambios,
       anulados,
       topPay,
     };
@@ -2025,98 +2119,6 @@
     }
   }
 
-  async function openVoucherModal(voucherId, guia, codigo) {
-    const overlay = d.getElementById('voucher-modal-overlay');
-    const body = d.getElementById('voucher-modal-body');
-    const title = d.getElementById('voucher-modal-title');
-    if (!overlay || !body || !title) return;
-
-    title.textContent = 'Voucher de Envío — Tracking Shalom';
-    body.innerHTML = '<div style="text-align:center;padding:32px;"><div class="spinner-inline"></div><span style="margin-left:8px;">Cargando...</span></div>';
-    overlay.style.display = 'flex';
-
-    let trackingUrl = '';
-    try {
-      const params = new URLSearchParams();
-      if (guia) params.set('guia', guia);
-      if (codigo) params.set('codigo', codigo);
-      const resp = await fetch('/api/shalom/tracking-url?' + params.toString());
-      if (resp.ok) {
-        const j = await resp.json();
-        trackingUrl = j.url || '';
-      }
-    } catch (_) {}
-
-    // Formato que reconoce la app Shalom al escanear: "<guia>/box/1/1".
-    // Si no hay guía no se puede generar un QR útil para Shalom (el código
-    // interno Zazu no le sirve a su app), así que mostramos error explícito.
-    const guiaShalom = String(guia || '').trim();
-    const qrData = guiaShalom ? `${guiaShalom}/box/1/1` : '';
-
-    body.innerHTML = `
-      <div class="voucher-content">
-        <div class="voucher-header">
-          <div class="voucher-logo">
-            <img src="/assets/iconos-barra/zazu_icon.png" alt="Zazu Express" style="width:100%;height:100%;object-fit:contain;">
-          </div>
-          <div class="voucher-title">Zazu Express × Shalom</div>
-          <div class="voucher-subtitle">Comprobante de Envío</div>
-        </div>
-        <div class="voucher-qr" id="voucher-qr-container" style="text-align:center;padding:16px 0;min-height:240px;display:flex;align-items:center;justify-content:center;"></div>
-        <div class="voucher-info">
-          ${voucherId ? `<div class="voucher-info-row"><span class="voucher-info-label">ID Venta</span><span class="voucher-info-value">${escHtml(voucherId)}</span></div>` : ''}
-          ${guia ? `<div class="voucher-info-row"><span class="voucher-info-label">Guía Shalom</span><span class="voucher-info-value">${escHtml(guia)}</span></div>` : ''}
-          ${codigo ? `<div class="voucher-info-row"><span class="voucher-info-label">Código</span><span class="voucher-info-value">${escHtml(codigo)}</span></div>` : ''}
-          <div class="voucher-info-row"><span class="voucher-info-label">Fecha</span><span class="voucher-info-value">${new Date().toLocaleDateString('es-PE')}</span></div>
-          ${trackingUrl ? `<div class="voucher-info-row" style="margin-top:12px;">
-            <a href="${escHtml(trackingUrl)}" target="_blank" rel="noopener" class="btn btn-primary btn-sm" style="width:100%;justify-content:center;text-decoration:none;">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-              Ver en Shalom
-            </a>
-          </div>` : ''}
-        </div>
-        <p style="text-align:center;font-size:11px;color:var(--color-text-muted);margin-top:12px;">Escanea el QR con la app Shalom para rastrear el envío</p>
-        <p style="text-align:center;font-size:10px;font-family:var(--font-mono, monospace);color:var(--color-text-muted);margin-top:4px;letter-spacing:0.5px;">${qrData ? escHtml(qrData) : '(sin guía Shalom)'}</p>
-      </div>
-    `;
-
-    const container = d.getElementById('voucher-qr-container');
-
-    // Si la fila no tiene guía Shalom, no hay QR posible: mostrar mensaje claro.
-    if (!qrData) {
-      if (container) {
-        container.innerHTML = '<p style="color:#dc2626;font-size:13px;padding:24px;text-align:center;">Esta fila no tiene número de guía Shalom registrado en Supabase.<br>Sin guía no se puede generar el QR para la app Shalom.</p>';
-      }
-      return;
-    }
-
-    // Validación: la librería QRCode (qrcodejs) debe estar cargada.
-    if (typeof QRCode === 'undefined' || !container) {
-      console.error('[voucher] QRCode library no disponible o contenedor no encontrado.');
-      if (container) {
-        container.innerHTML = `<p style="color:#dc2626;font-size:13px;padding:24px;text-align:center;">No se pudo cargar la librería de QR.<br>Recarga la página (Ctrl+F5) o revisa la consola.</p>`;
-      }
-      return;
-    }
-
-    // qrcodejs (davidshimjs) renderiza dentro del contenedor: crea canvas + tabla
-    // de fallback internamente. Sólo hay que pasarle el div y las opciones.
-    try {
-      container.innerHTML = '';  // limpia el min-height: 240px placeholder
-      new QRCode(container, {
-        text: qrData,
-        width: 220,
-        height: 220,
-        colorDark: '#18181b',
-        colorLight: '#ffffff',
-        correctLevel: QRCode.CorrectLevel ? QRCode.CorrectLevel.M : 1,
-      });
-    } catch (err) {
-      console.error('[voucher] excepción al renderizar QR:', err, 'data:', qrData);
-      container.innerHTML = `<p style="color:#dc2626;font-size:13px;padding:24px;text-align:center;">Error generando QR: ${escHtml(String(err.message || err))}</p>`;
-    }
-  }
-
   function zazuLooksLikeHttpUrl(value) {
     return /^https?:\/\//i.test(String(value || '').trim());
   }
@@ -2192,6 +2194,7 @@
     const ubicacionTexto = `${String(distrito || '—')}${ciudad && ciudad !== distrito ? `, ${String(ciudad)}` : ''}`;
     const mapUrl = zazuMapUrl(r);
     const costoServicio = zazuDisplayServiceCost(r);
+    const nivelServicio = zazuNivelServicioLima(r);
     const pago = zazuDisplayPayment(r);
     const monto = zazuDisplayMonto(r);
     const estado = zazuPickField(r, ['estado_pedido', 'estado']) || '—';
@@ -2210,15 +2213,21 @@
     const ubicacionCell = mapUrl
       ? `${escHtml(ubicacionTexto)}<br><a href="${escHtml(mapUrl)}" class="zazu-map-link" target="_blank" rel="noopener noreferrer">Ver ubicación</a>`
       : escHtml(ubicacionTexto);
+    // Deuda pill (feature 2)
+    const cxcRef = zazuCxcRef(r);
+    const cxcData = cxcRef ? S.zazuCxcByRef[cxcRef] : null;
+    const hasDebt = cxcData && cxcData.found && Number(cxcData.amount_residual) > 0.005;
+    const deudaPill = hasDebt ? '<span class="zazu-deuda-pill">DEUDA</span>' : '';
     return `<tr>
       <td><div class="zazu-id-cell"><span class="zazu-id-main">${escHtml(String(r.id_envio || '—'))}</span><span class="zazu-company-chip">${escHtml(String(empresa || '—'))}</span></div></td>
       <td>${escHtml(fecha)}</td>
       <td><span class="zazu-status ${zazuStatusClass(estado)}">${escHtml(String(estado || '—'))}</span></td>
-      <td><span class="zazu-client-name">${escHtml(String(zazuClientName(r) || '—'))}</span></td>
+      <td><span class="zazu-client-name">${escHtml(String(zazuClientName(r) || '—'))}</span>${deudaPill}</td>
       <td><span class="zazu-phone">${escHtml(String(telefono || '—'))}</span></td>
       <td title="${escHtml(direccionObj.full || '')}"><span class="zazu-address">${escHtml(String(direccionObj.short || '—'))}</span></td>
       <td><div class="zazu-geo-cell">${ubicacionCell}</div></td>
       <td><span class="zazu-money-chip">${escHtml(String(costoServicio || '—'))}</span></td>
+      <td><span class="zazu-nivel-chip ${escHtml(nivelServicio.cls)}">${escHtml(nivelServicio.label)}</span></td>
       <td><span class="zazu-pay-chip">${escHtml(String(pago || '—'))}</span></td>
       <td><span class="zazu-money-chip zazu-money-chip--strong">${escHtml(String(monto || '—'))}</span></td>
       <td>${cxcCell}</td>
@@ -2235,6 +2244,7 @@
     // (no sobre las brutas) para que los badges coincidan con lo que se ve al hacer clic
     const preFiltered = zazuPreFilterRows(Array.isArray(rows) ? rows : []);
     syncLimaEstadoCounts(preFiltered);
+    syncLimaNivelCounts(preFiltered);
     const allRows = zazuFilteredRows(rows);
     const pageSize = Math.max(1, Number(S.zazuPageSize) || 400);
     const pages = Math.max(1, Math.ceil(allRows.length / pageSize));
@@ -2291,10 +2301,11 @@
     S.zazuCxcByRef = {};
     S.zazuCxcPending = {};
     try {
-      const pageLimit = force ? 2000 : 1200;
+      const pageLimit = force ? 2000 : 1500;
       const allRows = [];
       let offset = 0;
       let meta = null;
+      let firstChunk = true;
       while (true) {
         const params = new URLSearchParams({
           tab: 'todos',
@@ -2311,6 +2322,16 @@
         allRows.push(...chunk);
         meta = data.meta || meta;
         const hasMore = !!(data && data.meta && data.meta.has_more);
+        // Mostrar primera página inmediatamente para percepción de carga rápida
+        if (firstChunk) {
+          firstChunk = false;
+          S.zazuRowsAll = allRows.slice();
+          syncZazuCompanyOptions(S.zazuRowsAll);
+          S.zazuPage = 1;
+          renderZazuRows(S.zazuRowsAll, meta || {});
+          zazuRenderKpis('zazu-kpi-strip', S.zazuRowsAll);
+          if (load) load.hidden = true;
+        }
         if (!hasMore) break;
         offset += pageLimit;
       }
@@ -4340,7 +4361,11 @@ ${sections}
     opts = opts || {};
     S.nav = nav;
     if (opts.tab) applyTabSelection(opts.tab, { skipRender: true });
-    d.querySelectorAll('.nav-item[data-nav]').forEach(b => b.classList.toggle('active', b.dataset.nav === nav));
+    const viewPanel = S.view === 'inventory' ? 'inventory' : 'dashboard';
+    d.querySelectorAll('.nav-item[data-nav]').forEach(b => {
+      const btnPanel = b.getAttribute('data-panel') || 'dashboard';
+      b.classList.toggle('active', b.dataset.nav === nav && btnPanel === viewPanel);
+    });
     const heading = d.getElementById('page-heading');
     const label = d.getElementById('page-label');
     if (nav === 'bravos') {
@@ -4736,8 +4761,8 @@ ${sections}
 
       let headers, body, foot;
       if (isProv) {
-        // cols: 0:ID, 1:Guía, 2:Fecha, 3:Destino, 4:TipoPago, 5:MontoCobrar, 6:CostoServicio, 7:Estado
-        headers = [['ID Venta', 'Guía/Código', 'Fecha', 'Destino', 'Tipo pago', 'Monto cobrar', 'Costo servicio', 'Estado']];
+        // cols: 0:ID, 1:Guía, 2:Fecha, 3:Cliente, 4:Destino, 5:TipoPago, 6:MontoCobrar, 7:CostoServicio, 8:Estado
+        headers = [['ID Venta', 'Guía/Código', 'Fecha', 'Cliente', 'Destino', 'Tipo pago', 'Monto a cobrar', 'Costo servicio', 'Estado']];
         body = rows.map((r) => {
           const geo = [r.provincia, r.departamento].filter(Boolean).join(' / ') || '—';
           const guia = [String(r.guia || ''), String(r.codigo || '')].filter(Boolean).join(' / ') || '—';
@@ -4745,6 +4770,7 @@ ${sections}
             String(r.id_venta || '—'),
             guia,
             String(r.fecha || '—'),
+            zazuClientName(r),
             geo,
             String(r.tipo_pago || '—'),
             money(r.monto_cobrar),
@@ -4753,14 +4779,14 @@ ${sections}
           ];
         });
         foot = [[
-          { content: `TOTAL (${rows.length} reg.)`, colSpan: 5, styles: { halign: 'right', fontStyle: 'bold' } },
+          { content: `TOTAL (${rows.length} reg.)`, colSpan: 6, styles: { halign: 'right', fontStyle: 'bold' } },
           { content: money(totalMonto), styles: { halign: 'right', fontStyle: 'bold' } },
           { content: money(totalCosto), styles: { halign: 'right', fontStyle: 'bold' } },
           { content: '', styles: {} },
         ]];
       } else {
-        // cols: 0:ID, 1:Empresa, 2:Fecha, 3:Estado, 4:Cliente, 5:Pago, 6:Monto, 7:CostoServicio
-        headers = [['ID Envío', 'Empresa', 'Fecha', 'Estado', 'Cliente', 'Pago', 'Monto cobrado', 'Costo Servicio']];
+        // cols: 0:ID, 1:Empresa, 2:Fecha, 3:Estado, 4:Cliente, 5:Pago, 6:Monto, 7:CostoServicio, 8:Nivel
+        headers = [['ID Envío', 'Empresa', 'Fecha', 'Estado', 'Cliente', 'Pago', 'Monto cobrado', 'Costo Servicio', 'Nivel']];
         body = rows.map((r) => [
           String(r.id_envio || '—'),
           zazuRowEmpresa(r),
@@ -4770,11 +4796,13 @@ ${sections}
           zazuDisplayPayment(r),
           zazuDisplayMonto(r),
           zazuDisplayServiceCost(r),
+          zazuNivelServicioLima(r).label,
         ]);
         foot = [[
           { content: `TOTAL (${rows.length} reg.)`, colSpan: 6, styles: { halign: 'right', fontStyle: 'bold' } },
           { content: money(totalMonto), styles: { halign: 'right', fontStyle: 'bold' } },
           { content: money(totalCosto), styles: { halign: 'right', fontStyle: 'bold' } },
+          { content: '', styles: {} },
         ]];
       }
 
@@ -4808,6 +4836,27 @@ ${sections}
         },
         showFoot: 'lastPage',
         alternateRowStyles: { fillColor: [248, 250, 252] },
+        didParseCell: (data) => {
+          if (data.section !== 'body') return;
+          if (!isProv && data.column.index === 8) {
+            // Lima: columna Nivel — no estándar si el label empieza con "S/"
+            const raw = String(data.cell.raw || '');
+            if (/^S\/\s*\d/.test(raw)) {
+              data.cell.styles.textColor = [4, 120, 87];
+              data.cell.styles.fontStyle = 'bold';
+              data.cell.styles.fillColor = [209, 250, 229];
+            }
+          } else if (isProv && data.column.index === 6) {
+            // Provincia: montos fijos = 12 (Estándar) y 18 (Plus)
+            const raw = String(data.cell.raw || '');
+            const n = parseFloat(raw.replace(/[^0-9.]/g, ''));
+            if (!isNaN(n) && n > 0 && n !== 12 && n !== 18) {
+              data.cell.styles.textColor = [4, 120, 87];
+              data.cell.styles.fontStyle = 'bold';
+              data.cell.styles.fillColor = [209, 250, 229];
+            }
+          }
+        },
         didDrawPage: (data) => {
           const n = doc.internal.getNumberOfPages();
           doc.setFontSize(7.5);
@@ -4891,6 +4940,75 @@ ${sections}
       doc.save(`zazu_express_${scope.toLowerCase()}_${tabLabel}_${new Date().toISOString().slice(0, 10)}.pdf`);
     } finally {
       if (btnPdf) btnPdf.disabled = false;
+    }
+  }
+
+  // ── Export Zazu XLSX ──
+  function exportZazuXlsx() {
+    if (!window.XLSX) { alert('Librería XLSX no disponible.'); return; }
+    const isProv = S.zazuScope === 'provincia';
+    const dateTag = [S.zazuDateFrom || S.zazuProvDateFrom, S.zazuDateTo || S.zazuProvDateTo].filter(Boolean).join('_') || new Date().toISOString().slice(0, 10);
+
+    if (isProv) {
+      // Replicate the filter chain from zazuProvRenderRows
+      const allRaw = S.zazuProvRows || [];
+      const transport = S.zazuProvTransportista || 'todos';
+      const empresa = S.zazuProvEmpresa || '__ALL__';
+      const cliente = (S.zazuProvClienteSearch || '').trim().toLowerCase();
+      const estado = S.zazuProvEstadoFiltro || 'todos';
+      let rows = transport === 'todos' ? allRaw : allRaw.filter((r) => {
+        const t = String(r.table || '');
+        if (transport === 'shalom') return t === 'tb_envios_shalom';
+        if (transport === 'olva') return t === 'tb_envios_olva';
+        if (transport === 'marvisur') return t === 'tb_envios_marvisur';
+        return true;
+      });
+      if (empresa !== '__ALL__') rows = rows.filter((r) => zazuRowEmpresa(r) === empresa);
+      if (cliente) rows = rows.filter((r) => String(zazuClientName(r) || '').toLowerCase().includes(cliente));
+      if (estado !== 'todos') rows = rows.filter((r) => zazuProvStateBucket(r) === estado);
+
+      if (!rows.length) { alert('Sin datos para exportar con los filtros actuales.'); return; }
+      const headers = [['Transportista', 'ID Venta', 'Guía', 'Código', 'Fecha', 'Cliente', 'Destino', 'Tipo Pago', 'Monto Cobrar', 'Costo Servicio', 'Estado']];
+      const body = rows.map((r) => [
+        String(r.table || '').replace('tb_envios_', ''),
+        String(r.id_venta || '—'),
+        String(r.guia || '—'),
+        String(r.codigo || '—'),
+        String(r.fecha || '—'),
+        zazuClientName(r),
+        [r.provincia, r.departamento].filter(Boolean).join(' / ') || '—',
+        String(r.tipo_pago || '—'),
+        Number(r.monto_cobrar) || 0,
+        Number(r.monto_deuda) || 0,
+        String(r.estado || r.estado_qr || '—'),
+      ]);
+      const ws = window.XLSX.utils.aoa_to_sheet([...headers, ...body]);
+      const wb = window.XLSX.utils.book_new();
+      window.XLSX.utils.book_append_sheet(wb, ws, 'Provincia');
+      window.XLSX.writeFile(wb, `zazu_provincia_${dateTag}.xlsx`);
+    } else {
+      const rows = zazuFilteredRows(S.zazuRowsAll || []);
+      if (!rows.length) { alert('Sin datos para exportar con los filtros actuales.'); return; }
+      const headers = [['ID Envío', 'Empresa', 'Fecha', 'Estado', 'Cliente', 'Teléfono', 'Dirección', 'Distrito', 'Ciudad', 'Costo Servicio', 'Nivel', 'Pago', 'Monto Cobrado']];
+      const body = rows.map((r) => [
+        String(r.id_envio || '—'),
+        zazuRowEmpresa(r),
+        zazuDisplayDate(r),
+        String(zazuPickField(r, ['estado_pedido', 'estado']) || '—'),
+        zazuClientName(r),
+        zazuDisplayPhone(r),
+        zazuDisplayAddress(r).full || '—',
+        String(zazuPickField(r, ['distrito']) || '—'),
+        String(zazuPickField(r, ['ciudad', 'provincia', 'departamento']) || '—'),
+        zazuDisplayServiceCost(r),
+        zazuNivelServicioLima(r).label,
+        zazuDisplayPayment(r),
+        zazuDisplayMonto(r),
+      ]);
+      const ws = window.XLSX.utils.aoa_to_sheet([...headers, ...body]);
+      const wb = window.XLSX.utils.book_new();
+      window.XLSX.utils.book_append_sheet(wb, ws, 'Lima');
+      window.XLSX.writeFile(wb, `zazu_lima_${dateTag}.xlsx`);
     }
   }
 
@@ -5000,6 +5118,7 @@ ${sections}
         alert('Error al generar PDF. Revisa la consola para más detalles.');
       });
     });
+    d.getElementById('btn-zazu-xlsx')?.addEventListener('click', exportZazuXlsx);
     d.getElementById('table-body')?.addEventListener('change', ev => {
       const t = ev.target;
       if (!t || !t.matches || !t.matches('input.proj-check-input[data-proj-key]')) return;
@@ -5078,6 +5197,18 @@ ${sections}
       });
     });
 
+    // ── Tabs de nivel de envío Lima (filtro client-side) ──
+    d.querySelectorAll('[data-lima-nivel]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const nivel = btn.getAttribute('data-lima-nivel') || 'todos';
+        S.zazuNivelFiltro = nivel;
+        S.zazuPage = 1;
+        d.querySelectorAll('[data-lima-nivel]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        renderZazuRows(S.zazuRowsAll || [], null);
+      });
+    });
+
     d.querySelectorAll('[data-prov-estado]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const estado = btn.getAttribute('data-prov-estado') || 'todos';
@@ -5085,6 +5216,16 @@ ${sections}
         S.zazuProvPage = 1;
         d.querySelectorAll('[data-prov-estado]').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
+        zazuProvRenderRows(S.zazuProvRows || [], S.zazuProvMeta);
+        zazuProvRenderPager();
+      });
+    });
+
+    d.querySelectorAll('[data-prov-transport]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const transport = btn.getAttribute('data-prov-transport') || 'todos';
+        S.zazuProvTransportista = transport;
+        S.zazuProvPage = 1;
         zazuProvRenderRows(S.zazuProvRows || [], S.zazuProvMeta);
         zazuProvRenderPager();
       });
@@ -5323,8 +5464,10 @@ ${sections}
       S.zazuProvEmpresa = '__ALL__';
       S.zazuProvClienteSearch = '';
       S.zazuProvRankingFilter = '';
+      S.zazuProvTransportista = 'todos';
       S.zazuProvPage = 1;
       d.querySelectorAll('[data-prov-estado]').forEach(b => b.classList.toggle('active', b.getAttribute('data-prov-estado') === 'todos'));
+      d.querySelectorAll('[data-prov-transport]').forEach(b => b.classList.toggle('active', b.getAttribute('data-prov-transport') === 'todos'));
       zazuProvSyncInputs();
       _updateProvShortcutActive();
       fetchZazuProvinciaDetail(true);
@@ -5506,11 +5649,14 @@ ${sections}
       const target = ev.target;
       if (!target || !target.closest) return;
       const noteLink = target.closest('a.zazu-note-link[data-nota-ref]');
-      if (!noteLink) return;
-      ev.preventDefault();
-      const notaRef = noteLink.getAttribute('data-nota-ref') || '';
-      openOdooReceiptFromNota(notaRef).catch(() => {});
+      if (noteLink) {
+        ev.preventDefault();
+        const notaRef = noteLink.getAttribute('data-nota-ref') || '';
+        openOdooReceiptFromNota(notaRef).catch(() => {});
+        return;
+      }
     });
+
     d.getElementById('zazu-prov-tbody')?.addEventListener('click', (ev) => {
       const target = ev.target;
       if (!target || !target.closest) return;
@@ -5524,31 +5670,6 @@ ${sections}
         return;
       }
 
-      // Handle voucher button
-      const voucherBtn = target.closest('button.zazu-voucher-btn');
-      if (voucherBtn) {
-        ev.preventDefault();
-        const voucherId = voucherBtn.getAttribute('data-voucher-id') || '';
-        const guia = voucherBtn.getAttribute('data-guia') || '';
-        const codigo = voucherBtn.getAttribute('data-codigo') || '';
-        openVoucherModal(voucherId, guia, codigo).catch((err) => {
-          console.error('Error abriendo voucher:', err);
-        });
-      }
-    });
-
-    // Controladores del Modal de Voucher
-    const closeVoucher = () => {
-      const modal = d.getElementById('voucher-modal-overlay');
-      if (modal) modal.style.display = 'none';
-    };
-    d.getElementById('voucher-modal-close')?.addEventListener('click', closeVoucher);
-    d.getElementById('voucher-modal-close-x')?.addEventListener('click', closeVoucher);
-    d.getElementById('voucher-modal-overlay')?.addEventListener('click', (ev) => {
-      if (ev.target === d.getElementById('voucher-modal-overlay')) closeVoucher();
-    });
-    d.getElementById('voucher-modal-print')?.addEventListener('click', () => {
-      window.print();
     });
 
     // Products Dashboard Logic
